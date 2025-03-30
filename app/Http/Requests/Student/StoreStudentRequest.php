@@ -14,20 +14,21 @@ class StoreStudentRequest extends FormRequest
     public function rules()
     {
         return [
-            'name' => 'required|string|max:255',
+            'school_id' => 'required|exists:schools,id',
+            'admission_number' => 'required|string|unique:students',
+            'roll_number' => 'required|string',
+            'first_name' => 'required|string|max:255',
+            'last_name' => 'required|string|max:255',
+            'date_of_birth' => 'required|date|before:today',
             'gender' => 'required|in:male,female,other',
-            'date_of_birth' => 'required|date',
             'admission_date' => 'required|date',
-            'roll_number' => 'required|string|unique:students',
-            'class_id' => 'required|exists:class_rooms,id',
-            'parent_details' => 'required|array',
-            'parent_details.name' => 'required|string',
-            'parent_details.contact' => 'required|string',
-            'contact_number' => 'required|string',
-            'email' => 'required|email|unique:students',
-            'address' => 'required|array',
-            'blood_group' => 'nullable|string',
-            'profile_photo' => 'nullable|image|max:2048',
+            'blood_group' => 'nullable|string|in:A+,A-,B+,B-,O+,O-,AB+,AB-',
+            'address' => 'required|string',
+            'phone' => 'nullable|string',
+            'parent_id' => 'required|exists:parents,id',
+            'relationship' => 'required|string|in:father,mother,guardian',
+            'is_primary' => 'boolean',
+            'profile_photo' => 'nullable|image|max:2048'
         ];
     }
 } 

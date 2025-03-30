@@ -4,71 +4,129 @@ namespace App\Services;
 
 use App\Models\Student;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 
-class StudentService extends BaseService
+class StudentService
 {
-    protected function initializeModel()
+    public function getAllStudents($filters = [])
     {
-        $this->model = Student::class;
+        $query = Student::with(['school', 'parents'])
+            ->where('school_id', request()->school_id);
+
+        if (isset($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('first_name', 'like', "%{$search}%")
+                  ->orWhere('last_name', 'like', "%{$search}%")
+                  ->orWhere('admission_number', 'like', "%{$search}%");
+            });
+        }
+
+        if (isset($filters['class_id'])) {
+            $query->where('class_id', $filters['class_id']);
+        }
+
+        if (isset($filters['gender'])) {
+            $query->where('gender', $filters['gender']);
+        }
+
+        if (isset($filters['blood_group'])) {
+            $query->where('blood_group', $filters['blood_group']);
+        }
+
+        if (isset($filters['is_active'])) {
+            $query->where('is_active', $filters['is_active']);
+        }
+
+        if (isset($filters['admission_date'])) {
+            $query->whereDate('admission_date', $filters['admission_date']);
+        }
+
+        return $query->paginate(10);
     }
 
-    public function createStudent(array $data)
+    public function createStudent($data)
     {
         DB::beginTransaction();
         try {
-            // Add school_id from authenticated user
-            $data['school_id'] = auth()->user()->school_id;
+            // Handle profile photo upload if present
+            if (isset($data['profile_photo'])) {
+                $data['profile_photo'] = $this->uploadProfilePhoto($data['profile_photo']);
+            }
 
-            // Generate registration number
-            $data['registration_number'] = $this->generateRegistrationNumber();
+            // school_id and created_by are already in $data from middleware
+            $student = Student::create($data);
 
-            // Create student
-            $student = $this->create($data);
-
-            // Create related health record if provided
-            if (isset($data['health_record'])) {
-                $student->healthRecord()->create($data['health_record']);
+            // Create parent-student relationship
+            if (isset($data['parent_id'])) {
+                $student->parents()->attach($data['parent_id'], [
+                    'relationship' => $data['relationship'],
+                    'is_primary' => $data['is_primary'] ?? true
+                ]);
             }
 
             DB::commit();
-            return $student;
+            return $student->load(['school', 'parents']);
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
         }
     }
 
-    public function getAttendanceReport($studentId, $startDate, $endDate)
+    public function getStudentById($id)
     {
-        $student = $this->find($studentId);
-        return $student->attendance()
-            ->whereBetween('date', [$startDate, $endDate])
-            ->get()
-            ->groupBy('status');
+        return Student::with(['school', 'parents'])
+            ->where('school_id', request()->school_id)
+            ->findOrFail($id);
     }
 
-    public function getFeeStatus($studentId)
+    public function updateStudent($id, $data)
     {
-        $student = $this->find($studentId);
-        return [
-            'total_fees' => $student->fees()->sum('amount'),
-            'paid_fees' => $student->fees()->sum('paid_amount'),
-            'pending_fees' => $student->fees()->where('status', 'pending')->sum('amount'),
-            'overdue_fees' => $student->fees()->where('status', 'overdue')->sum('amount'),
-        ];
+        DB::beginTransaction();
+        try {
+            $student = Student::where('school_id', request()->school_id)
+                ->findOrFail($id);
+
+            if (isset($data['profile_photo'])) {
+                if ($student->profile_photo) {
+                    Storage::delete($student->profile_photo);
+                }
+                $data['profile_photo'] = $this->uploadProfilePhoto($data['profile_photo']);
+            }
+
+            $student->update($data);
+
+            DB::commit();
+            return $student->load(['school', 'parents']);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
     }
 
-    protected function generateRegistrationNumber()
+    public function deleteStudent($id)
     {
-        $prefix = date('Y');
-        $lastStudent = Student::where('registration_number', 'like', $prefix . '%')
-            ->orderBy('registration_number', 'desc')
-            ->first();
+        DB::beginTransaction();
+        try {
+            $student = Student::where('school_id', request()->school_id)
+                ->findOrFail($id);
+            
+            if ($student->profile_photo) {
+                Storage::delete($student->profile_photo);
+            }
 
-        $sequence = $lastStudent ? 
-            (int)substr($lastStudent->registration_number, -4) + 1 : 
-            1;
+            $student->delete();
+            
+            DB::commit();
+            return true;
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
 
-        return $prefix . str_pad($sequence, 4, '0', STR_PAD_LEFT);
+    protected function uploadProfilePhoto($photo)
+    {
+        return $photo->store('student-photos', 'public');
     }
 } 

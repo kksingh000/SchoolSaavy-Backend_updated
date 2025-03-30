@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Student;
 use App\Services\StudentService;
 use App\Http\Resources\StudentResource;
 use App\Http\Requests\Student\StoreStudentRequest;
 use App\Http\Requests\Student\UpdateStudentRequest;
 use Illuminate\Http\Request;
+use Illuminate\Http\JsonResponse;
 
 class StudentController extends Controller
 {
@@ -17,35 +19,96 @@ class StudentController extends Controller
         $this->studentService = $studentService;
     }
 
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        $filters = $request->only(['class_id', 'status', 'search']);
-        $students = $this->studentService->getAll($filters, ['class', 'healthRecord']);
-        return StudentResource::collection($students);
+        try {
+            $filters = $request->only([
+                'search', 'class_id', 'gender', 'blood_group', 
+                'is_active', 'admission_date'
+            ]);
+            
+            $students = $this->studentService->getAllStudents($filters);
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => StudentResource::collection($students)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    public function store(StoreStudentRequest $request)
+    public function store(StoreStudentRequest $request): JsonResponse
     {
-        $student = $this->studentService->createStudent($request->validated());
-        return new StudentResource($student);
+        try {
+            $student = $this->studentService->createStudent($request->validated());
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Student created successfully',
+                'data' => new StudentResource($student)
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    public function show($id)
+    public function show($id): JsonResponse
     {
-        $student = $this->studentService->find($id, ['class', 'healthRecord', 'attendance', 'fees']);
-        return new StudentResource($student);
+        try {
+            $student = $this->studentService->getStudentById($id);
+            
+            return response()->json([
+                'status' => 'success',
+                'data' => new StudentResource($student)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 404);
+        }
     }
 
-    public function update(UpdateStudentRequest $request, $id)
+    public function update(UpdateStudentRequest $request, $id): JsonResponse
     {
-        $student = $this->studentService->update($id, $request->validated());
-        return new StudentResource($student);
+        try {
+            $student = $this->studentService->updateStudent($id, $request->validated());
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Student updated successfully',
+                'data' => new StudentResource($student)
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
-    public function destroy($id)
+    public function destroy($id): JsonResponse
     {
-        $this->studentService->delete($id);
-        return response()->noContent();
+        try {
+            $this->studentService->deleteStudent($id);
+            
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Student deleted successfully'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage()
+            ], 500);
+        }
     }
 
     public function getAttendanceReport(Request $request, $id)

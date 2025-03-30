@@ -12,6 +12,7 @@ class Student extends Model
 
     protected $fillable = [
         'school_id',
+        'created_by',
         'admission_number',
         'roll_number',
         'first_name',
@@ -52,5 +53,10 @@ class Student extends Model
     public function fees()
     {
         return $this->hasMany(StudentFee::class);
+    }
+
+    public function createdBy()
+    {
+        return $this->belongsTo(User::class, 'created_by');
     }
 } 
