@@ -9,8 +9,9 @@ use App\Http\Requests\Student\StoreStudentRequest;
 use App\Http\Requests\Student\UpdateStudentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Http\Controllers\BaseController;
 
-class StudentController extends Controller
+class StudentController extends BaseController
 {
     protected $studentService;
 
@@ -23,12 +24,16 @@ class StudentController extends Controller
     {
         try {
             $filters = $request->only([
-                'search', 'class_id', 'gender', 'blood_group', 
-                'is_active', 'admission_date'
+                'search',
+                'class_id',
+                'gender',
+                'blood_group',
+                'is_active',
+                'admission_date'
             ]);
-            
+
             $students = $this->studentService->getAllStudents($filters);
-            
+
             return response()->json([
                 'status' => 'success',
                 'data' => StudentResource::collection($students)
@@ -45,7 +50,7 @@ class StudentController extends Controller
     {
         try {
             $student = $this->studentService->createStudent($request->validated());
-            
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Student created successfully',
@@ -63,7 +68,7 @@ class StudentController extends Controller
     {
         try {
             $student = $this->studentService->getStudentById($id);
-            
+
             return response()->json([
                 'status' => 'success',
                 'data' => new StudentResource($student)
@@ -79,14 +84,32 @@ class StudentController extends Controller
     public function update(UpdateStudentRequest $request, $id): JsonResponse
     {
         try {
+            // Get all request data
+            $data = $request->all();
+
+            // Remove middleware injected data if no other data present
+            unset($data['school_id'], $data['created_by']);
+
+            if (empty($data)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No update data provided'
+                ], 422);
+            }
+
             $student = $this->studentService->updateStudent($id, $request->validated());
-            
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Student updated successfully',
                 'data' => new StudentResource($student)
             ]);
         } catch (\Exception $e) {
+            \Log::error('Student Update Error:', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+
             return response()->json([
                 'status' => 'error',
                 'message' => $e->getMessage()
@@ -98,7 +121,7 @@ class StudentController extends Controller
     {
         try {
             $this->studentService->deleteStudent($id);
-            
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Student deleted successfully'
@@ -126,4 +149,4 @@ class StudentController extends Controller
         $feeStatus = $this->studentService->getFeeStatus($id);
         return response()->json(['data' => $feeStatus]);
     }
-} 
+}

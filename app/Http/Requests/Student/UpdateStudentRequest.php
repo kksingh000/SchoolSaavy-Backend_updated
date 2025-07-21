@@ -2,9 +2,9 @@
 
 namespace App\Http\Requests\Student;
 
-use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Http\Request;
 
-class UpdateStudentRequest extends FormRequest
+class UpdateStudentRequest extends Request
 {
     public function authorize()
     {
@@ -13,20 +13,37 @@ class UpdateStudentRequest extends FormRequest
 
     public function rules()
     {
+        // Log the incoming request for debugging
+        \Log::info('Update Request Content:', [
+            'all' => $this->all(),
+            'input' => $this->input(),
+            'json' => $this->json()->all(),
+            'isJson' => $this->isJson(),
+        ]);
+
         return [
-            'school_id' => 'exists:schools,id',
-            'admission_number' => 'string|unique:students,admission_number,' . $this->student,
-            'roll_number' => 'string',
-            'first_name' => 'string|max:255',
-            'last_name' => 'string|max:255',
-            'date_of_birth' => 'date|before:today',
-            'gender' => 'in:male,female,other',
-            'admission_date' => 'date',
-            'blood_group' => 'nullable|string|in:A+,A-,B+,B-,O+,O-,AB+,AB-',
-            'address' => 'string',
-            'phone' => 'nullable|string',
-            'is_active' => 'boolean',
-            'profile_photo' => 'nullable|image|max:2048'
+            'admission_number' => 'sometimes|string|unique:students,admission_number,' . $this->route('student'),
+            'roll_number' => 'sometimes|string',
+            'first_name' => 'sometimes|string|max:255',
+            'last_name' => 'sometimes|string|max:255',
+            'date_of_birth' => 'sometimes|date|before:today',
+            'gender' => 'sometimes|in:male,female,other',
+            'admission_date' => 'sometimes|date',
+            'blood_group' => 'sometimes|nullable|string|in:A+,A-,B+,B-,O+,O-,AB+,AB-',
+            'address' => 'sometimes|string',
+            'phone' => 'sometimes|nullable|string',
+            'is_active' => 'sometimes|boolean',
+            'profile_photo' => 'sometimes|nullable|image|max:2048'
         ];
+    }
+
+    protected function prepareForValidation()
+    {
+        // Log the request method and content type
+        \Log::info('Request Method and Content:', [
+            'method' => $this->method(),
+            'contentType' => $this->header('Content-Type'),
+            'raw' => $this->getContent()
+        ]);
     }
 } 

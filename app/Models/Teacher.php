@@ -39,4 +39,9 @@ class Teacher extends Model
     {
         return $this->belongsTo(School::class);
     }
-} 
+
+    public function classes()
+    {
+        return $this->hasMany(ClassRoom::class, 'class_teacher_id');
+    }
+}

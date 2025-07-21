@@ -27,7 +27,10 @@ class AuthService
         }
 
         // Load the specific user type relationship
-        $user->load($this->getUserRelation($user->user_type));
+        $relation = $this->getUserRelation($user->user_type);
+        if ($relation) {
+            $user->load($relation);
+        }
 
         return [
             'user' => $user,
@@ -37,8 +40,8 @@ class AuthService
 
     protected function getUserRelation(string $userType)
     {
-        return match($userType) {
-            'admin' => 'schoolAdmin.school',
+        return match ($userType) {
+            'admin', 'school_admin' => 'schoolAdmin.school',
             'teacher' => 'teacher.school',
             'parent' => 'parent.students',
             default => null,
@@ -51,4 +54,4 @@ class AuthService
             $user->currentAccessToken()->delete();
         }
     }
-} 
+}

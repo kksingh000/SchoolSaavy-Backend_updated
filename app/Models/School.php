@@ -39,4 +39,23 @@ class School extends Model
     {
         return $this->hasMany(Student::class);
     }
-} 
+
+    public function modules()
+    {
+        return $this->belongsToMany(Module::class, 'school_modules')
+            ->withPivot(['activated_at', 'expires_at', 'status', 'settings'])
+            ->withTimestamps();
+    }
+
+    public function hasActiveModule(string $moduleSlug): bool
+    {
+        return $this->modules()
+            ->where('slug', $moduleSlug)
+            ->wherePivot('status', 'active')
+            ->exists();
+    }
+    public function classes()
+    {
+        return $this->hasMany(ClassRoom::class);
+    }
+}

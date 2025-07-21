@@ -45,6 +45,23 @@ class Student extends Model
             ->withTimestamps();
     }
 
+    public function classes()
+    {
+        return $this->belongsToMany(ClassRoom::class, 'class_student', 'student_id', 'class_id')
+            ->withPivot(['roll_number', 'enrolled_date', 'left_date', 'is_active'])
+            ->withTimestamps();
+    }
+
+    public function currentClass()
+    {
+        return $this->belongsToMany(ClassRoom::class, 'class_student', 'student_id', 'class_id')
+            ->withPivot(['roll_number', 'enrolled_date', 'left_date', 'is_active'])
+            ->withTimestamps()
+            ->wherePivot('is_active', true)
+            ->latest('pivot_enrolled_date')
+            ->limit(1);
+    }
+
     public function attendance()
     {
         return $this->hasMany(Attendance::class);
@@ -59,4 +76,4 @@ class Student extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
-} 
+}
