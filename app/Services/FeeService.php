@@ -18,8 +18,8 @@ class FeeService extends BaseService
     {
         DB::beginTransaction();
         try {
-            $data['school_id'] = auth()->user()->school_id;
-            
+            $data['school_id'] = auth()->user()->getSchoolId();
+
             // Create fee structure
             $feeStructure = $this->create($data);
 
@@ -41,7 +41,7 @@ class FeeService extends BaseService
         DB::beginTransaction();
         try {
             $studentFee = StudentFee::findOrFail($data['student_fee_id']);
-            
+
             // Create payment record
             $payment = FeePayment::create([
                 'student_fee_id' => $studentFee->id,
@@ -50,7 +50,7 @@ class FeeService extends BaseService
                 'payment_method' => $data['payment_method'],
                 'transaction_id' => $data['transaction_id'] ?? null,
                 'remarks' => $data['remarks'] ?? null,
-                'school_id' => auth()->user()->school_id,
+                'school_id' => auth()->user()->getSchoolId(),
             ]);
 
             // Update student fee status
@@ -99,7 +99,7 @@ class FeeService extends BaseService
     protected function generateStudentFees($feeStructure)
     {
         $students = $feeStructure->class->students;
-        
+
         foreach ($students as $student) {
             foreach ($feeStructure->fee_components as $component) {
                 StudentFee::create([
@@ -108,7 +108,7 @@ class FeeService extends BaseService
                     'amount' => $component['amount'],
                     'due_date' => $component['due_date'],
                     'status' => 'pending',
-                    'school_id' => auth()->user()->school_id,
+                    'school_id' => auth()->user()->getSchoolId(),
                 ]);
             }
         }
@@ -117,11 +117,11 @@ class FeeService extends BaseService
     protected function updateFeeStatus($studentFee)
     {
         $totalPaid = $studentFee->payments()->sum('amount');
-        
+
         if ($totalPaid >= $studentFee->amount) {
             $studentFee->update(['status' => 'paid']);
         } elseif ($totalPaid > 0) {
             $studentFee->update(['status' => 'partial']);
         }
     }
-} 
+}

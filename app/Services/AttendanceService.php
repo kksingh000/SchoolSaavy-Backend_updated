@@ -24,7 +24,7 @@ class AttendanceService extends BaseService
                     'status' => $record['status'],
                     'remarks' => $record['remarks'] ?? null,
                     'marked_by' => auth()->id(),
-                    'school_id' => auth()->user()->school_id,
+                    'school_id' => auth()->user()->getSchoolId(),
                 ];
             });
 
@@ -54,4 +54,4 @@ class AttendanceService extends BaseService
             ->get()
             ->groupBy('status');
     }
-} 
+}

@@ -46,7 +46,7 @@ class ClassService extends BaseService
     {
         DB::beginTransaction();
         try {
-            $data['school_id'] = Auth::user()->school_id;
+            $data['school_id'] = Auth::user()->getSchoolId();
 
             // Create class
             $class = $this->create($data);
@@ -78,10 +78,11 @@ class ClassService extends BaseService
         DB::beginTransaction();
         try {
             $class = $this->find($classId);
+            $schoolId = Auth::user()->getSchoolId();
 
             // Validate that all students belong to the same school
             $validStudents = \App\Models\Student::whereIn('id', $studentIds)
-                ->where('school_id', Auth::user()->school_id)
+                ->where('school_id', $schoolId)
                 ->pluck('id')
                 ->toArray();
 
@@ -91,11 +92,13 @@ class ClassService extends BaseService
 
             // Prepare data for pivot table
             $pivotData = [];
-            foreach ($validStudents as $studentId) {
+            $nextRollNumber = $this->getNextRollNumber($classId);
+
+            foreach ($validStudents as $index => $studentId) {
                 $pivotData[$studentId] = [
                     'enrolled_date' => now(),
                     'is_active' => true,
-                    'roll_number' => $this->getNextRollNumber($classId),
+                    'roll_number' => $nextRollNumber + $index,
                 ];
             }
 

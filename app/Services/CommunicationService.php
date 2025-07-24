@@ -18,7 +18,7 @@ class CommunicationService extends BaseService
     {
         DB::beginTransaction();
         try {
-            $data['school_id'] = auth()->user()->school_id;
+            $data['school_id'] = auth()->user()->getSchoolId();
             $data['created_by'] = auth()->id();
 
             $announcement = $this->create($data);
@@ -47,7 +47,7 @@ class CommunicationService extends BaseService
             'subject' => $data['subject'],
             'content' => $data['content'],
             'attachments' => $data['attachments'] ?? null,
-            'school_id' => auth()->user()->school_id,
+            'school_id' => auth()->user()->getSchoolId(),
         ]);
     }
 
@@ -79,7 +79,7 @@ class CommunicationService extends BaseService
                 'title' => $data['title'],
                 'content' => $data['content'],
                 'type' => $data['type'],
-                'school_id' => auth()->user()->school_id,
+                'school_id' => auth()->user()->getSchoolId(),
             ]);
         }
     }
@@ -99,7 +99,7 @@ class CommunicationService extends BaseService
     protected function getRecipientsByRole($role)
     {
         return User::where('role', $role)
-            ->where('school_id', auth()->user()->school_id)
+            ->where('school_id', auth()->user()->getSchoolId())
             ->get();
     }
-} 
+}

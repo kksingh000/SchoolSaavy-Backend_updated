@@ -17,11 +17,11 @@ class InjectSchoolData
     {
         if (auth()->check()) {
             $user = auth()->user();
-            
+
             // Get school_id based on user type
-            $schoolId = match($user->user_type) {
-                'admin', 'school_admin' => $user->schoolAdmin->school_id,
-                'teacher' => $user->teacher->school_id,
+            $schoolId = match ($user->user_type) {
+                'admin', 'school_admin' => $user->schoolAdmin->school_id ?? null,
+                'teacher' => $user->teacher->school_id ?? null,
                 'parent' => $user->parent->students->first()->school_id ?? null,
                 default => null
             };
@@ -32,7 +32,6 @@ class InjectSchoolData
                 'created_by' => $user->id
             ]);
         }
-
         return $next($request);
     }
 }

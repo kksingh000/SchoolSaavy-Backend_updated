@@ -45,11 +45,23 @@ class ModuleController extends BaseController
         try {
             $user = Auth::user();
 
-            if (!$user || !$user->schoolAdmin) {
-                return $this->errorResponse('Unauthorized access', null, 401);
+            if (!$user) {
+                return $this->errorResponse('User not authenticated', null, 401);
             }
 
-            $school = $user->schoolAdmin->school;
+            // Direct lookup approach since relationships might not be loaded
+            $schoolAdmin = \App\Models\SchoolAdmin::where('user_id', $user->id)->first();
+
+            if (!$schoolAdmin) {
+                return $this->errorResponse('No school admin record found for user', null, 404);
+            }
+
+            $school = \App\Models\School::find($schoolAdmin->school_id);
+
+            if (!$school) {
+                return $this->errorResponse('School not found', null, 404);
+            }
+
             $schoolModules = $school->modules()
                 ->withPivot(['activated_at', 'expires_at', 'status', 'settings'])
                 ->get();
@@ -146,6 +158,64 @@ class ModuleController extends BaseController
             return $this->successResponse(
                 $modules,
                 'Module pricing retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function activateAllModules(Request $request): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+
+            // Get school from relationship or use injected school_id
+            $school = null;
+            if ($user->schoolAdmin) {
+                $school = $user->schoolAdmin->school;
+            } elseif ($user->user_type === 'admin' && request()->school_id) {
+                $school = \App\Models\School::find(request()->school_id);
+            }
+
+            if (!$school) {
+                return $this->errorResponse('School not found', null, 404);
+            }
+
+            $request->validate([
+                'subscription_type' => 'in:monthly,yearly',
+                'expires_at' => 'nullable|date|after:today',
+            ]);
+
+            // Get all active modules
+            $modules = Module::where('is_active', true)->get();
+
+            // Calculate expiry date based on subscription type
+            $subscriptionType = $request->subscription_type ?? 'yearly';
+            $expiresAt = $request->expires_at ?? now()->addMonths($subscriptionType === 'monthly' ? 1 : 12);
+
+            // Prepare data for bulk activation
+            $moduleData = [];
+            foreach ($modules as $module) {
+                $moduleData[$module->id] = [
+                    'activated_at' => now(),
+                    'expires_at' => $expiresAt,
+                    'status' => 'active',
+                    'settings' => json_encode([]),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ];
+            }
+
+            // Activate all modules for the school
+            $school->modules()->sync($moduleData);
+
+            return $this->successResponse(
+                [
+                    'activated_modules_count' => count($moduleData),
+                    'subscription_type' => $subscriptionType,
+                    'expires_at' => $expiresAt->format('Y-m-d H:i:s')
+                ],
+                'All modules activated successfully for the school'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());

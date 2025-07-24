@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
 use App\Http\Controllers\Auth\AuthController;
 use App\Http\Controllers\StudentController;
 use App\Http\Controllers\ClassController;
@@ -27,21 +28,26 @@ Route::middleware('json.response')->group(function () {
     });
 
     // Public Module Information (for pricing page)
-    Route::get('modules/pricing', [ModuleController::class, 'getModulePricing']);
-    Route::get('modules', [ModuleController::class, 'index']);
-    Route::get('modules/{id}', [ModuleController::class, 'show']);
+
+    // Route::get('modules/{id}', [ModuleController::class, 'show']);
 
     // Protected Routes with school data injection
     Route::middleware(['auth:sanctum', 'inject.school'])->group(function () {
-
+        Route::get('school', [ModuleController::class, 'getSchoolModules']);
         // Dashboard Routes
         Route::get('dashboard', [DashboardController::class, 'index']);
-
+        Route::get("test", function (Request $request) {
+            return response()->json(['message' => 'Test route accessed successfully']);
+        });
         // Module Management Routes
         Route::prefix('modules')->group(function () {
+            Route::get('pricing', [ModuleController::class, 'getModulePricing']);
+            Route::get('/', [ModuleController::class, 'index']);
             Route::get('school', [ModuleController::class, 'getSchoolModules']);
+            Route::post('activate-all', [ModuleController::class, 'activateAllModules']);
             Route::post('{moduleId}/activate', [ModuleController::class, 'activateModule']);
             Route::post('{moduleId}/deactivate', [ModuleController::class, 'deactivateModule']);
+            Route::get('{id}', [ModuleController::class, 'show']);
         });
 
         // Student Management Routes

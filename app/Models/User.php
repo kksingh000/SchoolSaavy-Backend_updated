@@ -60,4 +60,26 @@ class User extends Authenticatable
     {
         return $this->hasOne(Parents::class);
     }
+
+    /**
+     * Get the school ID for the authenticated user based on their type
+     */
+    public function getSchoolId()
+    {
+        return match ($this->user_type) {
+            'admin', 'school_admin' => $this->schoolAdmin?->school_id,
+            'teacher' => $this->teacher?->school_id,
+            'parent' => $this->parent?->students?->first()?->school_id,
+            default => null
+        };
+    }
+
+    /**
+     * Get the school model for the authenticated user
+     */
+    public function getSchool()
+    {
+        $schoolId = $this->getSchoolId();
+        return $schoolId ? \App\Models\School::find($schoolId) : null;
+    }
 }

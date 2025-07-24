@@ -28,14 +28,14 @@ class TimetableService extends BaseService
                 'start_time' => $data['start_time'],
                 'end_time' => $data['end_time'],
                 'room_number' => $data['room_number'],
-                'school_id' => auth()->user()->school_id,
+                'school_id' => auth()->user()->getSchoolId(),
             ]);
 
             // Create teacher schedule entry
             TeacherSchedule::create([
                 'teacher_id' => $data['teacher_id'],
                 'class_schedule_id' => $schedule->id,
-                'school_id' => auth()->user()->school_id,
+                'school_id' => auth()->user()->getSchoolId(),
             ]);
 
             DB::commit();
@@ -90,4 +90,4 @@ class TimetableService extends BaseService
             throw new \Exception('Class schedule conflict detected');
         }
     }
-} 
+}
