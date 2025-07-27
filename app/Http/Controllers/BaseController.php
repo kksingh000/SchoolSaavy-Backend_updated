@@ -12,11 +12,16 @@ class BaseController extends Controller
     {
         $user = Auth::user();
 
-        if (!$user || !$user->schoolAdmin) {
+        if (!$user) {
             return false;
         }
 
-        $school = $user->schoolAdmin->school;
+        // Get the school for any user type (admin, teacher, parent)
+        $school = $user->getSchool();
+
+        if (!$school) {
+            return false;
+        }
 
         return $school->modules()
             ->where('slug', $moduleSlug)

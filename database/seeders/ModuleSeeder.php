@@ -91,6 +91,23 @@ class ModuleSeeder extends Seeder
                 'sort_order' => 5,
             ],
             [
+                'name' => 'Assignment Management',
+                'slug' => 'assignment-management',
+                'description' => 'Complete assignment and homework management system with grading',
+                'monthly_price' => 35.00,
+                'yearly_price' => 350.00,
+                'features' => [
+                    'Assignment Creation & Publishing',
+                    'Student Submission Portal',
+                    'Digital Grading & Feedback',
+                    'Assignment Analytics',
+                    'Late Submission Tracking',
+                    'Performance Reports'
+                ],
+                'is_active' => true,
+                'sort_order' => 6,
+            ],
+            [
                 'name' => 'Communication Hub',
                 'slug' => 'communication',
                 'description' => 'Centralized communication between school, teachers, and parents',
@@ -104,7 +121,7 @@ class ModuleSeeder extends Seeder
                     'Emergency Alerts'
                 ],
                 'is_active' => true,
-                'sort_order' => 6,
+                'sort_order' => 7,
             ],
             [
                 'name' => 'Exam Management',
@@ -120,7 +137,7 @@ class ModuleSeeder extends Seeder
                     'Result Publishing'
                 ],
                 'is_active' => false, // Coming soon
-                'sort_order' => 7,
+                'sort_order' => 8,
             ],
             [
                 'name' => 'Library Management',
@@ -136,7 +153,7 @@ class ModuleSeeder extends Seeder
                     'Inventory Tracking'
                 ],
                 'is_active' => false, // Coming soon
-                'sort_order' => 8,
+                'sort_order' => 9,
             ],
             [
                 'name' => 'Transport Management',
@@ -152,7 +169,7 @@ class ModuleSeeder extends Seeder
                     'GPS Integration'
                 ],
                 'is_active' => false, // Coming soon
-                'sort_order' => 9,
+                'sort_order' => 10,
             ],
             [
                 'name' => 'Analytics & Reports',
@@ -168,7 +185,7 @@ class ModuleSeeder extends Seeder
                     'Predictive Analytics'
                 ],
                 'is_active' => true,
-                'sort_order' => 10,
+                'sort_order' => 11,
             ],
         ];
 

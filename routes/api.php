@@ -11,6 +11,8 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TimetableController;
 use App\Http\Controllers\EventController;
 use App\Http\Controllers\SubjectController;
+use App\Http\Controllers\AssignmentController;
+use App\Http\Controllers\FileUploadController;
 
 /*
 |--------------------------------------------------------------------------
@@ -107,5 +109,33 @@ Route::middleware('json.response')->group(function () {
         // Subject Management Routes
         Route::apiResource('subjects', SubjectController::class);
         Route::get('subjects/class/{classId}', [SubjectController::class, 'getByClass']);
+
+        // Assignment Management Routes
+        Route::prefix('assignments')->group(function () {
+            Route::get('/', [AssignmentController::class, 'index']);
+            Route::post('/', [AssignmentController::class, 'store']);
+            Route::get('statistics', [AssignmentController::class, 'statistics']);
+            Route::get('teacher-dashboard', [AssignmentController::class, 'teacherDashboard']);
+            Route::get('type/{type}', [AssignmentController::class, 'byType']);
+            Route::get('class/{classId}/upcoming', [AssignmentController::class, 'upcomingByClass']);
+            Route::get('student/{studentId}', [AssignmentController::class, 'studentAssignments']);
+            Route::get('{id}', [AssignmentController::class, 'show']);
+            Route::put('{id}', [AssignmentController::class, 'update']);
+            Route::delete('{id}', [AssignmentController::class, 'destroy']);
+            Route::post('{id}/submit', [AssignmentController::class, 'submit']);
+        });
+
+        // Assignment Submission Routes
+        Route::prefix('assignment-submissions')->group(function () {
+            Route::post('{submissionId}/grade', [AssignmentController::class, 'gradeSubmission']);
+        });
+
+        // File Upload Routes (Generic for all modules)
+        Route::prefix('uploads')->group(function () {
+            Route::post('single', [FileUploadController::class, 'uploadSingle']);
+            Route::post('multiple', [FileUploadController::class, 'uploadMultiple']);
+            Route::delete('file', [FileUploadController::class, 'deleteFile']);
+            Route::post('file-info', [FileUploadController::class, 'getFileInfo']);
+        });
     });
 });

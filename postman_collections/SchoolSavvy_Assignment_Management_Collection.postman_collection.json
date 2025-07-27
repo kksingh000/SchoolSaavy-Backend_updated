@@ -1,0 +1,495 @@
+{
+	"info": {
+		"_postman_id": "assignment-management-collection",
+		"name": "SchoolSavvy - Assignment Management Module",
+		"description": "Complete API collection for Assignment Management module including CRUD operations, submissions, grading, and analytics",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"auth": {
+		"type": "bearer",
+		"bearer": [
+			{
+				"key": "token",
+				"value": "{{auth_token}}",
+				"type": "string"
+			}
+		]
+	},
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://localhost:8000/api",
+			"type": "string"
+		},
+		{
+			"key": "auth_token",
+			"value": "your_bearer_token_here",
+			"type": "string"
+		},
+		{
+			"key": "assignment_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "submission_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "class_id",
+			"value": "1",
+			"type": "string"
+		},
+		{
+			"key": "student_id",
+			"value": "1",
+			"type": "string"
+		}
+	],
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "Login",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"teacher@example.com\",\n    \"password\": \"password\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/auth/login",
+							"host": ["{{base_url}}"],
+							"path": ["auth", "login"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Assignments",
+			"item": [
+				{
+					"name": "Get All Assignments",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments?class_id={{class_id}}&type=homework&status=published",
+							"host": ["{{base_url}}"],
+							"path": ["assignments"],
+							"query": [
+								{
+									"key": "class_id",
+									"value": "{{class_id}}",
+									"description": "Filter by class ID"
+								},
+								{
+									"key": "type",
+									"value": "homework",
+									"description": "Filter by assignment type (homework, project, quiz, classwork, assessment)"
+								},
+								{
+									"key": "status",
+									"value": "published",
+									"description": "Filter by status (draft, published, completed, graded)"
+								},
+								{
+									"key": "subject_id",
+									"value": "1",
+									"description": "Filter by subject",
+									"disabled": true
+								},
+								{
+									"key": "due_date_from",
+									"value": "2025-07-01",
+									"description": "Filter assignments due from date",
+									"disabled": true
+								},
+								{
+									"key": "due_date_to",
+									"value": "2025-07-31",
+									"description": "Filter assignments due to date",
+									"disabled": true
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Assignment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"class_id\": {{class_id}},\n    \"subject_id\": 1,\n    \"title\": \"Mathematics Worksheet - Addition\",\n    \"description\": \"Practice addition problems with numbers 1-10\",\n    \"instructions\": \"Complete all 20 problems. Show your work. Use pictures if needed.\",\n    \"type\": \"homework\",\n    \"status\": \"published\",\n    \"assigned_date\": \"2025-07-27\",\n    \"due_date\": \"2025-07-30\",\n    \"due_time\": \"15:00\",\n    \"max_marks\": 20,\n    \"attachments\": [\n        {\n            \"name\": \"worksheet.pdf\",\n            \"url\": \"/uploads/assignments/worksheet.pdf\",\n            \"type\": \"pdf\"\n        }\n    ],\n    \"allow_late_submission\": true,\n    \"grading_criteria\": \"Each correct answer: 1 mark. Total: 20 marks. Bonus for neat work: +2 marks\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/assignments",
+							"host": ["{{base_url}}"],
+							"path": ["assignments"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Assignment by ID",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments/{{assignment_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "{{assignment_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Update Assignment",
+					"request": {
+						"method": "PUT",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"title\": \"Updated Mathematics Worksheet - Addition & Subtraction\",\n    \"description\": \"Practice addition and subtraction problems with numbers 1-20\",\n    \"due_date\": \"2025-08-01\",\n    \"max_marks\": 25,\n    \"allow_late_submission\": false,\n    \"status\": \"published\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/assignments/{{assignment_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "{{assignment_id}}"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Delete Assignment",
+					"request": {
+						"method": "DELETE",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments/{{assignment_id}}",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "{{assignment_id}}"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Assignment Filters & Analytics",
+			"item": [
+				{
+					"name": "Get Assignments by Type",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments/type/homework",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "type", "homework"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Assignment Statistics",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments/statistics?date_from=2025-07-01&date_to=2025-07-31",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "statistics"],
+							"query": [
+								{
+									"key": "date_from",
+									"value": "2025-07-01",
+									"description": "Statistics from date"
+								},
+								{
+									"key": "date_to",
+									"value": "2025-07-31",
+									"description": "Statistics to date"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Teacher Dashboard",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments/teacher-dashboard",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "teacher-dashboard"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Get Upcoming Assignments by Class",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments/class/{{class_id}}/upcoming?days=7",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "class", "{{class_id}}", "upcoming"],
+							"query": [
+								{
+									"key": "days",
+									"value": "7",
+									"description": "Number of days to look ahead"
+								}
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Student Assignments",
+			"item": [
+				{
+					"name": "Get Student Assignments",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/assignments/student/{{student_id}}?status=pending",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "student", "{{student_id}}"],
+							"query": [
+								{
+									"key": "status",
+									"value": "pending",
+									"description": "Filter by submission status (pending, submitted)"
+								}
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Submit Assignment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"student_id\": {{student_id}},\n    \"content\": \"I have completed all 20 addition problems. Here are my answers:\\n1. 2+3=5\\n2. 4+1=5\\n3. 3+4=7\\n...and so on. I used pictures for problems 15-20 as suggested.\",\n    \"attachments\": [\n        {\n            \"name\": \"my_homework.pdf\",\n            \"url\": \"/uploads/submissions/student_1_homework.pdf\",\n            \"type\": \"pdf\"\n        },\n        {\n            \"name\": \"drawing.jpg\",\n            \"url\": \"/uploads/submissions/student_1_drawing.jpg\",\n            \"type\": \"image\"\n        }\n    ]\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/assignments/{{assignment_id}}/submit",
+							"host": ["{{base_url}}"],
+							"path": ["assignments", "{{assignment_id}}", "submit"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Assignment Grading",
+			"item": [
+				{
+					"name": "Grade Assignment Submission",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"marks_obtained\": 18,\n    \"teacher_feedback\": \"Excellent work! Your addition is correct for all problems. I really liked how you used pictures for the difficult ones. Next time, try to make your numbers a bit neater. Well done!\",\n    \"grading_details\": {\n        \"correct_answers\": 18,\n        \"incorrect_answers\": 2,\n        \"presentation\": \"Good\",\n        \"creativity_bonus\": 2,\n        \"areas_for_improvement\": [\"Number formation\", \"Alignment\"]\n    }\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/assignment-submissions/{{submission_id}}/grade",
+							"host": ["{{base_url}}"],
+							"path": ["assignment-submissions", "{{submission_id}}", "grade"]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Sample Data Examples",
+			"item": [
+				{
+					"name": "Create Nursery Art Assignment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"class_id\": 1,\n    \"subject_id\": 4,\n    \"title\": \"Draw Your Pet\",\n    \"description\": \"Draw and color your favorite pet or an animal you would like as a pet\",\n    \"instructions\": \"Use crayons or colored pencils. Draw one animal. Color it nicely. Write the animal's name below your drawing.\",\n    \"type\": \"project\",\n    \"status\": \"published\",\n    \"assigned_date\": \"2025-07-27\",\n    \"due_date\": \"2025-08-05\",\n    \"max_marks\": 15,\n    \"allow_late_submission\": true,\n    \"grading_criteria\": \"Creativity: 5 marks, Coloring: 5 marks, Following instructions: 3 marks, Neatness: 2 marks\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/assignments",
+							"host": ["{{base_url}}"],
+							"path": ["assignments"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Phonics Quiz",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"class_id\": 2,\n    \"subject_id\": 2,\n    \"title\": \"Letter Sounds Quiz - A to E\",\n    \"description\": \"Identify the starting sounds of different pictures\",\n    \"instructions\": \"Look at each picture. Circle the correct letter that the word starts with. There are 10 pictures total.\",\n    \"type\": \"quiz\",\n    \"status\": \"published\",\n    \"assigned_date\": \"2025-07-27\",\n    \"due_date\": \"2025-07-28\",\n    \"due_time\": \"11:00\",\n    \"max_marks\": 10,\n    \"allow_late_submission\": false,\n    \"grading_criteria\": \"Each correct answer: 1 mark. No partial marks.\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/assignments",
+							"host": ["{{base_url}}"],
+							"path": ["assignments"]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Create Story Time Assignment",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Accept",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"class_id\": 3,\n    \"subject_id\": 5,\n    \"title\": \"Goldilocks and the Three Bears - Retelling\",\n    \"description\": \"Listen to the story and then tell it back in your own words\",\n    \"instructions\": \"After listening to the story, draw 3 pictures showing the beginning, middle, and end. Then tell the story to a family member.\",\n    \"type\": \"classwork\",\n    \"status\": \"published\",\n    \"assigned_date\": \"2025-07-27\",\n    \"due_date\": \"2025-07-29\",\n    \"max_marks\": 12,\n    \"allow_late_submission\": true,\n    \"grading_criteria\": \"Story understanding: 4 marks, Picture sequence: 4 marks, Creativity: 2 marks, Participation: 2 marks\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/assignments",
+							"host": ["{{base_url}}"],
+							"path": ["assignments"]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}
