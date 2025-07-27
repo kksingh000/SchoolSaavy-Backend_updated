@@ -9,6 +9,7 @@ use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TimetableController;
+use App\Http\Controllers\EventController;
 
 /*
 |--------------------------------------------------------------------------
@@ -80,6 +81,24 @@ Route::middleware('json.response')->group(function () {
             Route::get('class/{classId}', [TimetableController::class, 'getClassTimetable']);
             Route::get('teacher/{teacherId}', [TimetableController::class, 'getTeacherTimetable']);
             Route::get('weekly-overview', [TimetableController::class, 'getWeeklyOverview']);
+        });
+
+        // Event Management Routes
+        Route::prefix('events')->group(function () {
+            Route::get('/', [EventController::class, 'index']);
+            Route::post('/', [EventController::class, 'store']);
+            Route::get('todays', [EventController::class, 'todaysEvents']);
+            Route::get('upcoming', [EventController::class, 'upcomingEvents']);
+            Route::get('calendar', [EventController::class, 'calendar']);
+            Route::get('unacknowledged', [EventController::class, 'unacknowledged']);
+            Route::get('statistics', [EventController::class, 'statistics']);
+            Route::get('type/{type}', [EventController::class, 'byType']);
+            Route::get('{id}', [EventController::class, 'show']);
+            Route::put('{id}', [EventController::class, 'update']);
+            Route::delete('{id}', [EventController::class, 'destroy']);
+            Route::post('{id}/acknowledge', [EventController::class, 'acknowledge']);
+            Route::get('{id}/acknowledgments', [EventController::class, 'acknowledgments']);
+            Route::post('{id}/duplicate', [EventController::class, 'duplicate']);
         });
     });
 });
