@@ -13,6 +13,10 @@ use App\Http\Controllers\EventController;
 use App\Http\Controllers\SubjectController;
 use App\Http\Controllers\AssignmentController;
 use App\Http\Controllers\FileUploadController;
+use App\Http\Controllers\StudentPerformanceController;
+use App\Http\Controllers\AssessmentTypeController;
+use App\Http\Controllers\AssessmentController;
+use App\Http\Controllers\AssessmentResultController;
 
 /*
 |--------------------------------------------------------------------------
@@ -137,6 +141,56 @@ Route::middleware('json.response')->group(function () {
             Route::post('multiple', [FileUploadController::class, 'uploadMultiple']);
             Route::delete('file', [FileUploadController::class, 'deleteFile']);
             Route::post('file-info', [FileUploadController::class, 'getFileInfo']);
+        });
+
+        // Student Performance Routes
+        Route::prefix('student-performance')->group(function () {
+            Route::get('{studentId}/report', [StudentPerformanceController::class, 'getPerformanceReport']);
+            Route::get('{studentId}/class-comparison', [StudentPerformanceController::class, 'getClassPerformanceComparison']);
+        });
+
+        // Assessment System Routes
+        Route::prefix('assessment-types')->group(function () {
+            Route::get('/', [AssessmentTypeController::class, 'index']);
+            Route::post('/', [AssessmentTypeController::class, 'store']);
+            Route::get('active', [AssessmentTypeController::class, 'getActive']);
+            Route::get('gradebook', [AssessmentTypeController::class, 'getGradebookComponents']);
+            Route::get('{id}', [AssessmentTypeController::class, 'show']);
+            Route::put('{id}', [AssessmentTypeController::class, 'update']);
+            Route::delete('{id}', [AssessmentTypeController::class, 'destroy']);
+            Route::patch('{id}/toggle-status', [AssessmentTypeController::class, 'toggleStatus']);
+        });
+
+        Route::prefix('assessments')->group(function () {
+            Route::get('/', [AssessmentController::class, 'index']);
+            Route::post('/', [AssessmentController::class, 'store']);
+            Route::get('upcoming', [AssessmentController::class, 'upcoming']);
+            Route::get('completed', [AssessmentController::class, 'completed']);
+            Route::get('statistics', [AssessmentController::class, 'statistics']);
+            Route::get('teacher-dashboard', [AssessmentController::class, 'teacherDashboard']);
+            Route::get('class/{classId}', [AssessmentController::class, 'getByClass']);
+            Route::get('subject/{subjectId}', [AssessmentController::class, 'getBySubject']);
+            Route::get('type/{typeId}', [AssessmentController::class, 'getByType']);
+            Route::get('{id}', [AssessmentController::class, 'show']);
+            Route::put('{id}', [AssessmentController::class, 'update']);
+            Route::delete('{id}', [AssessmentController::class, 'destroy']);
+            Route::patch('{id}/status', [AssessmentController::class, 'updateStatus']);
+
+            // Assessment Results Management
+            Route::get('{id}/results', [AssessmentController::class, 'getResults']);
+            Route::post('{id}/results', [AssessmentResultController::class, 'store']);
+            Route::post('{id}/results/bulk', [AssessmentResultController::class, 'bulkStore']);
+            Route::patch('{id}/publish-results', [AssessmentController::class, 'publishResults']);
+            Route::get('{id}/statistics', [AssessmentController::class, 'getAssessmentStatistics']);
+        });
+
+        Route::prefix('assessment-results')->group(function () {
+            Route::get('{id}', [AssessmentResultController::class, 'show']);
+            Route::put('{id}', [AssessmentResultController::class, 'update']);
+            Route::delete('{id}', [AssessmentResultController::class, 'destroy']);
+            Route::patch('{id}/publish', [AssessmentResultController::class, 'publish']);
+            Route::get('student/{studentId}', [AssessmentResultController::class, 'getStudentResults']);
+            Route::get('student/{studentId}/subject/{subjectId}', [AssessmentResultController::class, 'getStudentSubjectResults']);
         });
     });
 });

@@ -18,6 +18,9 @@ class DatabaseSeeder extends Seeder
             TeacherSeeder::class,
             ClassSeeder::class,
             ParentStudentSeeder::class, // This will handle both parents and students
+            AssessmentTypeSeeder::class,
+            AssessmentSeeder::class,
+            AssessmentResultSeeder::class,
         ]);
     }
 }
