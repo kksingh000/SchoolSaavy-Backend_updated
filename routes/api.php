@@ -10,6 +10,7 @@ use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\TimetableController;
 use App\Http\Controllers\EventController;
+use App\Http\Controllers\SubjectController;
 
 /*
 |--------------------------------------------------------------------------
@@ -61,6 +62,8 @@ Route::middleware('json.response')->group(function () {
         Route::apiResource('classes', ClassController::class);
         Route::post('classes/{id}/assign-students', [ClassController::class, 'assignStudents']);
         Route::get('classes/{id}/students', [ClassController::class, 'getStudents']);
+        Route::get('classes/{id}/subjects', [ClassController::class, 'getSubjects']);
+        Route::post('classes/{id}/assign-subjects', [ClassController::class, 'assignSubjects']);
         Route::get('classes/{id}/timetable', [ClassController::class, 'getTimetable']);
         Route::get('classes/teacher/{teacherId}', [ClassController::class, 'getClassesByTeacher']);
 
@@ -100,5 +103,9 @@ Route::middleware('json.response')->group(function () {
             Route::get('{id}/acknowledgments', [EventController::class, 'acknowledgments']);
             Route::post('{id}/duplicate', [EventController::class, 'duplicate']);
         });
+
+        // Subject Management Routes
+        Route::apiResource('subjects', SubjectController::class);
+        Route::get('subjects/class/{classId}', [SubjectController::class, 'getByClass']);
     });
 });

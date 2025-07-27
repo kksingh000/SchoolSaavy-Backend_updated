@@ -189,4 +189,46 @@ class ClassController extends BaseController
             return $this->errorResponse($e->getMessage());
         }
     }
+
+    public function getSubjects($id): JsonResponse
+    {
+        if (!$this->checkModuleAccess('class-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $class = ClassRoom::with('subjects')->findOrFail($id);
+
+            return $this->successResponse(
+                $class->subjects,
+                'Class subjects retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function assignSubjects(Request $request, $id): JsonResponse
+    {
+        if (!$this->checkModuleAccess('class-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'subject_ids' => 'required|array',
+                'subject_ids.*' => 'exists:subjects,id'
+            ]);
+
+            $class = ClassRoom::findOrFail($id);
+            $class->subjects()->sync($request->subject_ids);
+
+            return $this->successResponse(
+                $class->load('subjects'),
+                'Subjects assigned to class successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 }
