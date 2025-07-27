@@ -274,7 +274,8 @@ class AssignmentService extends BaseService
     {
         // Get student's current class
         $student = Student::findOrFail($studentId);
-        $classId = $student->currentClass->id ?? null;
+        $currentClass = $student->currentClass()->first();
+        $classId = $currentClass?->id;
 
         if (!$classId) {
             return collect();
