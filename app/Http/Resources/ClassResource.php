@@ -19,9 +19,10 @@ class ClassResource extends JsonResource
             'capacity' => $this->capacity,
             'description' => $this->description,
             'students_count' => $this->students_count ?? $this->students()->count(),
+            'attendance' => $this->attendance ?? null, // Add attendance percentage if available
             'subjects' => SubjectResource::collection($this->whenLoaded('subjects')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
     }
-} 
+}

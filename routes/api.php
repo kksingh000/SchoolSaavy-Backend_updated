@@ -8,6 +8,7 @@ use App\Http\Controllers\ClassController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\ModuleController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\TimetableController;
 
 /*
 |--------------------------------------------------------------------------
@@ -60,6 +61,7 @@ Route::middleware('json.response')->group(function () {
         Route::post('classes/{id}/assign-students', [ClassController::class, 'assignStudents']);
         Route::get('classes/{id}/students', [ClassController::class, 'getStudents']);
         Route::get('classes/{id}/timetable', [ClassController::class, 'getTimetable']);
+        Route::get('classes/teacher/{teacherId}', [ClassController::class, 'getClassesByTeacher']);
 
         // Attendance Management Routes
         Route::prefix('attendance')->group(function () {
@@ -67,6 +69,17 @@ Route::middleware('json.response')->group(function () {
             Route::post('bulk', [AttendanceController::class, 'markBulkAttendance']);
             Route::get('class/{classId}/report', [AttendanceController::class, 'getClassAttendanceReport']);
             Route::get('student/{studentId}/report', [AttendanceController::class, 'getStudentAttendanceReport']);
+        });
+
+        // Timetable Management Routes
+        Route::prefix('timetable')->group(function () {
+            Route::get('/', [TimetableController::class, 'index']);
+            Route::post('/', [TimetableController::class, 'store']);
+            Route::put('{id}', [TimetableController::class, 'update']);
+            Route::delete('{id}', [TimetableController::class, 'destroy']);
+            Route::get('class/{classId}', [TimetableController::class, 'getClassTimetable']);
+            Route::get('teacher/{teacherId}', [TimetableController::class, 'getTeacherTimetable']);
+            Route::get('weekly-overview', [TimetableController::class, 'getWeeklyOverview']);
         });
     });
 });

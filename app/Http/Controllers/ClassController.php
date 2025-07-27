@@ -169,4 +169,24 @@ class ClassController extends BaseController
             return $this->errorResponse($e->getMessage());
         }
     }
+
+    public function getClassesByTeacher($teacherId): JsonResponse
+    {
+        if (!$this->checkModuleAccess('class-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $classes = $this->classService->getClassesByTeacher($teacherId);
+
+            // Since the service returns an array with attendance data, 
+            // we can return it directly or convert to resource if needed
+            return $this->successResponse(
+                $classes,
+                'Classes by teacher retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 }
