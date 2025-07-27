@@ -325,4 +325,25 @@ class AssignmentController extends BaseController
             return $this->errorResponse($e->getMessage());
         }
     }
+
+    /**
+     * Get assignment submission overview for all students in class
+     */
+    public function getSubmissionOverview($assignmentId): JsonResponse
+    {
+        if (!$this->checkModuleAccess('assignment-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $overview = $this->assignmentService->getAssignmentSubmissionOverview($assignmentId);
+
+            return $this->successResponse(
+                $overview,
+                'Assignment submission overview retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 }

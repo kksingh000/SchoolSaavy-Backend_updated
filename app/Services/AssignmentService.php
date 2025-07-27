@@ -348,4 +348,91 @@ class AssignmentService extends BaseService
             'by_status' => $assignments->groupBy('status')->map->count(),
         ];
     }
+
+    /**
+     * Get assignment submission overview for all students in class
+     */
+    public function getAssignmentSubmissionOverview($assignmentId)
+    {
+        $assignment = Assignment::where('school_id', $this->getSchoolId())
+            ->with(['class', 'subject', 'teacher.user'])
+            ->findOrFail($assignmentId);
+
+        // Get all students in the assignment's class
+        $students = $assignment->class->students()
+            ->where('class_student.is_active', true)
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->get();
+
+        // Get all submissions for this assignment
+        $submissions = AssignmentSubmission::where('assignment_id', $assignmentId)
+            ->with(['student'])
+            ->get()
+            ->keyBy('student_id');
+
+        // Build the overview data
+        $studentOverview = $students->map(function ($student) use ($submissions) {
+            $submission = $submissions->get($student->id);
+
+            return [
+                'student_id' => $student->id,
+                'student_name' => $student->first_name . ' ' . $student->last_name,
+                'admission_number' => $student->admission_number,
+                'roll_number' => $student->roll_number,
+                'submission_status' => $submission ? $submission->status : 'not_submitted',
+                'submitted_at' => $submission?->submitted_at?->format('Y-m-d H:i:s'),
+                'is_late_submission' => $submission?->is_late_submission ?? false,
+                'marks_obtained' => $submission?->marks_obtained,
+                'grade_percentage' => $submission?->grade_percentage,
+                'grade_letter' => $submission?->grade_letter,
+                'teacher_feedback' => $submission?->teacher_feedback,
+                'graded_at' => $submission?->graded_at?->format('Y-m-d H:i:s'),
+                'can_be_graded' => $submission?->canBeGraded() ?? false,
+            ];
+        });
+
+        // Calculate statistics
+        $totalStudents = $students->count();
+        $submittedCount = $submissions->where('status', '!=', 'pending')->count();
+        $gradedCount = $submissions->where('status', 'graded')->count();
+        $pendingCount = $submissions->where('status', 'pending')->count();
+        $notSubmittedCount = $totalStudents - $submissions->count();
+
+        return [
+            'assignment' => [
+                'id' => $assignment->id,
+                'title' => $assignment->title,
+                'type' => $assignment->type,
+                'status' => $assignment->status,
+                'max_marks' => $assignment->max_marks,
+                'due_date' => $assignment->due_date->format('Y-m-d'),
+                'due_time' => $assignment->due_time?->format('H:i'),
+                'is_overdue' => $assignment->is_overdue,
+                'class' => [
+                    'id' => $assignment->class->id,
+                    'name' => $assignment->class->name,
+                    'section' => $assignment->class->section,
+                ],
+                'subject' => [
+                    'id' => $assignment->subject->id,
+                    'name' => $assignment->subject->name,
+                ],
+                'teacher' => [
+                    'id' => $assignment->teacher->id,
+                    'name' => $assignment->teacher->user->name,
+                ],
+            ],
+            'statistics' => [
+                'total_students' => $totalStudents,
+                'submitted' => $submittedCount,
+                'graded' => $gradedCount,
+                'pending_review' => $pendingCount,
+                'not_submitted' => $notSubmittedCount,
+                'submission_rate' => $totalStudents > 0 ? round(($submittedCount / $totalStudents) * 100, 2) : 0,
+                'grading_rate' => $submittedCount > 0 ? round(($gradedCount / $submittedCount) * 100, 2) : 0,
+            ],
+            'students' => $studentOverview,
+        ];
+    }
 }
