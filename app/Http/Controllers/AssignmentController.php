@@ -4,11 +4,15 @@ namespace App\Http\Controllers;
 
 use App\Models\Assignment;
 use App\Models\AssignmentSubmission;
+use App\Models\Event;
 use App\Services\AssignmentService;
 use App\Http\Resources\AssignmentResource;
 use App\Http\Resources\AssignmentSubmissionResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class AssignmentController extends BaseController
 {
@@ -231,9 +235,27 @@ class AssignmentController extends BaseController
      */
     public function teacherDashboard(Request $request): JsonResponse
     {
+        if (!$this->checkModuleAccess('assignment-management')) {
+            return $this->moduleAccessDenied();
+        }
+
         try {
-            $teacherId = $request->input('teacher_id');
+            $user = Auth::user();
+            $teacher = $user->teacher;
+
+            if (!$teacher) {
+                return $this->errorResponse('Teacher profile not found');
+            }
+
+            // Get basic dashboard data from service
+            $teacherId = $request->input('teacher_id', $teacher->id);
             $dashboard = $this->assignmentService->getTeacherDashboard($teacherId);
+
+            // Add the new metrics
+            $additionalMetrics = $this->getTeacherDashboardMetrics($teacherId, $request->school_id);
+
+            // Merge all data
+            $dashboard['dashboard_metrics'] = $additionalMetrics;
 
             return $this->successResponse(
                 $dashboard,
@@ -242,6 +264,49 @@ class AssignmentController extends BaseController
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
         }
+    }
+
+    /**
+     * Get additional teacher dashboard metrics
+     */
+    private function getTeacherDashboardMetrics($teacherId, $schoolId): array
+    {
+        // 1. Total Classes
+        $totalClasses = DB::table('class_teacher')
+            ->join('classes', 'class_teacher.class_id', '=', 'classes.id')
+            ->where('class_teacher.teacher_id', $teacherId)
+            ->where('classes.school_id', $schoolId)
+            ->count();
+
+        // 2. Total Students (across all teacher's classes)
+        $totalStudents = DB::table('class_student')
+            ->join('class_teacher', 'class_student.class_id', '=', 'class_teacher.class_id')
+            ->join('students', 'class_student.student_id', '=', 'students.id')
+            ->where('class_teacher.teacher_id', $teacherId)
+            ->where('students.school_id', $schoolId)
+            ->distinct('students.id')
+            ->count('students.id');
+
+        // 3. Total Assignments (created by this teacher)
+        $totalAssignments = Assignment::where('teacher_id', $teacherId)
+            ->where('school_id', $schoolId)
+            ->count();
+
+        // 4. Total Events for Today
+        $todaysEvents = Event::where('school_id', $schoolId)
+            ->whereDate('event_date', Carbon::today())
+            ->where(function ($query) {
+                $query->whereJsonContains('target_audience', 'all')
+                    ->orWhereJsonContains('target_audience', 'teachers');
+            })
+            ->count();
+
+        return [
+            'total_classes' => $totalClasses,
+            'total_students' => $totalStudents,
+            'total_assignments' => $totalAssignments,
+            'total_events_today' => $todaysEvents,
+        ];
     }
 
     /**

@@ -2,9 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Assignment;
+use App\Models\Event;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class DashboardController extends BaseController
 {
@@ -69,6 +72,10 @@ class DashboardController extends BaseController
     private function getTeacherDashboard($user): array
     {
         $teacher = $user->teacher;
+        $schoolId = $user->getSchool()->id;
+
+        // Get the 4 key metrics
+        $dashboardMetrics = $this->getTeacherDashboardMetrics($teacher->id, $schoolId);
 
         return [
             'teacher_info' => [
@@ -76,9 +83,55 @@ class DashboardController extends BaseController
                 'employee_id' => $teacher->employee_id,
                 'classes_assigned' => $teacher->classes()->count(),
             ],
+            'dashboard_metrics' => $dashboardMetrics,
             'today_schedule' => $this->getTodaySchedule($teacher->id),
             'class_attendance' => $this->getTeacherClassAttendance($teacher->id),
             'pending_tasks' => $this->getTeacherTasks($teacher->id),
+        ];
+    }
+
+    /**
+     * Get teacher dashboard metrics
+     */
+    private function getTeacherDashboardMetrics($teacherId, $schoolId): array
+    {
+        // 1. Total Classes (where teacher is class teacher)
+        $totalClasses = DB::table('classes')
+            ->where('class_teacher_id', $teacherId)
+            ->where('school_id', $schoolId)
+            ->where('is_active', true)
+            ->count();
+
+        // 2. Total Students (across all teacher's classes)
+        $totalStudents = DB::table('class_student')
+            ->join('classes', 'class_student.class_id', '=', 'classes.id')
+            ->join('students', 'class_student.student_id', '=', 'students.id')
+            ->where('classes.class_teacher_id', $teacherId)
+            ->where('classes.school_id', $schoolId)
+            ->where('classes.is_active', true)
+            ->where('class_student.is_active', true)
+            ->distinct('students.id')
+            ->count('students.id');
+
+        // 3. Total Assignments (created by this teacher)
+        $totalAssignments = Assignment::where('teacher_id', $teacherId)
+            ->where('school_id', $schoolId)
+            ->count();
+
+        // 4. Total Events for Today
+        $todaysEvents = Event::where('school_id', $schoolId)
+            ->whereDate('event_date', Carbon::today())
+            ->where(function ($query) {
+                $query->whereJsonContains('target_audience', 'all')
+                    ->orWhereJsonContains('target_audience', 'teachers');
+            })
+            ->count();
+
+        return [
+            'total_classes' => $totalClasses,
+            'total_students' => $totalStudents,
+            'total_assignments' => $totalAssignments,
+            'total_events_today' => $todaysEvents,
         ];
     }
 
