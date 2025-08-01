@@ -24,15 +24,43 @@ use App\Http\Controllers\AssessmentResultController;
 |--------------------------------------------------------------------------
 */
 
+// Health check endpoint
+Route::get('/health', function () {
+    $isRedisWorking = false;
+    // check redis working or not 
+    try {
+        \Illuminate\Support\Facades\Redis::ping();
+        $isRedisWorking = true;
+    } catch (\Exception $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Redis connection failed: ' . $e->getMessage(),
+            'code' => 'REDIS_CONNECTION_FAILED'
+        ], 500);
+    }
+    return response()->json([
+        'status' => 'ok',
+        'message' => 'API is running',
+        'redis' => $isRedisWorking ? 'connected' : 'not connected',
+        'timestamp' => now()->toISOString(),
+        'version' => config('app.version', '1.0.0'),
+        'server' => 'RoadRunner'
+    ]);
+});
+
 // Apply JSON response middleware to all API routes
 Route::middleware('json.response')->group(function () {
     // Authentication Routes
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
+        
+        // Refresh route - allows expired tokens
+        Route::post('refresh', [AuthController::class, 'refresh']);
 
         Route::middleware('auth:sanctum')->group(function () {
             Route::post('logout', [AuthController::class, 'logout']);
             Route::get('me', [AuthController::class, 'me']);
+            Route::get('check', [AuthController::class, 'checkToken']);
         });
     });
 

@@ -34,7 +34,8 @@ class AuthService
 
         return [
             'user' => $user,
-            'token' => $user->createToken('auth-token')->plainTextToken
+            'token' => $user->createToken('auth-token')->plainTextToken,
+            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString()
         ];
     }
 
@@ -53,5 +54,75 @@ class AuthService
         if ($user) {
             $user->currentAccessToken()->delete();
         }
+    }
+
+    public function refreshToken($tokenString)
+    {
+        if (!$tokenString) {
+            throw ValidationException::withMessages([
+                'token' => ['Token not provided.'],
+            ]);
+        }
+
+        // Parse the token to get the ID and token
+        $tokenParts = explode('|', $tokenString);
+        if (count($tokenParts) !== 2) {
+            throw ValidationException::withMessages([
+                'token' => ['Invalid token format.'],
+            ]);
+        }
+
+        $tokenId = $tokenParts[0];
+        $tokenValue = $tokenParts[1];
+
+        // Find the token in the database
+        $tokenModel = \Laravel\Sanctum\PersonalAccessToken::find($tokenId);
+        
+        if (!$tokenModel) {
+            throw ValidationException::withMessages([
+                'token' => ['Token not found.'],
+            ]);
+        }
+
+        // Verify the token value
+        if (!hash_equals($tokenModel->token, hash('sha256', $tokenValue))) {
+            throw ValidationException::withMessages([
+                'token' => ['Invalid token.'],
+            ]);
+        }
+
+        // Get the user from the token
+        $user = $tokenModel->tokenable;
+        
+        if (!$user) {
+            throw ValidationException::withMessages([
+                'token' => ['User not found for this token.'],
+            ]);
+        }
+
+        if (!$user->is_active) {
+            throw ValidationException::withMessages([
+                'user' => ['Your account is inactive. Please contact the administrator.'],
+            ]);
+        }
+
+        // Delete the old token
+        $tokenModel->delete();
+
+        // Load the specific user type relationship
+        $relation = $this->getUserRelation($user->user_type);
+        if ($relation) {
+            $user->load($relation);
+        }
+
+        // Create a new token with expiration
+        $tokenResult = $user->createToken('auth-token');
+        $token = $tokenResult->accessToken ?? $tokenResult->plainTextToken;
+
+        return [
+            'user' => $user,
+            'token' => $token,
+            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString()
+        ];
     }
 }

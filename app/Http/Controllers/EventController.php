@@ -228,6 +228,11 @@ class EventController extends BaseController
         }
 
         try {
+            $request->merge([
+                'month' => $request->has('month') ? (int)ltrim($request->month, '0') : null,
+                'year' => $request->has('year') ? (int)$request->year : null,
+            ]);
+
             $request->validate([
                 'month' => 'nullable|integer|min:1|max:12',
                 'year' => 'nullable|integer|min:2020|max:2030',

@@ -15,6 +15,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'inject.school' => \App\Http\Middleware\InjectSchoolData::class,
             'json.response' => \App\Http\Middleware\ForceJsonResponse::class,
+            'refresh.token' => \App\Http\Middleware\RefreshTokenIfNeeded::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

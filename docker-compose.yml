@@ -1,0 +1,127 @@
+services:
+  # Laravel Application with RoadRunner
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.quick
+    container_name: schoolsavvy_app
+    restart: unless-stopped
+    command: php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - DB_CONNECTION=mysql
+      - DB_HOST=217.21.90.150
+      - DB_PORT=3306
+      - DB_DATABASE=u310185446_school
+      - DB_USERNAME=u310185446_school
+      - DB_PASSWORD=H@vefun344
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=array
+      - QUEUE_CONNECTION=database
+      - SANCTUM_STATEFUL_DOMAINS=
+      - SANCTUM_TOKEN_EXPIRATION=1440
+    volumes:
+      - ./storage:/var/www/html/storage
+      - ./public:/var/www/html/public\
+      - ./.env.production:/var/www/html/.env.production
+      - ./.env.production:/var/www/html/.env
+      - ./:/var/www/html
+    depends_on:
+      - redis
+    networks:
+      - schoolsavvy_network
+
+  # Redis Cache & Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: schoolsavvy_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+      - ./docker/redis/redis.conf:/usr/local/etc/redis/redis.conf
+    command: redis-server /usr/local/etc/redis/redis.conf
+    networks:
+      - schoolsavvy_network
+
+  # Nginx Load Balancer (Optional)
+  nginx:
+    image: nginx:alpine
+    container_name: schoolsavvy_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./docker/nginx/ssl:/etc/nginx/ssl
+      - ./public:/var/www/html/public
+    depends_on:
+      - app
+    networks:
+      - schoolsavvy_network
+
+  # Queue Worker
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile.quick
+    container_name: schoolsavvy_queue
+    restart: unless-stopped
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600
+    environment:
+      - APP_ENV=production
+      - DB_CONNECTION=mysql
+      - DB_HOST=217.21.90.150
+      - DB_PORT=3306
+      - DB_DATABASE=u310185446_school
+      - DB_USERNAME=u310185446_school
+      - DB_PASSWORD=H@vefun344
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - QUEUE_CONNECTION=database
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - redis
+    networks:
+      - schoolsavvy_network
+
+  # Scheduler (Cron jobs)
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.quick
+    container_name: schoolsavvy_scheduler
+    restart: unless-stopped
+    command: php artisan schedule:work
+    environment:
+      - APP_ENV=production
+      - DB_CONNECTION=mysql
+      - DB_HOST=217.21.90.150
+      - DB_PORT=3306
+      - DB_DATABASE=u310185446_school
+      - DB_USERNAME=u310185446_school
+      - DB_PASSWORD=H@vefun344
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - redis
+    networks:
+      - schoolsavvy_network
+
+volumes:
+  redis_data:
+    driver: local
+
+networks:
+  schoolsavvy_network:
+    driver: bridge

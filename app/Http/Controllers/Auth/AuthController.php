@@ -28,7 +28,8 @@ class AuthController extends Controller
             return response()->json([
                 'message' => 'Login successful',
                 'user' => new UserResource($result['user']),
-                'token' => $result['token']
+                'token' => $result['token'],
+                'expires_at' => $result['expires_at']
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -69,6 +70,69 @@ class AuthController extends Controller
                 'message' => 'Failed to fetch user details',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    public function refresh(Request $request): JsonResponse
+    {
+        try {
+            // Extract token from Authorization header
+            $token = $request->bearerToken();
+            
+            if (!$token) {
+                return response()->json([
+                    'message' => 'Token not provided',
+                    'error' => 'Authorization header missing'
+                ], 401);
+            }
+            
+            $result = $this->authService->refreshToken($token);
+            
+            return response()->json([
+                'message' => 'Token refreshed successfully',
+                'user' => new UserResource($result['user']),
+                'token' => $result['token'],
+                'expires_at' => $result['expires_at']
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'message' => 'Token refresh failed',
+                'error' => $e->getMessage()
+            ], 401);
+        }
+    }
+
+    public function checkToken(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $token = $user->currentAccessToken();
+            
+            // Calculate expiration based on token creation time and configured expiration
+            $expirationMinutes = (int) config('sanctum.expiration', 1440);
+            $tokenCreatedAt = $token->created_at;
+            $tokenExpiresAt = $tokenCreatedAt->copy()->addMinutes($expirationMinutes);
+            $now = now();
+            
+            // Check if token is expired
+            $isExpired = $now->greaterThan($tokenExpiresAt);
+            $minutesUntilExpiry = $isExpired ? 0 : $now->diffInMinutes($tokenExpiresAt);
+            
+            return response()->json([
+                'valid' => !$isExpired,
+                'user' => new UserResource($user),
+                'token_created_at' => $tokenCreatedAt->toISOString(),
+                'token_expires_at' => $tokenExpiresAt->toISOString(),
+                'expires_in_minutes' => $minutesUntilExpiry,
+                'is_expired' => $isExpired,
+                'current_time' => $now->toISOString()
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'valid' => false,
+                'message' => 'Invalid token',
+                'error' => $e->getMessage()
+            ], 401);
         }
     }
 } 
