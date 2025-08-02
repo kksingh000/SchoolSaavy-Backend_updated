@@ -21,15 +21,15 @@ RUN apk add --no-cache \
     make \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install \
-        pdo \
-        pdo_mysql \
-        mbstring \
-        exif \
-        pcntl \
-        bcmath \
-        gd \
-        zip \
-        sockets \
+    pdo \
+    pdo_mysql \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    gd \
+    zip \
+    sockets \
     && pecl install redis \
     && docker-php-ext-enable redis \
     && rm -rf /var/cache/apk/*# Install Composer
