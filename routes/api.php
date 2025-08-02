@@ -53,7 +53,7 @@ Route::middleware('json.response')->group(function () {
     // Authentication Routes
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
-        
+
         // Refresh route - allows expired tokens
         Route::post('refresh', [AuthController::class, 'refresh']);
 
@@ -93,6 +93,7 @@ Route::middleware('json.response')->group(function () {
         Route::get('students/{id}/fees', [StudentController::class, 'getFeeStatus']);
 
         // Class Management Routes
+        Route::get('classes/teachers-classes', [ClassController::class, 'myClasses']);
         Route::apiResource('classes', ClassController::class);
         Route::post('classes/{id}/assign-students', [ClassController::class, 'assignStudents']);
         Route::get('classes/{id}/students', [ClassController::class, 'getStudents']);

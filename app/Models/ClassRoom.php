@@ -59,6 +59,12 @@ class ClassRoom extends Model
         return $this->hasMany(Attendance::class, 'class_id');
     }
 
+    public function todaysAttendance()
+    {
+        return $this->hasMany(Attendance::class, 'class_id')
+                    ->where('date', today());
+    }
+
     public function subjects()
     {
         return $this->belongsToMany(Subject::class, 'class_subject', 'class_id', 'subject_id')

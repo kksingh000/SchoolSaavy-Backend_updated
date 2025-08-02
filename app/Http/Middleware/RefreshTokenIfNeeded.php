@@ -21,14 +21,14 @@ class RefreshTokenIfNeeded
         // Only process if user is authenticated and request was successful
         if ($request->user() && $response->getStatusCode() === 200) {
             $token = $request->user()->currentAccessToken();
-            
+
             if ($token && $this->shouldRefreshToken($token)) {
                 $newTokenResult = $request->user()->createToken('auth-token');
                 $newToken = $newTokenResult->accessToken ?? $newTokenResult->plainTextToken;
-                
+
                 // Delete the old token
                 $token->delete();
-                
+
                 // Add new token to response headers
                 $response->headers->set('X-New-Token', $newToken);
                 $response->headers->set('X-Token-Refreshed', 'true');

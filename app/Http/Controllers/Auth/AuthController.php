@@ -24,7 +24,7 @@ class AuthController extends Controller
     {
         try {
             $result = $this->authService->login($request->validated());
-            
+
             return response()->json([
                 'message' => 'Login successful',
                 'user' => new UserResource($result['user']),
@@ -43,7 +43,7 @@ class AuthController extends Controller
     {
         try {
             $this->authService->logout($request->user());
-            
+
             return response()->json([
                 'message' => 'Successfully logged out'
             ]);
@@ -78,16 +78,16 @@ class AuthController extends Controller
         try {
             // Extract token from Authorization header
             $token = $request->bearerToken();
-            
+
             if (!$token) {
                 return response()->json([
                     'message' => 'Token not provided',
                     'error' => 'Authorization header missing'
                 ], 401);
             }
-            
+
             $result = $this->authService->refreshToken($token);
-            
+
             return response()->json([
                 'message' => 'Token refreshed successfully',
                 'user' => new UserResource($result['user']),
@@ -107,17 +107,17 @@ class AuthController extends Controller
         try {
             $user = $request->user();
             $token = $user->currentAccessToken();
-            
+
             // Calculate expiration based on token creation time and configured expiration
             $expirationMinutes = (int) config('sanctum.expiration', 1440);
             $tokenCreatedAt = $token->created_at;
             $tokenExpiresAt = $tokenCreatedAt->copy()->addMinutes($expirationMinutes);
             $now = now();
-            
+
             // Check if token is expired
             $isExpired = $now->greaterThan($tokenExpiresAt);
             $minutesUntilExpiry = $isExpired ? 0 : $now->diffInMinutes($tokenExpiresAt);
-            
+
             return response()->json([
                 'valid' => !$isExpired,
                 'user' => new UserResource($user),
@@ -135,4 +135,4 @@ class AuthController extends Controller
             ], 401);
         }
     }
-} 
+}

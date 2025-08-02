@@ -33,6 +33,12 @@ class Student extends Model
         'is_active' => 'boolean',
     ];
 
+    // Accessor for full name
+    public function getNameAttribute()
+    {
+        return $this->first_name . ' ' . $this->last_name;
+    }
+
     public function school()
     {
         return $this->belongsTo(School::class);

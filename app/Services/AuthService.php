@@ -77,10 +77,10 @@ class AuthService
 
         // Find the token in the database
         $tokenModel = \Laravel\Sanctum\PersonalAccessToken::find($tokenId);
-        
+
         if (!$tokenModel) {
             throw ValidationException::withMessages([
-                'token' => ['Token not found.'],
+                'token' => ['Token not found or expired.'],
             ]);
         }
 
@@ -93,7 +93,7 @@ class AuthService
 
         // Get the user from the token
         $user = $tokenModel->tokenable;
-        
+
         if (!$user) {
             throw ValidationException::withMessages([
                 'token' => ['User not found for this token.'],
@@ -106,18 +106,18 @@ class AuthService
             ]);
         }
 
-        // Delete the old token
-        $tokenModel->delete();
-
         // Load the specific user type relationship
         $relation = $this->getUserRelation($user->user_type);
         if ($relation) {
             $user->load($relation);
         }
 
-        // Create a new token with expiration
+        // Create a new token with expiration FIRST
         $tokenResult = $user->createToken('auth-token');
         $token = $tokenResult->accessToken ?? $tokenResult->plainTextToken;
+
+        // Only delete the old token AFTER successfully creating the new one
+        $tokenModel->delete();
 
         return [
             'user' => $user,
