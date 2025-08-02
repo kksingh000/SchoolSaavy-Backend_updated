@@ -21,15 +21,15 @@ class ClassResource extends JsonResource
             'students_count' => $this->students_count ?? $this->students()->count(),
             'students' => StudentResource::collection($this->whenLoaded('students')),
             'todays_attendance' => $this->when($this->relationLoaded('todaysAttendance'), function () {
-                $totalStudents = $this->whenLoaded('students', function() {
+                $totalStudents = $this->whenLoaded('students', function () {
                     return $this->students->count();
                 }, 0);
-                
+
                 $presentCount = $this->todaysAttendance->where('status', 'present')->count();
                 $absentCount = $this->todaysAttendance->where('status', 'absent')->count();
                 $lateCount = $this->todaysAttendance->where('status', 'late')->count();
                 $excusedCount = $this->todaysAttendance->where('status', 'excused')->count();
-                
+
                 return [
                     'date' => today()->toDateString(),
                     'total_students' => $totalStudents,
@@ -37,7 +37,7 @@ class ClassResource extends JsonResource
                     'absent_count' => $absentCount,
                     'late_count' => $lateCount,
                     'excused_count' => $excusedCount,
-                    'attendance_percentage' => $totalStudents > 0 
+                    'attendance_percentage' => $totalStudents > 0
                         ? round(($presentCount / $totalStudents) * 100, 2)
                         : 0,
                     'records' => $this->todaysAttendance->map(function ($attendance) {

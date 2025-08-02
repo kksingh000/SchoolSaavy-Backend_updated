@@ -17,16 +17,16 @@ class AttendanceSeeder extends Seeder
     public function run()
     {
         $this->command->info('📊 Creating additional attendance records...');
-        
+
         // Get Cambridge International School ID
         $schoolId = 7;
-        
+
         // Create attendance for the last 30 days (weekdays only)
         $startDate = Carbon::now()->subDays(30);
         $endDate = Carbon::now();
-        
+
         $classes = ClassRoom::where('school_id', $schoolId)->get();
-        
+
         $currentDate = $startDate->copy();
         while ($currentDate <= $endDate) {
             // Skip weekends
@@ -34,14 +34,14 @@ class AttendanceSeeder extends Seeder
                 $currentDate->addDay();
                 continue;
             }
-            
+
             foreach ($classes as $class) {
                 // Get students in this class
                 $studentIds = DB::table('class_student')
                     ->where('class_id', $class->id)
                     ->where('is_active', true)
                     ->pluck('student_id');
-                
+
                 foreach ($studentIds as $studentId) {
                     // Check if attendance already exists for this date
                     $existingAttendance = Attendance::where([
@@ -49,12 +49,12 @@ class AttendanceSeeder extends Seeder
                         'student_id' => $studentId,
                         'date' => $currentDate->toDateString()
                     ])->first();
-                    
+
                     if (!$existingAttendance) {
                         // 85% attendance rate with some variation
                         $isPresent = rand(1, 100) <= 85;
                         $status = $isPresent ? 'present' : (rand(1, 100) <= 15 ? 'late' : 'absent');
-                        
+
                         Attendance::create([
                             'school_id' => $schoolId,
                             'class_id' => $class->id,
@@ -68,10 +68,10 @@ class AttendanceSeeder extends Seeder
                     }
                 }
             }
-            
+
             $currentDate->addDay();
         }
-        
+
         $this->command->info('✅ Additional attendance records created successfully!');
     }
 }

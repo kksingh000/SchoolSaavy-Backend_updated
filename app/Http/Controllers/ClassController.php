@@ -48,7 +48,7 @@ class ClassController extends BaseController
 
         try {
             $user = Auth::user();
-            
+
             // Check if user is a teacher
             if ($user->user_type !== 'teacher') {
                 return $this->errorResponse('This endpoint is only available for teachers.', null, 403);
@@ -64,12 +64,12 @@ class ClassController extends BaseController
             // 1. Class teacher (homeroom teacher)
             // 2. Subject teacher (teaches subjects in the class)
             $classIds = collect();
-            
+
             // Get classes where teacher is the class teacher
             $classTeacherIds = \App\Models\ClassRoom::where('class_teacher_id', $teacher->id)
                 ->pluck('id');
             $classIds = $classIds->merge($classTeacherIds);
-            
+
             // Get classes where teacher teaches subjects (from class_schedules)
             $subjectTeacherIds = DB::table('class_schedules')
                 ->where('teacher_id', $teacher->id)
@@ -77,7 +77,7 @@ class ClassController extends BaseController
                 ->distinct()
                 ->pluck('class_id');
             $classIds = $classIds->merge($subjectTeacherIds);
-            
+
             // Remove duplicates and get unique class IDs
             $uniqueClassIds = $classIds->unique()->values();
 
@@ -90,26 +90,26 @@ class ClassController extends BaseController
 
             // Apply additional filters from request
             $filters = $request->only(['grade_level', 'is_active']);
-            
+
             // Build query with class IDs
             $query = \App\Models\ClassRoom::whereIn('id', $uniqueClassIds);
-            
+
             // Apply filters
             foreach ($filters as $field => $value) {
                 if ($value !== null && $value !== '') {
                     $query->where($field, $value);
                 }
             }
-            
+
             // Get classes with relationships
             $classes = $query->with([
-                'classTeacher.user', 
-                'students' => function($query) {
+                'classTeacher.user',
+                'students' => function ($query) {
                     $query->select(['students.id', 'students.first_name', 'students.last_name', 'students.admission_number']);
                 },
-                'todaysAttendance' => function($query) {
+                'todaysAttendance' => function ($query) {
                     $query->where('date', today())
-                          ->with('student:id,first_name,last_name,admission_number');
+                        ->with('student:id,first_name,last_name,admission_number');
                 }
             ])->paginate();
 

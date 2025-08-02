@@ -26,36 +26,35 @@ class CambridgeSchoolSeeder extends Seeder
     public function run()
     {
         DB::beginTransaction();
-        
+
         try {
             $this->command->info('🏫 Starting Cambridge International School data seeding...');
-            
+
             // Create teachers first
             $this->createTeachers();
-            
+
             // Create subjects
             $this->createSubjects();
-            
+
             // Create classes with teachers
             $this->createClasses();
-            
+
             // Create students and parents
             $this->createStudentsAndParents();
-            
+
             // Assign students to classes
             $this->assignStudentsToClasses();
-            
+
             // Create class schedules (timetables)
             $this->createClassSchedules();
-            
+
             // Create some attendance records for the last few days
             $this->createAttendanceRecords();
-            
+
             DB::commit();
-            
+
             $this->command->info('✅ Cambridge International School data seeded successfully!');
             $this->printSummary();
-            
         } catch (\Exception $e) {
             DB::rollback();
             $this->command->error('❌ Error seeding data: ' . $e->getMessage());
@@ -66,7 +65,7 @@ class CambridgeSchoolSeeder extends Seeder
     private function createTeachers()
     {
         $this->command->info('👨‍🏫 Creating teachers...');
-        
+
         $teachers = [
             // Early Years Teachers (Nursery to KG)
             [
@@ -89,7 +88,7 @@ class CambridgeSchoolSeeder extends Seeder
                 'gender' => 'female',
                 'date_of_birth' => '1992-08-22'
             ],
-            
+
             // Primary Teachers (Grade 1-5)
             [
                 'name' => 'Mr. Michael Brown',
@@ -121,7 +120,7 @@ class CambridgeSchoolSeeder extends Seeder
                 'gender' => 'female',
                 'date_of_birth' => '1990-01-18'
             ],
-            
+
             // Secondary Teachers (Grade 6-12)
             [
                 'name' => 'Dr. James Anderson',
@@ -196,14 +195,14 @@ class CambridgeSchoolSeeder extends Seeder
 
             $this->createdTeachers[$teacherData['level']][] = $teacher;
         }
-        
+
         $this->command->info('✅ Created ' . count($teachers) . ' teachers');
     }
 
     private function createSubjects()
     {
         $this->command->info('📚 Creating subjects...');
-        
+
         $subjects = [
             // Early Years Subjects
             ['name' => 'Play & Learn', 'code' => 'CIS_PL001', 'grade_level' => 'nursery'],
@@ -211,7 +210,7 @@ class CambridgeSchoolSeeder extends Seeder
             ['name' => 'Number Fun', 'code' => 'CIS_NF001', 'grade_level' => 'kg'],
             ['name' => 'Letter & Words', 'code' => 'CIS_LW001', 'grade_level' => 'kg'],
             ['name' => 'Creative Play', 'code' => 'CIS_CP001', 'grade_level' => 'kg'],
-            
+
             // Primary Subjects
             ['name' => 'Mathematics', 'code' => 'CIS_MATH', 'grade_level' => 'primary'],
             ['name' => 'English', 'code' => 'CIS_ENG', 'grade_level' => 'primary'],
@@ -219,7 +218,7 @@ class CambridgeSchoolSeeder extends Seeder
             ['name' => 'Social Studies', 'code' => 'CIS_SS', 'grade_level' => 'primary'],
             ['name' => 'Art & Craft', 'code' => 'CIS_ART', 'grade_level' => 'primary'],
             ['name' => 'Physical Education', 'code' => 'CIS_PE', 'grade_level' => 'primary'],
-            
+
             // Secondary Subjects
             ['name' => 'Advanced Mathematics', 'code' => 'CIS_AMATH', 'grade_level' => 'secondary'],
             ['name' => 'Physics', 'code' => 'CIS_PHY', 'grade_level' => 'secondary'],
@@ -244,21 +243,21 @@ class CambridgeSchoolSeeder extends Seeder
 
             $this->createdSubjects[$subjectData['grade_level']][] = $subject;
         }
-        
+
         $this->command->info('✅ Created ' . count($subjects) . ' subjects');
     }
 
     private function createClasses()
     {
         $this->command->info('🏛️ Creating classes...');
-        
+
         $classes = [
             // Early Years Classes
             ['name' => 'CIS Nursery A', 'grade_level' => 1, 'section' => 'A', 'capacity' => 15, 'teacher_level' => 'early_years'],
             ['name' => 'CIS Nursery B', 'grade_level' => 1, 'section' => 'B', 'capacity' => 15, 'teacher_level' => 'early_years'],
             ['name' => 'CIS KG A', 'grade_level' => 2, 'section' => 'A', 'capacity' => 20, 'teacher_level' => 'early_years'],
             ['name' => 'CIS KG B', 'grade_level' => 2, 'section' => 'B', 'capacity' => 20, 'teacher_level' => 'early_years'],
-            
+
             // Primary Classes
             ['name' => 'CIS Grade 1 A', 'grade_level' => 3, 'section' => 'A', 'capacity' => 25, 'teacher_level' => 'primary'],
             ['name' => 'CIS Grade 1 B', 'grade_level' => 3, 'section' => 'B', 'capacity' => 25, 'teacher_level' => 'primary'],
@@ -267,7 +266,7 @@ class CambridgeSchoolSeeder extends Seeder
             ['name' => 'CIS Grade 3 A', 'grade_level' => 5, 'section' => 'A', 'capacity' => 30, 'teacher_level' => 'primary'],
             ['name' => 'CIS Grade 4 A', 'grade_level' => 6, 'section' => 'A', 'capacity' => 30, 'teacher_level' => 'primary'],
             ['name' => 'CIS Grade 5 A', 'grade_level' => 7, 'section' => 'A', 'capacity' => 30, 'teacher_level' => 'primary'],
-            
+
             // Secondary Classes
             ['name' => 'CIS Grade 6 A', 'grade_level' => 8, 'section' => 'A', 'capacity' => 35, 'teacher_level' => 'secondary'],
             ['name' => 'CIS Grade 7 A', 'grade_level' => 9, 'section' => 'A', 'capacity' => 35, 'teacher_level' => 'secondary'],
@@ -294,31 +293,31 @@ class CambridgeSchoolSeeder extends Seeder
 
             $this->createdClasses[] = $class;
         }
-        
+
         $this->command->info('✅ Created ' . count($classes) . ' classes');
     }
 
     private function createStudentsAndParents()
     {
         $this->command->info('👶 Creating students and parents...');
-        
+
         $firstNames = [
             'boys' => ['Liam', 'Noah', 'Oliver', 'Elijah', 'William', 'James', 'Benjamin', 'Lucas', 'Henry', 'Alexander', 'Mason', 'Michael', 'Ethan', 'Daniel', 'Jacob', 'Logan', 'Jackson', 'Sebastian', 'Jack', 'Owen'],
             'girls' => ['Emma', 'Olivia', 'Ava', 'Isabella', 'Sophia', 'Charlotte', 'Mia', 'Amelia', 'Harper', 'Evelyn', 'Abigail', 'Emily', 'Elizabeth', 'Sofia', 'Madison', 'Avery', 'Ella', 'Scarlett', 'Grace', 'Chloe']
         ];
-        
+
         $lastNames = ['Smith', 'Johnson', 'Williams', 'Brown', 'Jones', 'Garcia', 'Miller', 'Davis', 'Rodriguez', 'Martinez', 'Hernandez', 'Lopez', 'Gonzalez', 'Wilson', 'Anderson', 'Thomas', 'Taylor', 'Moore', 'Jackson', 'Martin'];
-        
+
         $admissionNumber = 2001;
-        
+
         foreach ($this->createdClasses as $class) {
             $studentsToCreate = $class->capacity - 5; // Leave some spots for new admissions
-            
+
             for ($i = 1; $i <= $studentsToCreate; $i++) {
                 $gender = rand(0, 1) ? 'male' : 'female';
                 $firstName = $firstNames[$gender === 'male' ? 'boys' : 'girls'][array_rand($firstNames[$gender === 'male' ? 'boys' : 'girls'])];
                 $lastName = $lastNames[array_rand($lastNames)];
-                
+
                 // Create student
                 $student = Student::create([
                     'school_id' => $this->schoolId,
@@ -336,12 +335,12 @@ class CambridgeSchoolSeeder extends Seeder
                 ]);
 
                 $this->createdStudents[] = $student;
-                
+
                 // Create parents for this student
                 $this->createParentsForStudent($student, $firstName, $lastName);
             }
         }
-        
+
         $this->command->info('✅ Created ' . count($this->createdStudents) . ' students with parents');
     }
 
@@ -417,12 +416,12 @@ class CambridgeSchoolSeeder extends Seeder
     private function assignStudentsToClasses()
     {
         $this->command->info('🎒 Assigning students to classes...');
-        
+
         $studentIndex = 0;
-        
+
         foreach ($this->createdClasses as $class) {
             $studentsInClass = $class->capacity - 5;
-            
+
             for ($i = 0; $i < $studentsInClass; $i++) {
                 if ($studentIndex < count($this->createdStudents)) {
                     DB::table('class_student')->insert([
@@ -438,14 +437,14 @@ class CambridgeSchoolSeeder extends Seeder
                 }
             }
         }
-        
+
         $this->command->info('✅ Assigned students to classes');
     }
 
     private function createClassSchedules()
     {
         $this->command->info('📅 Creating class schedules...');
-        
+
         $timeSlots = [
             ['08:00:00', '08:45:00'],
             ['08:45:00', '09:30:00'],
@@ -454,20 +453,20 @@ class CambridgeSchoolSeeder extends Seeder
             ['11:30:00', '12:15:00'],
             ['12:15:00', '13:00:00'],
         ];
-        
+
         $daysOfWeek = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
-        
+
         foreach ($this->createdClasses as $class) {
             // Determine subjects based on grade level
             $subjects = $this->getSubjectsForClass($class);
             $teachers = $this->getTeachersForClass($class);
-            
+
             foreach ($daysOfWeek as $day) {
                 foreach ($timeSlots as $index => $slot) {
                     if ($index < count($subjects)) {
                         $subject = $subjects[$index % count($subjects)];
                         $teacher = $teachers[array_rand($teachers)];
-                        
+
                         DB::table('class_schedules')->insert([
                             'school_id' => $this->schoolId,
                             'class_id' => $class->id,
@@ -484,34 +483,34 @@ class CambridgeSchoolSeeder extends Seeder
                 }
             }
         }
-        
+
         $this->command->info('✅ Created class schedules');
     }
 
     private function createAttendanceRecords()
     {
         $this->command->info('📊 Creating attendance records for the last 5 days...');
-        
+
         $dates = [];
         for ($i = 4; $i >= 0; $i--) {
             $dates[] = Carbon::now()->subDays($i);
         }
-        
+
         foreach ($dates as $date) {
             if ($date->isWeekend()) continue; // Skip weekends
-            
+
             foreach ($this->createdClasses as $class) {
                 // Get students in this class
                 $studentIds = DB::table('class_student')
                     ->where('class_id', $class->id)
                     ->where('is_active', true)
                     ->pluck('student_id');
-                
+
                 foreach ($studentIds as $studentId) {
                     // 90% attendance rate
                     $isPresent = rand(1, 100) <= 90;
                     $status = $isPresent ? 'present' : (rand(1, 100) <= 10 ? 'late' : 'absent');
-                    
+
                     Attendance::create([
                         'school_id' => $this->schoolId,
                         'class_id' => $class->id,
@@ -525,7 +524,7 @@ class CambridgeSchoolSeeder extends Seeder
                 }
             }
         }
-        
+
         $this->command->info('✅ Created attendance records');
     }
 
@@ -546,7 +545,7 @@ class CambridgeSchoolSeeder extends Seeder
     {
         $streets = ['Main Street', 'Oak Avenue', 'Pine Road', 'Maple Drive', 'Cedar Lane', 'Elm Street', 'Park Avenue', 'Garden Road'];
         $areas = ['Downtown', 'Riverside', 'Hillside', 'Parkview', 'Greenwood', 'Lakeside', 'Sunset', 'Northfield'];
-        
+
         return rand(1, 999) . ' ' . $streets[array_rand($streets)] . ', ' . $areas[array_rand($areas)] . ', City';
     }
 
@@ -582,7 +581,7 @@ class CambridgeSchoolSeeder extends Seeder
     {
         $totalTeachers = array_sum(array_map('count', $this->createdTeachers));
         $totalSubjects = array_sum(array_map('count', $this->createdSubjects));
-        
+
         $this->command->info("\n📊 SEEDING SUMMARY:");
         $this->command->info("🏫 School: Cambridge International School (ID: {$this->schoolId})");
         $this->command->info("👨‍🏫 Teachers: {$totalTeachers}");

@@ -62,7 +62,7 @@ class ClassRoom extends Model
     public function todaysAttendance()
     {
         return $this->hasMany(Attendance::class, 'class_id')
-                    ->where('date', today());
+            ->where('date', today());
     }
 
     public function subjects()
