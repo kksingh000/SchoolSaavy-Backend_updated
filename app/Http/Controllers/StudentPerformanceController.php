@@ -19,23 +19,30 @@ class StudentPerformanceController extends BaseController
     public function getPerformanceReport($studentId, Request $request): JsonResponse
     {
         try {
+            $startTime = microtime(true);
+
             $month = $request->input('month', Carbon::now()->month);
             $year = $request->input('year', Carbon::now()->year);
 
-            $student = Student::with(['parents.user'])->findOrFail($studentId);
+            $student = Student::with([
+                'parents.user:id,name,email',
+                'currentClass:id,name'
+            ])->findOrFail($studentId);
 
-            // Get performance data
+            // Get performance data with optimized methods
             $attendanceData = $this->getAttendancePerformance($studentId, $month, $year);
             $assignmentData = $this->getAssignmentPerformance($studentId, $month, $year);
             $overallGrade = $this->calculateOverallGrade($assignmentData);
-            $trends = $this->getPerformanceTrends($studentId, $year);
+            $trends = $this->getPerformanceTrendsOptimized($studentId, $year, $student->currentClass);
+
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2);
 
             return $this->successResponse([
                 'student' => [
                     'id' => $student->id,
                     'name' => $student->first_name . ' ' . $student->last_name,
                     'admission_number' => $student->admission_number,
-                    'class' => $student->currentClass()->first()?->name ?? 'Not Assigned',
+                    'class' => $student->currentClass->name ?? 'Not Assigned',
                 ],
                 'parents' => $student->parents->map(function ($parent) {
                     return [
@@ -61,6 +68,7 @@ class StudentPerformanceController extends BaseController
                 'overall_grade' => $overallGrade,
                 'performance_trends' => $trends,
                 'recommendations' => $this->generateRecommendations($attendanceData, $assignmentData),
+                'execution_time_ms' => $executionTime, // Debug info
             ], 'Student performance report generated successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -195,7 +203,7 @@ class StudentPerformanceController extends BaseController
     }
 
     /**
-     * Get performance trends for the year
+     * Get performance trends for the year (LEGACY - kept for compatibility)
      */
     private function getPerformanceTrends($studentId, $year)
     {
@@ -215,6 +223,116 @@ class StudentPerformanceController extends BaseController
         }
 
         return $trends;
+    }
+
+    /**
+     * Get performance trends for the year - OPTIMIZED VERSION
+     */
+    private function getPerformanceTrendsOptimized($studentId, $year, $currentClass = null)
+    {
+        // Use passed currentClass or fall back to database query
+        if (!$currentClass) {
+            $student = Student::find($studentId);
+            $currentClass = $student->currentClass()->first();
+        }
+
+        if (!$currentClass) {
+            // Return empty trends if no class assigned
+            $trends = [];
+            for ($month = 1; $month <= 12; $month++) {
+                $trends[] = [
+                    'month' => $month,
+                    'month_name' => Carbon::create($year, $month, 1)->format('M'),
+                    'attendance_percentage' => 0,
+                    'assignment_percentage' => 0,
+                    'submission_rate' => 0,
+                ];
+            }
+            return $trends;
+        }
+
+        // Get all attendance data for the year in one query
+        $attendanceRecords = Attendance::where('student_id', $studentId)
+            ->whereYear('date', $year)
+            ->get()
+            ->groupBy(function ($record) {
+                return Carbon::parse($record->date)->month;
+            });
+
+        // Get all assignments and submissions for the year in optimized queries
+        $assignments = Assignment::where('class_id', $currentClass->id)
+            ->where('status', 'published')
+            ->whereYear('due_date', $year)
+            ->with(['submissions' => function ($query) use ($studentId) {
+                $query->where('student_id', $studentId);
+            }, 'subject'])
+            ->get()
+            ->groupBy(function ($assignment) {
+                return Carbon::parse($assignment->due_date)->month;
+            });
+
+        $trends = [];
+        for ($month = 1; $month <= 12; $month++) {
+            // Calculate attendance for this month
+            $monthAttendance = $attendanceRecords->get($month, collect());
+            $attendancePerformance = $this->calculateAttendanceFromRecords($monthAttendance);
+
+            // Calculate assignments for this month
+            $monthAssignments = $assignments->get($month, collect());
+            $assignmentPerformance = $this->calculateAssignmentFromAssignments($monthAssignments);
+
+            $trends[] = [
+                'month' => $month,
+                'month_name' => Carbon::create($year, $month, 1)->format('M'),
+                'attendance_percentage' => $attendancePerformance['attendance_percentage'],
+                'assignment_percentage' => $assignmentPerformance['overall_percentage'],
+                'submission_rate' => $assignmentPerformance['submission_rate'],
+            ];
+        }
+
+        return $trends;
+    }
+
+    /**
+     * Calculate assignment performance from assignments collection (for trends)
+     */
+    private function calculateAssignmentFromAssignments($assignments)
+    {
+        $totalAssignments = $assignments->count();
+        $submittedAssignments = 0;
+        $gradedAssignments = 0;
+        $lateSubmissions = 0;
+        $totalMarks = 0;
+        $obtainedMarks = 0;
+
+        foreach ($assignments as $assignment) {
+            $submission = $assignment->submissions->first();
+
+            if ($submission) {
+                $submittedAssignments++;
+
+                if ($submission->is_late_submission) {
+                    $lateSubmissions++;
+                }
+
+                if ($submission->status === 'graded') {
+                    $gradedAssignments++;
+                    $totalMarks += $assignment->max_marks ?? 0;
+                    $obtainedMarks += $submission->marks_obtained ?? 0;
+                }
+            }
+        }
+
+        $overallPercentage = $totalMarks > 0 ? round(($obtainedMarks / $totalMarks) * 100, 2) : 0;
+        $submissionRate = $totalAssignments > 0 ? round(($submittedAssignments / $totalAssignments) * 100, 2) : 0;
+
+        return [
+            'total_assignments' => $totalAssignments,
+            'submitted_assignments' => $submittedAssignments,
+            'graded_assignments' => $gradedAssignments,
+            'overall_percentage' => $overallPercentage,
+            'submission_rate' => $submissionRate,
+        ];
     }
 
     /**

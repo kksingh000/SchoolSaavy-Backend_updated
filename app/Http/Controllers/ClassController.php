@@ -63,7 +63,7 @@ class ClassController extends BaseController
 
             // Apply additional filters from request
             $filters = $request->only(['grade_level', 'is_active']);
-            
+
             // Build optimized query with single database call using subqueries
             $query = \App\Models\ClassRoom::where(function ($query) use ($teacher) {
                 // Class teacher condition
@@ -98,8 +98,8 @@ class ClassController extends BaseController
                         ->with('student:id,first_name,last_name,admission_number');
                 }
             ])
-            ->select(['id', 'name', 'section', 'grade_level', 'class_teacher_id', 'is_active', 'created_at'])
-            ->paginate(15); // Add reasonable pagination limit
+                ->select(['id', 'name', 'section', 'grade_level', 'class_teacher_id', 'is_active', 'created_at'])
+                ->paginate(15); // Add reasonable pagination limit
 
             $executionTime = round((microtime(true) - $startTime) * 1000, 2);
 

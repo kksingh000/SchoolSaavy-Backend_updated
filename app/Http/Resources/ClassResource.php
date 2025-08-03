@@ -49,8 +49,8 @@ class ClassResource extends JsonResource
                     'records' => $attendanceCollection->map(function ($attendance) {
                         return [
                             'student_id' => $attendance->student_id,
-                            'student_name' => $attendance->student 
-                                ? ($attendance->student->first_name . ' ' . $attendance->student->last_name) 
+                            'student_name' => $attendance->student
+                                ? ($attendance->student->first_name . ' ' . $attendance->student->last_name)
                                 : null,
                             'admission_number' => $attendance->student->admission_number ?? null,
                             'status' => $attendance->status,
