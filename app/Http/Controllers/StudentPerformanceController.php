@@ -423,4 +423,492 @@ class StudentPerformanceController extends BaseController
 
         return $rank !== false ? $rank + 1 : null;
     }
+
+    /**
+     * Get comprehensive class performance analytics
+     */
+    public function getClassPerformanceAnalytics($classId, Request $request): JsonResponse
+    {
+        try {
+            $startTime = microtime(true);
+
+            // Support different period types: 'month', 'term', 'year', 'overall'
+            $period = $request->input('period', 'month');
+            $month = $request->input('month', Carbon::now()->month);
+            $year = $request->input('year', Carbon::now()->year);
+            $term = $request->input('term'); // 1, 2, or 3 for terms
+
+            // Get class with students
+            $class = \App\Models\ClassRoom::with(['activeStudents'])->findOrFail($classId);
+
+            if ($class->activeStudents->isEmpty()) {
+                return $this->errorResponse('No active students found in this class');
+            }
+
+            // Calculate date range based on period type
+            [$startDate, $endDate, $periodLabel] = $this->calculateDateRange($period, $month, $year, $term);
+
+            // Get attendance analytics
+            $attendanceAnalytics = $this->getClassAttendanceAnalytics($classId, $startDate, $endDate);
+
+            // Get assignment analytics  
+            $assignmentAnalytics = $this->getClassAssignmentAnalytics($classId, $startDate, $endDate);
+
+            // Get individual student performances efficiently
+            $studentPerformances = [];
+            $totalAttendancePercentage = 0;
+            $totalAssignmentPercentage = 0;
+            $validStudents = 0;
+
+            // Get all attendance data for the class in one query
+            $attendanceData = Attendance::whereIn('student_id', $class->activeStudents->pluck('id'))
+                ->whereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+                ->get()
+                ->groupBy('student_id');
+
+            // Get all assignments and submissions for the class in optimized queries
+            $assignments = Assignment::where('class_id', $classId)
+                ->where('status', 'published')
+                ->whereBetween('due_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+                ->with(['subject'])
+                ->get();
+
+            $submissions = AssignmentSubmission::whereIn('assignment_id', $assignments->pluck('id'))
+                ->whereIn('student_id', $class->activeStudents->pluck('id'))
+                ->get()
+                ->groupBy('student_id');
+
+            foreach ($class->activeStudents as $student) {
+                // Calculate attendance for this student
+                $studentAttendance = $attendanceData->get($student->id, collect());
+                $attendancePerformance = $this->calculateAttendanceFromRecords($studentAttendance);
+
+                // Calculate assignments for this student
+                $studentSubmissions = $submissions->get($student->id, collect());
+                $assignmentPerformance = $this->calculateAssignmentFromSubmissions($assignments, $studentSubmissions);
+
+                $studentPerformances[] = [
+                    'student_id' => $student->id,
+                    'student_name' => $student->first_name . ' ' . $student->last_name,
+                    'admission_number' => $student->admission_number,
+                    'attendance_percentage' => $attendancePerformance['attendance_percentage'],
+                    'assignment_percentage' => $assignmentPerformance['overall_percentage'],
+                    'submission_rate' => $assignmentPerformance['submission_rate'],
+                    'overall_grade' => $this->calculateOverallGrade($assignmentPerformance),
+                ];
+
+                $totalAttendancePercentage += $attendancePerformance['attendance_percentage'];
+                $totalAssignmentPercentage += $assignmentPerformance['overall_percentage'];
+                $validStudents++;
+            }
+
+            // Calculate class averages
+            $classAverageAttendance = $validStudents > 0 ? round($totalAttendancePercentage / $validStudents, 2) : 0;
+            $classAverageAssignment = $validStudents > 0 ? round($totalAssignmentPercentage / $validStudents, 2) : 0;
+
+            // Sort students by overall performance
+            $sortedStudents = collect($studentPerformances)->sortByDesc('assignment_percentage')->values();
+
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2); // Convert to milliseconds
+
+            return $this->successResponse([
+                'class_info' => [
+                    'id' => $class->id,
+                    'name' => $class->name,
+                    'section' => $class->section,
+                    'total_students' => $validStudents,
+                    'teacher' => $class->classTeacher ? $class->classTeacher->user->name : 'Not Assigned',
+                ],
+                'period' => [
+                    'type' => $period,
+                    'label' => $periodLabel,
+                    'start_date' => $startDate->format('Y-m-d'),
+                    'end_date' => $endDate->format('Y-m-d'),
+                    'month' => $period === 'month' ? $month : null,
+                    'year' => $year,
+                    'term' => $period === 'term' ? ($term ?: $this->getCurrentTerm()) : null,
+                ],
+                'class_averages' => [
+                    'attendance_percentage' => $classAverageAttendance,
+                    'assignment_percentage' => $classAverageAssignment,
+                ],
+                'attendance_analytics' => $attendanceAnalytics,
+                'assignment_analytics' => $assignmentAnalytics,
+                'student_performances' => $sortedStudents,
+                'performance_distribution' => $this->getPerformanceDistribution($studentPerformances),
+                'top_performers' => $sortedStudents->take(5),
+                'needs_attention' => $sortedStudents->where('assignment_percentage', '<', 60)->take(5),
+                'execution_time_ms' => $executionTime, // Debug info
+            ], 'Class performance analytics retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get class attendance analytics
+     */
+    private function getClassAttendanceAnalytics($classId, $startDate, $endDate)
+    {
+        $attendanceData = DB::table('attendances')
+            ->where('class_id', $classId)
+            ->whereBetween('date', [$startDate, $endDate])
+            ->selectRaw('
+                COUNT(*) as total_records,
+                SUM(CASE WHEN status = "present" THEN 1 ELSE 0 END) as present_count,
+                SUM(CASE WHEN status = "absent" THEN 1 ELSE 0 END) as absent_count,
+                SUM(CASE WHEN status = "late" THEN 1 ELSE 0 END) as late_count,
+                SUM(CASE WHEN status = "excused" THEN 1 ELSE 0 END) as excused_count,
+                SUM(CASE WHEN status = "leave" THEN 1 ELSE 0 END) as leave_count
+            ')
+            ->first();
+
+        $totalRecords = $attendanceData->total_records;
+
+        return [
+            'total_attendance_records' => $totalRecords,
+            'present' => $attendanceData->present_count,
+            'absent' => $attendanceData->absent_count,
+            'late' => $attendanceData->late_count,
+            'excused' => $attendanceData->excused_count,
+            'leave' => $attendanceData->leave_count,
+            'overall_attendance_percentage' => $totalRecords > 0 ? round(($attendanceData->present_count / $totalRecords) * 100, 2) : 0,
+        ];
+    }
+
+    /**
+     * Get class assignment analytics
+     */
+    private function getClassAssignmentAnalytics($classId, $startDate, $endDate)
+    {
+        $assignments = Assignment::where('class_id', $classId)
+            ->where('status', 'published')
+            ->whereBetween('due_date', [$startDate, $endDate])
+            ->with(['submissions'])
+            ->get();
+
+        $totalAssignments = $assignments->count();
+        $totalSubmissions = $assignments->sum(function ($assignment) {
+            return $assignment->submissions->count();
+        });
+
+        $submittedCount = $assignments->sum(function ($assignment) {
+            return $assignment->submissions->where('status', '!=', 'pending')->count();
+        });
+
+        $gradedCount = $assignments->sum(function ($assignment) {
+            return $assignment->submissions->where('status', 'graded')->count();
+        });
+
+        $lateSubmissions = $assignments->sum(function ($assignment) {
+            return $assignment->submissions->where('is_late_submission', true)->count();
+        });
+
+        return [
+            'total_assignments' => $totalAssignments,
+            'total_submissions_expected' => $totalSubmissions,
+            'total_submitted' => $submittedCount,
+            'total_graded' => $gradedCount,
+            'late_submissions' => $lateSubmissions,
+            'submission_rate' => $totalSubmissions > 0 ? round(($submittedCount / $totalSubmissions) * 100, 2) : 0,
+            'grading_rate' => $submittedCount > 0 ? round(($gradedCount / $submittedCount) * 100, 2) : 0,
+            'late_submission_rate' => $submittedCount > 0 ? round(($lateSubmissions / $submittedCount) * 100, 2) : 0,
+        ];
+    }
+
+    /**
+     * Get performance distribution
+     */
+    private function getPerformanceDistribution($studentPerformances)
+    {
+        $performances = collect($studentPerformances);
+
+        return [
+            'excellent' => $performances->where('assignment_percentage', '>=', 90)->count(),
+            'good' => $performances->whereBetween('assignment_percentage', [70, 89])->count(),
+            'satisfactory' => $performances->whereBetween('assignment_percentage', [60, 69])->count(),
+            'needs_improvement' => $performances->where('assignment_percentage', '<', 60)->count(),
+        ];
+    }
+
+    /**
+     * Calculate date range based on period type
+     */
+    private function calculateDateRange($period, $month, $year, $term = null)
+    {
+        switch ($period) {
+            case 'month':
+                $startDate = Carbon::create($year, $month, 1)->startOfMonth();
+                $endDate = Carbon::create($year, $month, 1)->endOfMonth();
+                $periodLabel = Carbon::create($year, $month, 1)->format('F Y');
+                break;
+
+            case 'term':
+                // Assuming 3 terms per year: Jan-Apr, May-Aug, Sep-Dec
+                $termRanges = [
+                    1 => ['start' => 1, 'end' => 4],   // Term 1: Jan-Apr
+                    2 => ['start' => 5, 'end' => 8],   // Term 2: May-Aug  
+                    3 => ['start' => 9, 'end' => 12],  // Term 3: Sep-Dec
+                ];
+
+                $currentTerm = $term ?: $this->getCurrentTerm();
+                $range = $termRanges[$currentTerm] ?? $termRanges[1];
+
+                $startDate = Carbon::create($year, $range['start'], 1)->startOfMonth();
+                $endDate = Carbon::create($year, $range['end'], 1)->endOfMonth();
+                $periodLabel = "Term {$currentTerm} - {$year}";
+                break;
+
+            case 'year':
+                $startDate = Carbon::create($year, 1, 1)->startOfYear();
+                $endDate = Carbon::create($year, 12, 31)->endOfYear();
+                $periodLabel = "Academic Year {$year}";
+                break;
+
+            case 'overall':
+            default:
+                $startDate = Carbon::create(2020, 1, 1); // Start from a reasonable past date
+                $endDate = Carbon::now();
+                $periodLabel = "Overall Performance";
+                break;
+        }
+
+        return [$startDate, $endDate, $periodLabel];
+    }
+
+    /**
+     * Get current term based on current month
+     */
+    private function getCurrentTerm()
+    {
+        $currentMonth = Carbon::now()->month;
+
+        if ($currentMonth >= 1 && $currentMonth <= 4) {
+            return 1;
+        } elseif ($currentMonth >= 5 && $currentMonth <= 8) {
+            return 2;
+        } else {
+            return 3;
+        }
+    }
+
+    /**
+     * Get attendance performance by date range
+     */
+    private function getAttendancePerformanceByDateRange($studentId, $startDate, $endDate)
+    {
+        $attendanceRecords = Attendance::where('student_id', $studentId)
+            ->whereBetween('date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->get();
+
+        $totalDays = $attendanceRecords->count();
+        $presentDays = $attendanceRecords->where('status', 'present')->count();
+        $absentDays = $attendanceRecords->where('status', 'absent')->count();
+        $leaveDays = $attendanceRecords->where('status', 'leave')->count();
+        $lateDays = $attendanceRecords->where('status', 'late')->count();
+        $excusedDays = $attendanceRecords->where('status', 'excused')->count();
+
+        return [
+            'total_school_days' => $totalDays,
+            'present_days' => $presentDays,
+            'absent_days' => $absentDays,
+            'leave_days' => $leaveDays,
+            'late_days' => $lateDays,
+            'excused_days' => $excusedDays,
+            'attendance_percentage' => $totalDays > 0 ? round(($presentDays / $totalDays) * 100, 2) : 0,
+            'absent_percentage' => $totalDays > 0 ? round(($absentDays / $totalDays) * 100, 2) : 0,
+            'leave_percentage' => $totalDays > 0 ? round(($leaveDays / $totalDays) * 100, 2) : 0,
+            'late_percentage' => $totalDays > 0 ? round(($lateDays / $totalDays) * 100, 2) : 0,
+            'excused_percentage' => $totalDays > 0 ? round(($excusedDays / $totalDays) * 100, 2) : 0,
+            'attendance_grade' => $this->getAttendanceGrade($totalDays > 0 ? ($presentDays / $totalDays) * 100 : 0),
+        ];
+    }
+
+    /**
+     * Get assignment performance by date range
+     */
+    private function getAssignmentPerformanceByDateRange($studentId, $startDate, $endDate)
+    {
+        // Get student's current class
+        $student = Student::find($studentId);
+        $currentClass = $student->currentClass()->first();
+
+        if (!$currentClass) {
+            return $this->getEmptyAssignmentPerformance();
+        }
+
+        // Get assignments for the date range with submissions eagerly loaded
+        $assignments = Assignment::where('class_id', $currentClass->id)
+            ->where('status', 'published')
+            ->whereBetween('due_date', [$startDate->format('Y-m-d'), $endDate->format('Y-m-d')])
+            ->with(['submissions' => function ($query) use ($studentId) {
+                $query->where('student_id', $studentId);
+            }, 'subject'])
+            ->get();
+
+        $totalAssignments = $assignments->count();
+        $submittedAssignments = 0;
+        $gradedAssignments = 0;
+        $lateSubmissions = 0;
+        $totalMarks = 0;
+        $obtainedMarks = 0;
+        $subjectPerformance = [];
+
+        foreach ($assignments as $assignment) {
+            $submission = $assignment->submissions->first(); // Now using eager loaded relationship
+
+            if ($submission) {
+                $submittedAssignments++;
+
+                if ($submission->submitted_at > $assignment->due_date) {
+                    $lateSubmissions++;
+                }
+
+                if ($submission->grade !== null) {
+                    $gradedAssignments++;
+                    $totalMarks += $assignment->total_marks ?? 0;
+                    $obtainedMarks += $submission->grade ?? 0;
+
+                    // Subject-wise performance
+                    $subjectName = $assignment->subject->name ?? 'Unknown';
+                    if (!isset($subjectPerformance[$subjectName])) {
+                        $subjectPerformance[$subjectName] = [
+                            'total_marks' => 0,
+                            'obtained_marks' => 0,
+                            'assignments_count' => 0,
+                        ];
+                    }
+
+                    $subjectPerformance[$subjectName]['total_marks'] += $assignment->total_marks ?? 0;
+                    $subjectPerformance[$subjectName]['obtained_marks'] += $submission->grade ?? 0;
+                    $subjectPerformance[$subjectName]['assignments_count']++;
+                }
+            }
+        }
+
+        // Calculate subject averages
+        foreach ($subjectPerformance as $subject => &$data) {
+            $data['average_percentage'] = $data['total_marks'] > 0 ?
+                round(($data['obtained_marks'] / $data['total_marks']) * 100, 2) : 0;
+        }
+
+        $overallPercentage = $totalMarks > 0 ? round(($obtainedMarks / $totalMarks) * 100, 2) : 0;
+        $submissionRate = $totalAssignments > 0 ? round(($submittedAssignments / $totalAssignments) * 100, 2) : 0;
+
+        return [
+            'total_assignments' => $totalAssignments,
+            'submitted_assignments' => $submittedAssignments,
+            'graded_assignments' => $gradedAssignments,
+            'pending_assignments' => $totalAssignments - $submittedAssignments,
+            'late_submissions' => $lateSubmissions,
+            'submission_rate' => $submissionRate,
+            'late_submission_rate' => $submittedAssignments > 0 ? round(($lateSubmissions / $submittedAssignments) * 100, 2) : 0,
+            'total_marks' => $totalMarks,
+            'obtained_marks' => $obtainedMarks,
+            'overall_percentage' => $overallPercentage,
+            'assignment_grade' => $this->getAssignmentGrade($overallPercentage),
+            'subject_performance' => $subjectPerformance,
+        ];
+    }
+
+    /**
+     * Calculate attendance performance from attendance records collection
+     */
+    private function calculateAttendanceFromRecords($attendanceRecords)
+    {
+        $totalDays = $attendanceRecords->count();
+        $presentDays = $attendanceRecords->where('status', 'present')->count();
+        $absentDays = $attendanceRecords->where('status', 'absent')->count();
+        $leaveDays = $attendanceRecords->where('status', 'leave')->count();
+        $lateDays = $attendanceRecords->where('status', 'late')->count();
+        $excusedDays = $attendanceRecords->where('status', 'excused')->count();
+
+        return [
+            'total_school_days' => $totalDays,
+            'present_days' => $presentDays,
+            'absent_days' => $absentDays,
+            'leave_days' => $leaveDays,
+            'late_days' => $lateDays,
+            'excused_days' => $excusedDays,
+            'attendance_percentage' => $totalDays > 0 ? round(($presentDays / $totalDays) * 100, 2) : 0,
+            'absent_percentage' => $totalDays > 0 ? round(($absentDays / $totalDays) * 100, 2) : 0,
+            'leave_percentage' => $totalDays > 0 ? round(($leaveDays / $totalDays) * 100, 2) : 0,
+            'late_percentage' => $totalDays > 0 ? round(($lateDays / $totalDays) * 100, 2) : 0,
+            'excused_percentage' => $totalDays > 0 ? round(($excusedDays / $totalDays) * 100, 2) : 0,
+            'attendance_grade' => $this->getAttendanceGrade($totalDays > 0 ? ($presentDays / $totalDays) * 100 : 0),
+        ];
+    }
+
+    /**
+     * Calculate assignment performance from assignments and submissions collections
+     */
+    private function calculateAssignmentFromSubmissions($assignments, $studentSubmissions)
+    {
+        $totalAssignments = $assignments->count();
+        $submittedAssignments = 0;
+        $gradedAssignments = 0;
+        $lateSubmissions = 0;
+        $totalMarks = 0;
+        $obtainedMarks = 0;
+        $subjectPerformance = [];
+
+        // Create a map of submissions by assignment_id for quick lookup
+        $submissionMap = $studentSubmissions->keyBy('assignment_id');
+
+        foreach ($assignments as $assignment) {
+            $submission = $submissionMap->get($assignment->id);
+
+            if ($submission) {
+                $submittedAssignments++;
+
+                if ($submission->submitted_at > $assignment->due_date) {
+                    $lateSubmissions++;
+                }
+
+                if ($submission->grade !== null) {
+                    $gradedAssignments++;
+                    $totalMarks += $assignment->total_marks ?? 0;
+                    $obtainedMarks += $submission->grade ?? 0;
+
+                    // Subject-wise performance
+                    $subjectName = $assignment->subject->name ?? 'Unknown';
+                    if (!isset($subjectPerformance[$subjectName])) {
+                        $subjectPerformance[$subjectName] = [
+                            'total_marks' => 0,
+                            'obtained_marks' => 0,
+                            'assignments_count' => 0,
+                        ];
+                    }
+
+                    $subjectPerformance[$subjectName]['total_marks'] += $assignment->total_marks ?? 0;
+                    $subjectPerformance[$subjectName]['obtained_marks'] += $submission->grade ?? 0;
+                    $subjectPerformance[$subjectName]['assignments_count']++;
+                }
+            }
+        }
+
+        // Calculate subject averages
+        foreach ($subjectPerformance as $subject => &$data) {
+            $data['average_percentage'] = $data['total_marks'] > 0 ?
+                round(($data['obtained_marks'] / $data['total_marks']) * 100, 2) : 0;
+        }
+
+        $overallPercentage = $totalMarks > 0 ? round(($obtainedMarks / $totalMarks) * 100, 2) : 0;
+        $submissionRate = $totalAssignments > 0 ? round(($submittedAssignments / $totalAssignments) * 100, 2) : 0;
+
+        return [
+            'total_assignments' => $totalAssignments,
+            'submitted_assignments' => $submittedAssignments,
+            'graded_assignments' => $gradedAssignments,
+            'pending_assignments' => $totalAssignments - $submittedAssignments,
+            'late_submissions' => $lateSubmissions,
+            'submission_rate' => $submissionRate,
+            'late_submission_rate' => $submittedAssignments > 0 ? round(($lateSubmissions / $submittedAssignments) * 100, 2) : 0,
+            'total_marks' => $totalMarks,
+            'obtained_marks' => $obtainedMarks,
+            'overall_percentage' => $overallPercentage,
+            'assignment_grade' => $this->getAssignmentGrade($overallPercentage),
+            'subject_performance' => $subjectPerformance,
+        ];
+    }
 }

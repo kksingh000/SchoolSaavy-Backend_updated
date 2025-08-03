@@ -180,6 +180,11 @@ Route::middleware('json.response')->group(function () {
             Route::get('{studentId}/class-comparison', [StudentPerformanceController::class, 'getClassPerformanceComparison']);
         });
 
+        // Class Performance Routes
+        Route::prefix('class-performance')->group(function () {
+            Route::get('{classId}/analytics', [StudentPerformanceController::class, 'getClassPerformanceAnalytics']);
+        });
+
         // Assessment System Routes
         Route::prefix('assessment-types')->group(function () {
             Route::get('/', [AssessmentTypeController::class, 'index']);
