@@ -24,7 +24,7 @@ class AttendanceController extends BaseController
         }
 
         try {
-            $filters = $request->only(['class_id', 'student_id', 'date', 'status']);
+            $filters = $request->only(['class_id', 'student_id', 'date', 'status', 'per_page']);
             $attendance = $this->attendanceService->getAll($filters, ['student', 'class', 'markedBy']);
 
             return $this->successResponse(
@@ -48,7 +48,7 @@ class AttendanceController extends BaseController
                 'date' => 'required|date',
                 'attendances' => 'required|array',
                 'attendances.*.student_id' => 'required|exists:students,id',
-                'attendances.*.status' => 'required|in:present,absent,late,excused',
+                'attendances.*.status' => 'required|in:present,absent,late,excused,leave',
                 'attendances.*.remarks' => 'nullable|string'
             ]);
 
@@ -57,6 +57,32 @@ class AttendanceController extends BaseController
             return $this->successResponse(
                 null,
                 'Bulk attendance marked successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function markSingleAttendance(Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('attendance')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'class_id' => 'required|exists:classes,id',
+                'student_id' => 'required|exists:students,id',
+                'date' => 'required|date',
+                'status' => 'required|in:present,absent,late,excused,leave',
+                'remarks' => 'nullable|string'
+            ]);
+
+            $attendance = $this->attendanceService->markSingleAttendance($request->all());
+
+            return $this->successResponse(
+                new AttendanceResource($attendance),
+                'Attendance marked successfully'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -111,6 +137,31 @@ class AttendanceController extends BaseController
             return $this->successResponse(
                 $report,
                 'Student attendance report generated successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    public function getClassAttendanceByDate(Request $request, $classId): JsonResponse
+    {
+        if (!$this->checkModuleAccess('attendance')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'date' => 'required|date|before_or_equal:today'
+            ]);
+
+            $attendanceData = $this->attendanceService->getClassAttendanceByDate(
+                $classId,
+                $request->date
+            );
+
+            return $this->successResponse(
+                $attendanceData,
+                'Class attendance retrieved successfully'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());

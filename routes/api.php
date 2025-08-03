@@ -105,8 +105,10 @@ Route::middleware('json.response')->group(function () {
         // Attendance Management Routes
         Route::prefix('attendance')->group(function () {
             Route::get('/', [AttendanceController::class, 'index']);
+            Route::post('/', [AttendanceController::class, 'markSingleAttendance']);
             Route::post('bulk', [AttendanceController::class, 'markBulkAttendance']);
             Route::get('class/{classId}/report', [AttendanceController::class, 'getClassAttendanceReport']);
+            Route::get('class/{classId}/date', [AttendanceController::class, 'getClassAttendanceByDate']);
             Route::get('student/{studentId}/report', [AttendanceController::class, 'getStudentAttendanceReport']);
         });
 
