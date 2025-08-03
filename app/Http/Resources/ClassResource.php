@@ -18,17 +18,22 @@ class ClassResource extends JsonResource
             'room_number' => $this->room_number,
             'capacity' => $this->capacity,
             'description' => $this->description,
-            'students_count' => $this->students_count ?? $this->students()->count(),
+            'students_count' => $this->whenLoaded('students', function () {
+                return $this->students->count();
+            }, $this->students_count ?? 0),
             'students' => StudentResource::collection($this->whenLoaded('students')),
             'todays_attendance' => $this->when($this->relationLoaded('todaysAttendance'), function () {
                 $totalStudents = $this->whenLoaded('students', function () {
                     return $this->students->count();
                 }, 0);
 
-                $presentCount = $this->todaysAttendance->where('status', 'present')->count();
-                $absentCount = $this->todaysAttendance->where('status', 'absent')->count();
-                $lateCount = $this->todaysAttendance->where('status', 'late')->count();
-                $excusedCount = $this->todaysAttendance->where('status', 'excused')->count();
+                // Use already loaded attendance data instead of querying again
+                $attendanceCollection = $this->todaysAttendance;
+                $presentCount = $attendanceCollection->where('status', 'present')->count();
+                $absentCount = $attendanceCollection->where('status', 'absent')->count();
+                $lateCount = $attendanceCollection->where('status', 'late')->count();
+                $excusedCount = $attendanceCollection->where('status', 'excused')->count();
+                $leaveCount = $attendanceCollection->where('status', 'leave')->count();
 
                 return [
                     'date' => today()->toDateString(),
@@ -37,14 +42,17 @@ class ClassResource extends JsonResource
                     'absent_count' => $absentCount,
                     'late_count' => $lateCount,
                     'excused_count' => $excusedCount,
+                    'leave_count' => $leaveCount,
                     'attendance_percentage' => $totalStudents > 0
                         ? round(($presentCount / $totalStudents) * 100, 2)
                         : 0,
-                    'records' => $this->todaysAttendance->map(function ($attendance) {
-                        $student = $attendance->student;
+                    'records' => $attendanceCollection->map(function ($attendance) {
                         return [
                             'student_id' => $attendance->student_id,
-                            'student_name' => $student ? ($student->first_name . ' ' . $student->last_name) : null,
+                            'student_name' => $attendance->student 
+                                ? ($attendance->student->first_name . ' ' . $attendance->student->last_name) 
+                                : null,
+                            'admission_number' => $attendance->student->admission_number ?? null,
                             'status' => $attendance->status,
                             'check_in_time' => $attendance->check_in_time,
                             'check_out_time' => $attendance->check_out_time,

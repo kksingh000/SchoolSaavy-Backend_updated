@@ -47,6 +47,7 @@ class ClassController extends BaseController
         }
 
         try {
+            $startTime = microtime(true);
             $user = Auth::user();
 
             // Check if user is a teacher
@@ -60,62 +61,62 @@ class ClassController extends BaseController
                 return $this->errorResponse('Teacher profile not found.', null, 404);
             }
 
-            // Get classes where teacher is either:
-            // 1. Class teacher (homeroom teacher)
-            // 2. Subject teacher (teaches subjects in the class)
-            $classIds = collect();
-
-            // Get classes where teacher is the class teacher
-            $classTeacherIds = \App\Models\ClassRoom::where('class_teacher_id', $teacher->id)
-                ->pluck('id');
-            $classIds = $classIds->merge($classTeacherIds);
-
-            // Get classes where teacher teaches subjects (from class_schedules)
-            $subjectTeacherIds = DB::table('class_schedules')
-                ->where('teacher_id', $teacher->id)
-                ->where('is_active', true)
-                ->distinct()
-                ->pluck('class_id');
-            $classIds = $classIds->merge($subjectTeacherIds);
-
-            // Remove duplicates and get unique class IDs
-            $uniqueClassIds = $classIds->unique()->values();
-
-            if ($uniqueClassIds->isEmpty()) {
-                return $this->successResponse(
-                    [],
-                    'No classes assigned to this teacher'
-                );
-            }
-
             // Apply additional filters from request
             $filters = $request->only(['grade_level', 'is_active']);
+            
+            // Build optimized query with single database call using subqueries
+            $query = \App\Models\ClassRoom::where(function ($query) use ($teacher) {
+                // Class teacher condition
+                $query->where('class_teacher_id', $teacher->id)
+                    // OR subject teacher condition
+                    ->orWhereExists(function ($subQuery) use ($teacher) {
+                        $subQuery->select(DB::raw(1))
+                            ->from('class_schedules')
+                            ->whereColumn('class_schedules.class_id', 'classes.id')
+                            ->where('class_schedules.teacher_id', $teacher->id)
+                            ->where('class_schedules.is_active', true);
+                    });
+            });
 
-            // Build query with class IDs
-            $query = \App\Models\ClassRoom::whereIn('id', $uniqueClassIds);
-
-            // Apply filters
+            // Apply filters efficiently at database level
             foreach ($filters as $field => $value) {
                 if ($value !== null && $value !== '') {
                     $query->where($field, $value);
                 }
             }
 
-            // Get classes with relationships
+            // Load only essential relationships with optimized selects
             $classes = $query->with([
-                'classTeacher.user',
+                'classTeacher.user:id,name,email',
                 'students' => function ($query) {
-                    $query->select(['students.id', 'students.first_name', 'students.last_name', 'students.admission_number']);
+                    $query->select(['students.id', 'students.first_name', 'students.last_name', 'students.admission_number'])
+                        ->wherePivot('is_active', true);
                 },
                 'todaysAttendance' => function ($query) {
                     $query->where('date', today())
+                        ->select(['id', 'class_id', 'student_id', 'status', 'check_in_time', 'check_out_time', 'remarks'])
                         ->with('student:id,first_name,last_name,admission_number');
                 }
-            ])->paginate();
+            ])
+            ->select(['id', 'name', 'section', 'grade_level', 'class_teacher_id', 'is_active', 'created_at'])
+            ->paginate(15); // Add reasonable pagination limit
+
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2);
 
             return $this->successResponse(
                 ClassResource::collection($classes),
-                'My classes retrieved successfully'
+                'My classes retrieved successfully',
+                200,
+                [
+                    'pagination' => [
+                        'current_page' => $classes->currentPage(),
+                        'total_pages' => $classes->lastPage(),
+                        'per_page' => $classes->perPage(),
+                        'total' => $classes->total(),
+                        'has_more_pages' => $classes->hasMorePages(),
+                    ],
+                    'execution_time_ms' => $executionTime, // Debug info
+                ]
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
