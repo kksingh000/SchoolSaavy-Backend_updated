@@ -22,7 +22,7 @@ class StudentPerformanceController extends BaseController
             $month = $request->input('month', Carbon::now()->month);
             $year = $request->input('year', Carbon::now()->year);
 
-            $student = Student::findOrFail($studentId);
+            $student = Student::with(['parents.user'])->findOrFail($studentId);
 
             // Get performance data
             $attendanceData = $this->getAttendancePerformance($studentId, $month, $year);
@@ -37,6 +37,20 @@ class StudentPerformanceController extends BaseController
                     'admission_number' => $student->admission_number,
                     'class' => $student->currentClass()->first()?->name ?? 'Not Assigned',
                 ],
+                'parents' => $student->parents->map(function ($parent) {
+                    return [
+                        'id' => $parent->id,
+                        'name' => $parent->user->name ?? '',
+                        'email' => $parent->user->email ?? '',
+                        'phone' => $parent->phone ?? '',
+                        'alternate_phone' => $parent->alternate_phone ?? '',
+                        'gender' => $parent->gender ?? '',
+                        'occupation' => $parent->occupation ?? '',
+                        'address' => $parent->address ?? '',
+                        'relationship' => $parent->pivot->relationship ?? $parent->relationship ?? '',
+                        'is_primary' => $parent->pivot->is_primary ?? false,
+                    ];
+                }),
                 'period' => [
                     'month' => $month,
                     'year' => $year,
