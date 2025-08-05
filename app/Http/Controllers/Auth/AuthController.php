@@ -90,9 +90,11 @@ class AuthController extends Controller
 
             return response()->json([
                 'message' => 'Token refreshed successfully',
-                'user' => new UserResource($result['user']),
-                'token' => $result['token'],
-                'expires_at' => $result['expires_at']
+                'access_token' => $result['access_token'],
+                'token_type' => $result['token_type'],
+                'expires_in' => $result['expires_in'],
+                'expires_at' => $result['expires_at'],
+                'user' => new UserResource($result['user'])
             ]);
         } catch (\Exception $e) {
             return response()->json([

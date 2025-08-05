@@ -114,14 +114,16 @@ class AuthService
 
         // Create a new token with expiration FIRST
         $tokenResult = $user->createToken('auth-token');
-        $token = $tokenResult->accessToken ?? $tokenResult->plainTextToken;
+        $token = $tokenResult->plainTextToken; // This is the actual token string
 
         // Only delete the old token AFTER successfully creating the new one
         $tokenModel->delete();
 
         return [
             'user' => $user,
-            'token' => $token,
+            'access_token' => $token, // Use 'access_token' as standard naming
+            'token_type' => 'Bearer',
+            'expires_in' => (int) config('sanctum.expiration', 1440) * 60, // Convert minutes to seconds
             'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString()
         ];
     }

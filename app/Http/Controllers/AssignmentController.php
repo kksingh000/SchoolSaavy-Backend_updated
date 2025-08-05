@@ -107,7 +107,7 @@ class AssignmentController extends BaseController
 
         try {
             $startTime = microtime(true);
-            
+
             // Use optimized method for better performance
             $assignment = $this->assignmentService->getAssignmentWithOptimizedSubmissions($id);
 
@@ -315,6 +315,85 @@ class AssignmentController extends BaseController
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Download/view submission attachment file
+     * This provides secure access to submission files with proper validation
+     */
+    public function downloadSubmissionAttachment($submissionId, Request $request): JsonResponse|\Symfony\Component\HttpFoundation\BinaryFileResponse
+    {
+        if (!$this->checkModuleAccess('assignment-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $filename = $request->query('filename');
+            $action = $request->query('action', 'download'); // download or view
+
+            if (!$filename) {
+                return $this->errorResponse('Filename parameter is required');
+            }
+
+            // Get submission with assignment to validate school access
+            $submission = AssignmentSubmission::whereHas('assignment', function ($query) use ($request) {
+                $schoolId = $request->school_id ?? (Auth::user()->teacher?->school_id ?? Auth::user()->schoolAdmin?->school_id);
+                $query->where('school_id', $schoolId);
+            })->findOrFail($submissionId);
+
+            // Validate that the filename exists in submission attachments
+            $attachments = $submission->attachments;
+            if (!$attachments || !is_array($attachments)) {
+                return $this->errorResponse('No attachments found for this submission');
+            }
+
+            $attachmentData = null;
+            foreach ($attachments as $attachment) {
+                if (is_array($attachment) && isset($attachment['filename']) && $attachment['filename'] === $filename) {
+                    $attachmentData = $attachment;
+                    break;
+                } elseif (is_string($attachment) && basename($attachment) === $filename) {
+                    $attachmentData = ['path' => $attachment, 'name' => $filename];
+                    break;
+                }
+            }
+
+            if (!$attachmentData) {
+                return $this->errorResponse('Attachment file not found');
+            }
+
+            $filePath = $attachmentData['path'] ?? $attachmentData;
+
+            // Clean the path and make it relative to storage
+            $filePath = ltrim($filePath, '/');
+            if (!str_starts_with($filePath, 'storage/')) {
+                $filePath = 'storage/' . $filePath;
+            }
+
+            $fullPath = public_path($filePath);
+
+            if (!file_exists($fullPath)) {
+                return $this->errorResponse('File not found on server');
+            }
+
+            $originalName = $attachmentData['name'] ?? $filename;
+            $mimeType = $attachmentData['mime_type'] ?? mime_content_type($fullPath);
+
+            if ($action === 'view') {
+                // Return file for viewing in browser
+                return response()->file($fullPath, [
+                    'Content-Type' => $mimeType,
+                    'Content-Disposition' => 'inline; filename="' . $originalName . '"'
+                ]);
+            } else {
+                // Return file for download
+                return response()->download($fullPath, $originalName, [
+                    'Content-Type' => $mimeType,
+                ]);
+            }
+        } catch (\Exception $e) {
+            return $this->errorResponse('Error accessing file: ' . $e->getMessage());
         }
     }
 

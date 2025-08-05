@@ -192,7 +192,7 @@ class AssignmentService extends BaseService
     public function getAssignmentWithOptimizedSubmissions($assignmentId)
     {
         $schoolId = $this->getSchoolId();
-        
+
         // Get assignment with basic relations
         $assignment = Assignment::where('school_id', $schoolId)
             ->with([
@@ -340,8 +340,8 @@ class AssignmentService extends BaseService
     public function getStudentSubmission($assignmentId, $studentId)
     {
         return AssignmentSubmission::whereHas('assignment', function ($query) {
-                $query->where('school_id', $this->getSchoolId());
-            })
+            $query->where('school_id', $this->getSchoolId());
+        })
             ->where('assignment_id', $assignmentId)
             ->where('student_id', $studentId)
             ->with(['assignment', 'student'])

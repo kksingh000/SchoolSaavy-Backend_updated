@@ -21,6 +21,9 @@ class AssignmentSubmissionLightResource extends JsonResource
             'is_late_submission' => $this->is_late_submission,
             'is_late' => $this->is_late,
             'can_be_graded' => $this->canBeGraded(),
+            'has_content' => !empty($this->content),
+            'has_attachments' => !empty($this->attachments),
+            'attachment_count' => $this->getAttachmentCount(),
 
             // Student data (lightweight)
             'student' => $this->when($this->relationLoaded('student'), function () {
@@ -32,5 +35,21 @@ class AssignmentSubmissionLightResource extends JsonResource
                 ];
             }),
         ];
+    }
+
+    /**
+     * Get the number of attachments without loading full data
+     */
+    private function getAttachmentCount(): int
+    {
+        if (!$this->attachments || empty($this->attachments)) {
+            return 0;
+        }
+
+        if (is_array($this->attachments)) {
+            return count($this->attachments);
+        }
+
+        return 0;
     }
 }

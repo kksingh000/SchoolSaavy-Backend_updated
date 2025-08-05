@@ -12,7 +12,7 @@ class AssignmentSubmissionResource extends JsonResource
         return [
             'id' => $this->id,
             'content' => $this->content,
-            'attachments' => $this->attachments,
+            'attachments' => $this->formatAttachments(),
             'status' => $this->status,
             'submission_status' => $this->submission_status,
             'submitted_at' => $this->submitted_at?->format('Y-m-d H:i:s'),
@@ -59,5 +59,68 @@ class AssignmentSubmissionResource extends JsonResource
                 ];
             }),
         ];
+    }
+
+    /**
+     * Format attachments to include downloadable URLs and metadata
+     */
+    private function formatAttachments()
+    {
+        if (!$this->attachments || empty($this->attachments)) {
+            return [];
+        }
+
+        // If attachments is already an array with proper structure, return as is
+        if (is_array($this->attachments) && isset($this->attachments[0]['url'])) {
+            return collect($this->attachments)->map(function ($attachment) {
+                $baseUrl = url('/api');
+                $downloadUrl = $baseUrl . '/assignment-submissions/' . $this->id . '/download?filename=' . urlencode($attachment['filename'] ?? '');
+                $viewUrl = $baseUrl . '/assignment-submissions/' . $this->id . '/download?filename=' . urlencode($attachment['filename'] ?? '') . '&action=view';
+
+                return [
+                    'name' => $attachment['name'] ?? 'Unknown',
+                    'filename' => $attachment['filename'] ?? $attachment['name'] ?? 'unknown',
+                    'url' => $attachment['url'] ?? null,
+                    'download_url' => $downloadUrl,
+                    'view_url' => $viewUrl,
+                    'path' => $attachment['path'] ?? null,
+                    'type' => $attachment['type'] ?? null,
+                    'mime_type' => $attachment['mime_type'] ?? null,
+                    'size' => $attachment['size'] ?? null,
+                    'size_human' => $attachment['size_human'] ?? null,
+                    'uploaded_at' => $attachment['uploaded_at'] ?? null,
+                ];
+            })->toArray();
+        }
+
+        // Handle legacy format (if attachments contains just file paths or names)
+        if (is_array($this->attachments)) {
+            return collect($this->attachments)->map(function ($attachment) {
+                $baseUrl = url('/api');
+                if (is_string($attachment)) {
+                    // Simple string file path/name
+                    $filename = basename($attachment);
+                    $downloadUrl = $baseUrl . '/assignment-submissions/' . $this->id . '/download?filename=' . urlencode($filename);
+                    $viewUrl = $baseUrl . '/assignment-submissions/' . $this->id . '/download?filename=' . urlencode($filename) . '&action=view';
+
+                    return [
+                        'name' => $filename,
+                        'filename' => $filename,
+                        'url' => asset('storage/' . ltrim($attachment, '/')),
+                        'download_url' => $downloadUrl,
+                        'view_url' => $viewUrl,
+                        'path' => $attachment,
+                        'type' => pathinfo($attachment, PATHINFO_EXTENSION),
+                        'mime_type' => null,
+                        'size' => null,
+                        'size_human' => null,
+                        'uploaded_at' => $this->created_at?->toISOString(),
+                    ];
+                }
+                return $attachment;
+            })->toArray();
+        }
+
+        return [];
     }
 }

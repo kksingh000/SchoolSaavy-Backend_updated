@@ -167,6 +167,7 @@ Route::middleware('json.response')->group(function () {
         // Assignment Submission Routes
         Route::prefix('assignment-submissions')->group(function () {
             Route::post('{submissionId}/grade', [AssignmentController::class, 'gradeSubmission']);
+            Route::get('{submissionId}/download', [AssignmentController::class, 'downloadSubmissionAttachment']);
         });
 
         // File Upload Routes (Generic for all modules)
