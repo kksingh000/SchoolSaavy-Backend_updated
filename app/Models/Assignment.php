@@ -156,6 +156,30 @@ class Assignment extends Model
             ($this->allow_late_submission || $this->due_date >= Carbon::today());
     }
 
+    /**
+     * Check if this assignment requires numerical marks for grading
+     * Some assignment types like homework might only need feedback
+     */
+    public function requiresNumericalMarks()
+    {
+        // Define which assignment types require numerical marks
+        $typesRequiringMarks = ['quiz', 'assessment', 'project'];
+
+        // Also check if max_marks is set - if set, marks are expected
+        return in_array($this->type, $typesRequiringMarks) || !is_null($this->max_marks);
+    }
+
+    /**
+     * Check if this assignment allows feedback-only grading
+     */
+    public function allowsFeedbackOnlyGrading()
+    {
+        // Homework and classwork can be graded with feedback only
+        $feedbackOnlyTypes = ['homework', 'classwork'];
+
+        return in_array($this->type, $feedbackOnlyTypes) && is_null($this->max_marks);
+    }
+
     public function createSubmissionsForClass()
     {
         $students = $this->class->activeStudents;

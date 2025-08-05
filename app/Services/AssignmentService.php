@@ -317,20 +317,89 @@ class AssignmentService extends BaseService
         return DB::transaction(function () use ($submissionId, $data) {
             $submission = AssignmentSubmission::whereHas('assignment', function ($query) {
                 $query->where('school_id', $this->getSchoolId());
-            })->findOrFail($submissionId);
+            })->with('assignment')->findOrFail($submissionId);
 
             if (!$submission->canBeGraded()) {
                 throw new \Exception('Submission cannot be graded.');
             }
 
-            $submission->grade(
-                $data['marks_obtained'],
-                $data['teacher_feedback'] ?? null,
-                $data['grading_details'] ?? null,
-                $this->getTeacherId()
-            );
+            $assignment = $submission->assignment;
+            $marksObtained = $data['marks_obtained'] ?? null;
+            $feedback = $data['teacher_feedback'] ?? null;
+            $gradingDetails = $data['grading_details'] ?? null;
+
+            // Validate based on assignment requirements
+            if ($assignment->requiresNumericalMarks()) {
+                // This assignment type requires numerical marks
+                if (is_null($marksObtained)) {
+                    throw new \Exception("This {$assignment->type} assignment requires numerical marks for grading.");
+                }
+
+                // Validate marks against assignment max_marks
+                if ($assignment->max_marks && $marksObtained > $assignment->max_marks) {
+                    throw new \Exception("Marks obtained ({$marksObtained}) cannot exceed maximum marks ({$assignment->max_marks}).");
+                }
+
+                if ($marksObtained < 0) {
+                    throw new \Exception("Marks obtained cannot be negative.");
+                }
+            } else {
+                // For assignments that allow feedback-only grading
+                if (is_null($marksObtained) && empty($feedback)) {
+                    throw new \Exception("Either marks or teacher feedback must be provided for grading.");
+                }
+
+                // If marks are provided, validate them
+                if (!is_null($marksObtained)) {
+                    if ($assignment->max_marks && $marksObtained > $assignment->max_marks) {
+                        throw new \Exception("Marks obtained ({$marksObtained}) cannot exceed maximum marks ({$assignment->max_marks}).");
+                    }
+
+                    if ($marksObtained < 0) {
+                        throw new \Exception("Marks obtained cannot be negative.");
+                    }
+                }
+            }
+
+            // Grade the submission
+            if (!is_null($marksObtained)) {
+                // Numerical grading
+                $submission->grade(
+                    $marksObtained,
+                    $feedback,
+                    $gradingDetails,
+                    $this->getTeacherId()
+                );
+            } else {
+                // Feedback-only grading
+                $submission->gradeWithFeedbackOnly(
+                    $feedback,
+                    $gradingDetails,
+                    $this->getTeacherId()
+                );
+            }
 
             return $submission->load(['assignment', 'student', 'gradedBy.user']);
+        });
+    }
+
+    /**
+     * Return assignment submission for revision
+     */
+    public function returnSubmissionForRevision($submissionId, $feedback)
+    {
+        return DB::transaction(function () use ($submissionId, $feedback) {
+            $submission = AssignmentSubmission::whereHas('assignment', function ($query) {
+                $query->where('school_id', $this->getSchoolId());
+            })->findOrFail($submissionId);
+
+            if (!$submission->canBeGraded()) {
+                throw new \Exception('Submission cannot be returned for revision.');
+            }
+
+            $submission->returnForRevision($feedback);
+
+            return $submission->load(['assignment', 'student']);
         });
     }
 

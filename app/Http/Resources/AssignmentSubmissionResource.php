@@ -26,6 +26,7 @@ class AssignmentSubmissionResource extends JsonResource
             'is_late' => $this->is_late,
             'can_be_edited' => $this->canBeEdited(),
             'can_be_graded' => $this->canBeGraded(),
+            'can_be_returned' => $this->canBeGraded(), // Same logic as grading
             'created_at' => $this->created_at->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at->format('Y-m-d H:i:s'),
 

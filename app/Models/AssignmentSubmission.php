@@ -140,10 +140,26 @@ class AssignmentSubmission extends Model
         ]);
     }
 
-    public function grade($marks, $feedback = null, $gradingDetails = null, $gradedBy = null)
+    public function grade($marks = null, $feedback = null, $gradingDetails = null, $gradedBy = null)
     {
+        // For assignments that only need feedback (like homework), marks can be null
         $this->update([
             'marks_obtained' => $marks,
+            'teacher_feedback' => $feedback,
+            'grading_details' => $gradingDetails,
+            'status' => 'graded',
+            'graded_at' => now(),
+            'graded_by' => $gradedBy,
+        ]);
+    }
+
+    /**
+     * Grade submission with feedback only (no numerical marks)
+     */
+    public function gradeWithFeedbackOnly($feedback, $gradingDetails = null, $gradedBy = null)
+    {
+        $this->update([
+            'marks_obtained' => null,
             'teacher_feedback' => $feedback,
             'grading_details' => $gradingDetails,
             'status' => 'graded',

@@ -276,16 +276,49 @@ class AssignmentController extends BaseController
 
         try {
             $validated = $request->validate([
-                'marks_obtained' => 'required|numeric|min:0',
-                'teacher_feedback' => 'nullable|string',
+                'marks_obtained' => 'nullable|numeric|min:0',
+                'teacher_feedback' => 'nullable|string|max:2000',
                 'grading_details' => 'nullable|array',
             ]);
+
+            // Custom validation: Either marks or feedback must be provided
+            if (is_null($validated['marks_obtained']) && empty($validated['teacher_feedback'])) {
+                return $this->errorResponse('Either marks or teacher feedback must be provided for grading.');
+            }
 
             $submission = $this->assignmentService->gradeSubmission($submissionId, $validated);
 
             return $this->successResponse(
                 new AssignmentSubmissionResource($submission),
                 'Assignment graded successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Return assignment submission for revision
+     */
+    public function returnSubmissionForRevision(Request $request, $submissionId): JsonResponse
+    {
+        if (!$this->checkModuleAccess('assignment-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $validated = $request->validate([
+                'teacher_feedback' => 'required|string|max:1000',
+            ]);
+
+            $submission = $this->assignmentService->returnSubmissionForRevision(
+                $submissionId,
+                $validated['teacher_feedback']
+            );
+
+            return $this->successResponse(
+                new AssignmentSubmissionResource($submission),
+                'Assignment returned for revision successfully'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
