@@ -78,7 +78,7 @@ class AssignmentController extends BaseController
                 'assigned_date' => 'required|date',
                 'due_date' => 'required|date|after_or_equal:assigned_date',
                 'due_time' => 'nullable|date_format:H:i',
-                'max_marks' => 'required|integer|min:1|max:1000',
+                'max_marks' => 'nullable|integer|min:1|max:1000',
                 'attachments' => 'nullable|array',
                 'allow_late_submission' => 'boolean',
                 'grading_criteria' => 'nullable|string',
@@ -138,7 +138,7 @@ class AssignmentController extends BaseController
                 'assigned_date' => 'date',
                 'due_date' => 'date|after_or_equal:assigned_date',
                 'due_time' => 'nullable|date_format:H:i',
-                'max_marks' => 'integer|min:1|max:1000',
+                'max_marks' => 'nullable|integer|min:1|max:1000',
                 'attachments' => 'nullable|array',
                 'allow_late_submission' => 'boolean',
                 'grading_criteria' => 'nullable|string',
@@ -271,21 +271,25 @@ class AssignmentController extends BaseController
      */
     private function getTeacherDashboardMetrics($teacherId, $schoolId): array
     {
-        // 1. Total Classes
-        $totalClasses = DB::table('class_teacher')
-            ->join('classes', 'class_teacher.class_id', '=', 'classes.id')
-            ->where('class_teacher.teacher_id', $teacherId)
-            ->where('classes.school_id', $schoolId)
+        // 1. Total Classes (where teacher is class teacher)
+        $totalClasses = DB::table('classes')
+            ->where('class_teacher_id', $teacherId)
+            ->where('school_id', $schoolId)
+            ->where('is_active', true)
             ->count();
 
-        // 2. Total Students (across all teacher's classes)
+        // 2. Total Students (across all teacher's classes) - OPTIMIZED
         $totalStudents = DB::table('class_student')
-            ->join('class_teacher', 'class_student.class_id', '=', 'class_teacher.class_id')
-            ->join('students', 'class_student.student_id', '=', 'students.id')
-            ->where('class_teacher.teacher_id', $teacherId)
-            ->where('students.school_id', $schoolId)
-            ->distinct('students.id')
-            ->count('students.id');
+            ->whereIn('class_id', function ($query) use ($teacherId, $schoolId) {
+                $query->select('id')
+                    ->from('classes')
+                    ->where('class_teacher_id', $teacherId)
+                    ->where('school_id', $schoolId)
+                    ->where('is_active', true);
+            })
+            ->where('is_active', true)
+            ->distinct('student_id')
+            ->count('student_id');
 
         // 3. Total Assignments (created by this teacher)
         $totalAssignments = Assignment::where('teacher_id', $teacherId)
@@ -406,6 +410,47 @@ class AssignmentController extends BaseController
             return $this->successResponse(
                 $overview,
                 'Assignment submission overview retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get assignments by class ID with submission statistics (OPTIMIZED)
+     */
+    public function getByClassOptimized($classId, Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('assignment-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $startTime = microtime(true);
+
+            // Get filters from request
+            $filters = [
+                'status' => $request->input('status'), // Removed default 'published' - now shows all by default
+                'type' => $request->input('type'),
+                'search' => $request->input('search'),
+                'per_page' => $request->input('per_page', 15)
+            ];
+
+            // Use service method for business logic
+            $result = $this->assignmentService->getAssignmentsByClassOptimized(
+                $classId,
+                $filters,
+                $request->school_id
+            );
+
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+
+            // Add execution time to meta
+            $result['meta']['execution_time_ms'] = $executionTime;
+
+            return $this->successResponse(
+                $result,
+                'Class assignments retrieved successfully'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());

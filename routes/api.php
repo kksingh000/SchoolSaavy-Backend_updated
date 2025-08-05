@@ -94,6 +94,7 @@ Route::middleware('json.response')->group(function () {
 
         // Class Management Routes
         Route::get('classes/teachers-classes', [ClassController::class, 'myClasses']);
+        Route::get('classes/my-classes-simple', [ClassController::class, 'getMyClassesSimplified']);
         Route::apiResource('classes', ClassController::class);
         Route::post('classes/{id}/assign-students', [ClassController::class, 'assignStudents']);
         Route::get('classes/{id}/students', [ClassController::class, 'getStudents']);
@@ -153,6 +154,7 @@ Route::middleware('json.response')->group(function () {
             Route::get('teacher-dashboard', [AssignmentController::class, 'teacherDashboard']);
             Route::get('type/{type}', [AssignmentController::class, 'byType']);
             Route::get('class/{classId}/upcoming', [AssignmentController::class, 'upcomingByClass']);
+            Route::get('class/{classId}', [AssignmentController::class, 'getByClassOptimized']);
             Route::get('student/{studentId}', [AssignmentController::class, 'studentAssignments']);
             Route::get('{id}', [AssignmentController::class, 'show']);
             Route::get('{id}/submission-overview', [AssignmentController::class, 'getSubmissionOverview']);

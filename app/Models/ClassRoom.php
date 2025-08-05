@@ -67,7 +67,7 @@ class ClassRoom extends Model
 
     public function subjects()
     {
-        return $this->belongsToMany(Subject::class, 'class_subject', 'class_id', 'subject_id')
+        return $this->belongsToMany(\App\Models\Subject::class, 'class_subject', 'class_id', 'subject_id')
             ->withTimestamps();
     }
 }

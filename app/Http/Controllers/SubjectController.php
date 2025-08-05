@@ -3,12 +3,20 @@
 namespace App\Http\Controllers;
 
 use App\Models\Subject;
+use App\Services\ClassService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 
 class SubjectController extends BaseController
 {
+    protected $classService;
+
+    public function __construct(ClassService $classService)
+    {
+        $this->classService = $classService;
+    }
+
     public function index(): JsonResponse
     {
         try {
@@ -128,13 +136,7 @@ class SubjectController extends BaseController
     public function getByClass($classId): JsonResponse
     {
         try {
-            $schoolId = Auth::user()->getSchoolId();
-
-            // Verify the class belongs to the school
-            $class = \App\Models\ClassRoom::where('school_id', $schoolId)
-                ->findOrFail($classId);
-
-            $subjects = $class->subjects;
+            $subjects = $this->classService->getClassSubjects($classId);
 
             return $this->successResponse(
                 $subjects,

@@ -282,10 +282,10 @@ class ClassController extends BaseController
         }
 
         try {
-            $class = ClassRoom::with('subjects')->findOrFail($id);
+            $subjects = $this->classService->getClassSubjects($id);
 
             return $this->successResponse(
-                $class->subjects,
+                $subjects,
                 'Class subjects retrieved successfully'
             );
         } catch (\Exception $e) {
@@ -305,13 +305,76 @@ class ClassController extends BaseController
                 'subject_ids.*' => 'exists:subjects,id'
             ]);
 
-            $class = ClassRoom::findOrFail($id);
-            $class->subjects()->sync($request->subject_ids);
+            $class = $this->classService->assignSubjects($id, $request->subject_ids);
 
             return $this->successResponse(
-                $class->load('subjects'),
+                $class,
                 'Subjects assigned to class successfully'
             );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get simplified list of classes for authenticated teacher (ID and Title only)
+     */
+    public function getMyClassesSimplified(Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('class-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $startTime = microtime(true);
+            $user = Auth::user();
+
+            // Check if user is a teacher
+            if ($user->user_type !== 'teacher') {
+                return $this->errorResponse('This endpoint is only available for teachers.', null, 403);
+            }
+
+            // Get teacher ID from the user's teacher relationship
+            $teacher = $user->teacher;
+            if (!$teacher) {
+                return $this->errorResponse('Teacher profile not found.', null, 404);
+            }
+
+            // Get classes where user is the class teacher OR teaches any subject - OPTIMIZED for minimal data
+            $classes = ClassRoom::where('school_id', $request->school_id)
+                ->where('is_active', true)
+                ->where(function ($query) use ($teacher) {
+                    // Class teacher condition
+                    $query->where('class_teacher_id', $teacher->id)
+                        // OR subject teacher condition
+                        ->orWhereExists(function ($subQuery) use ($teacher) {
+                            $subQuery->select(DB::raw(1))
+                                ->from('class_schedules')
+                                ->whereColumn('class_schedules.class_id', 'classes.id')
+                                ->where('class_schedules.teacher_id', $teacher->id)
+                                ->where('class_schedules.is_active', true);
+                        });
+                })
+                ->select(['id', 'name', 'section'])
+                ->orderBy('name')
+                ->orderBy('section')
+                ->get()
+                ->map(function ($class) {
+                    return [
+                        'id' => $class->id,
+                        'title' => $class->name . ' ' . $class->section
+                    ];
+                });
+
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+
+            return $this->successResponse([
+                'classes' => $classes,
+                'meta' => [
+                    'total_classes' => $classes->count(),
+                    'execution_time_ms' => $executionTime,
+                ]
+            ], 'Teacher classes retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
         }

@@ -22,7 +22,24 @@ class AssignmentService extends BaseService
      */
     private function getSchoolId()
     {
-        return Auth::user()->getSchoolId();
+        $user = Auth::user();
+
+        if (!$user) {
+            return null;
+        }
+
+        // Get school ID based on user type
+        switch ($user->user_type) {
+            case 'admin':
+            case 'school_admin':
+                return $user->schoolAdmin?->school_id;
+            case 'teacher':
+                return $user->teacher?->school_id;
+            case 'parent':
+                return $user->parent?->students?->first()?->school_id;
+            default:
+                return null;
+        }
     }
 
     /**
@@ -433,6 +450,137 @@ class AssignmentService extends BaseService
                 'grading_rate' => $submittedCount > 0 ? round(($gradedCount / $submittedCount) * 100, 2) : 0,
             ],
             'students' => $studentOverview,
+        ];
+    }
+
+    /**
+     * Get assignments by class ID with submission statistics - OPTIMIZED
+     */
+    public function getAssignmentsByClassOptimized($classId, array $filters = [], $schoolId = null)
+    {
+        $status = $filters['status'] ?? null; // Changed: no default status filter, show all by default
+        $type = $filters['type'] ?? null;
+        $search = $filters['search'] ?? null;
+        $perPage = $filters['per_page'] ?? 15;
+
+        // Single optimized query to get total active students in class
+        $totalStudents = DB::table('class_student')
+            ->where('class_id', $classId)
+            ->where('is_active', true)
+            ->count();
+
+        // Build optimized query with all data in one go using joins
+        $query = Assignment::select([
+            'assignments.id',
+            'assignments.title',
+            'assignments.description',
+            'assignments.type',
+            'assignments.status',
+            'assignments.due_date',
+            'assignments.due_time',
+            'assignments.max_marks',
+            'assignments.allow_late_submission',
+            'assignments.created_at',
+            'subjects.id as subject_id',
+            'subjects.name as subject_name',
+            'teachers.id as teacher_id',
+            'users.name as teacher_name',
+            // Get submission counts using efficient aggregation
+            DB::raw('COALESCE(submission_stats.submitted_count, 0) as submitted_count'),
+            DB::raw('COALESCE(submission_stats.graded_count, 0) as graded_count')
+        ])
+            ->leftJoin('subjects', 'assignments.subject_id', '=', 'subjects.id')
+            ->leftJoin('teachers', 'assignments.teacher_id', '=', 'teachers.id')
+            ->leftJoin('users', 'teachers.user_id', '=', 'users.id')
+            ->leftJoin(DB::raw('(
+            SELECT 
+                assignment_id,
+                COUNT(*) as submitted_count,
+                COUNT(CASE WHEN status = "graded" THEN 1 END) as graded_count
+            FROM assignment_submissions 
+            WHERE status IN ("submitted", "graded")
+            GROUP BY assignment_id
+        ) as submission_stats'), 'assignments.id', '=', 'submission_stats.assignment_id')
+            ->where('assignments.class_id', $classId);
+
+        // Add school filter if provided
+        if ($schoolId) {
+            $query->where('assignments.school_id', $schoolId);
+        }
+
+        // Apply additional filters
+        if ($status) {
+            $query->where('assignments.status', $status);
+        }
+
+        if ($type) {
+            $query->where('assignments.type', $type);
+        }
+
+        if ($search) {
+            $query->where(function ($q) use ($search) {
+                $q->where('assignments.title', 'like', "%{$search}%")
+                    ->orWhere('assignments.description', 'like', "%{$search}%");
+            });
+        }
+
+        // Order by status (published first), then by due date (upcoming first)
+        $query->orderByRaw("CASE WHEN assignments.status = 'published' THEN 1 ELSE 2 END")
+            ->orderBy('assignments.due_date', 'asc')
+            ->orderBy('assignments.created_at', 'desc');
+
+        $assignments = $query->paginate($perPage);
+
+        // Transform the data efficiently without additional queries
+        $transformedAssignments = $assignments->getCollection()->map(function ($assignment) use ($totalStudents) {
+            $submittedCount = (int) $assignment->submitted_count;
+            $gradedCount = (int) $assignment->graded_count;
+
+            $submissionRate = $totalStudents > 0 ? round(($submittedCount / $totalStudents) * 100, 1) : 0;
+            $gradingRate = $submittedCount > 0 ? round(($gradedCount / $submittedCount) * 100, 1) : 0;
+
+            $dueDate = Carbon::parse($assignment->due_date);
+            $now = now()->startOfDay();
+
+            return [
+                'id' => $assignment->id,
+                'title' => $assignment->title,
+                'description' => $assignment->description,
+                'type' => $assignment->type,
+                'status' => $assignment->status,
+                'due_date' => $dueDate->format('Y-m-d'),
+                'due_time' => $assignment->due_time ? Carbon::parse($assignment->due_time)->format('H:i') : null,
+                'max_marks' => $assignment->max_marks,
+                'allow_late_submission' => (bool) $assignment->allow_late_submission,
+                'created_at' => Carbon::parse($assignment->created_at)->format('Y-m-d H:i:s'),
+                'subject' => [
+                    'id' => $assignment->subject_id,
+                    'name' => $assignment->subject_name,
+                ],
+                'teacher' => [
+                    'id' => $assignment->teacher_id,
+                    'name' => $assignment->teacher_name,
+                ],
+                'submission_stats' => [
+                    'total_students' => $totalStudents,
+                    'submitted_count' => $submittedCount,
+                    'graded_count' => $gradedCount,
+                    'pending_count' => $totalStudents - $submittedCount,
+                    'submission_rate' => $submissionRate,
+                    'grading_rate' => $gradingRate,
+                ],
+                'is_overdue' => $dueDate->lt($now),
+                'days_until_due' => $now->diffInDays($dueDate, false),
+            ];
+        });
+
+        $assignments->setCollection($transformedAssignments);
+
+        return [
+            'assignments' => $assignments,
+            'meta' => [
+                'total_students_in_class' => $totalStudents,
+            ]
         ];
     }
 }

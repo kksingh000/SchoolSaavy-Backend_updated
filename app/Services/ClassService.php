@@ -270,4 +270,68 @@ class ClassService extends BaseService
             return $classArray;
         });
     }
+
+    /**
+     * Get subjects for a specific class
+     */
+    public function getClassSubjects($classId)
+    {
+        $schoolId = Auth::user()->getSchoolId();
+
+        // Single optimized query with only necessary fields
+        $class = ClassRoom::where('school_id', $schoolId)
+            ->where('id', $classId)
+            ->with(['subjects' => function ($query) {
+                $query->select(['subjects.id', 'subjects.name', 'subjects.code', 'subjects.description'])
+                    ->where('subjects.is_active', true)
+                    ->orderBy('subjects.name');
+            }])
+            ->first(['id', 'name', 'section']);
+
+        if (!$class) {
+            throw new \Exception('Class not found or access denied');
+        }
+
+        return $class->subjects;
+    }
+
+    /**
+     * Assign subjects to a class
+     */
+    public function assignSubjects($classId, $subjectIds)
+    {
+        DB::beginTransaction();
+        try {
+            $schoolId = Auth::user()->getSchoolId();
+
+            // Verify class belongs to school
+            $class = ClassRoom::where('school_id', $schoolId)
+                ->findOrFail($classId);
+
+            // Verify all subjects belong to the same school
+            $validSubjects = \App\Models\Subject::whereIn('id', $subjectIds)
+                ->where('school_id', $schoolId)
+                ->where('is_active', true)
+                ->pluck('id')
+                ->toArray();
+
+            if (count($validSubjects) !== count($subjectIds)) {
+                throw new \Exception('Some subjects do not belong to your school or are inactive');
+            }
+
+            // Sync subjects to class
+            $class->subjects()->sync($validSubjects);
+
+            DB::commit();
+
+            // Return class with subjects
+            return $class->load(['subjects' => function ($query) {
+                $query->select(['subjects.id', 'subjects.name', 'subjects.code'])
+                    ->orderBy('subjects.name');
+            }]);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
 }
