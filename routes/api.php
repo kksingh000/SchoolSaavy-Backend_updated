@@ -158,6 +158,7 @@ Route::middleware('json.response')->group(function () {
             Route::get('student/{studentId}', [AssignmentController::class, 'studentAssignments']);
             Route::get('{id}', [AssignmentController::class, 'show']);
             Route::get('{id}/submission-overview', [AssignmentController::class, 'getSubmissionOverview']);
+            Route::get('{assignmentId}/student/{studentId}/submission', [AssignmentController::class, 'getSubmissionDetail']);
             Route::put('{id}', [AssignmentController::class, 'update']);
             Route::delete('{id}', [AssignmentController::class, 'destroy']);
             Route::post('{id}/submit', [AssignmentController::class, 'submit']);

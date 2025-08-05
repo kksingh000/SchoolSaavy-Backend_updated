@@ -187,6 +187,95 @@ class AssignmentService extends BaseService
     }
 
     /**
+     * Get assignment with optimized submission data (lightweight)
+     */
+    public function getAssignmentWithOptimizedSubmissions($assignmentId)
+    {
+        $schoolId = $this->getSchoolId();
+        
+        // Get assignment with basic relations
+        $assignment = Assignment::where('school_id', $schoolId)
+            ->with([
+                'teacher.user:id,name,email',
+                'class:id,name,section,grade_level',
+                'subject:id,name,code'
+            ])
+            ->findOrFail($assignmentId);
+
+        // Get total students count in the class
+        $totalStudents = DB::table('class_student')
+            ->where('class_id', $assignment->class_id)
+            ->where('is_active', true)
+            ->count();
+
+        // Get submission statistics with single query
+        $submissionStats = DB::table('assignment_submissions')
+            ->where('assignment_id', $assignmentId)
+            ->selectRaw('
+                COUNT(*) as total_submissions,
+                SUM(CASE WHEN status != "pending" THEN 1 ELSE 0 END) as submitted_count,
+                SUM(CASE WHEN status = "graded" THEN 1 ELSE 0 END) as graded_count,
+                AVG(CASE WHEN marks_obtained IS NOT NULL THEN marks_obtained ELSE NULL END) as avg_marks
+            ')
+            ->first();
+
+        $submittedCount = $submissionStats->submitted_count ?? 0;
+        $pendingCount = $totalStudents - $submittedCount;
+
+        // Get lightweight submission data using Eloquent for computed attributes
+        $submissions = AssignmentSubmission::where('assignment_id', $assignmentId)
+            ->with(['student:id,first_name,last_name,admission_number,roll_number'])
+            ->select([
+                'id',
+                'student_id',
+                'status',
+                'submitted_at',
+                'marks_obtained',
+                'graded_at',
+                'is_late_submission',
+                'assignment_id' // Need this for computed attributes
+            ])
+            ->orderBy('submitted_at', 'desc')
+            ->get()
+            ->map(function ($submission) {
+                return [
+                    'id' => $submission->id,
+                    'student_id' => $submission->student_id,
+                    'status' => $submission->status,
+                    'submission_status' => $submission->submission_status, // Computed attribute
+                    'submitted_at' => $submission->submitted_at?->format('Y-m-d H:i:s'),
+                    'marks_obtained' => $submission->marks_obtained,
+                    'grade_percentage' => $submission->grade_percentage, // Computed attribute
+                    'grade_letter' => $submission->grade_letter, // Computed attribute
+                    'graded_at' => $submission->graded_at?->format('Y-m-d H:i:s'),
+                    'is_late_submission' => $submission->is_late_submission,
+                    'is_late' => $submission->is_late, // Computed attribute
+                    'student' => [
+                        'id' => $submission->student->id,
+                        'name' => $submission->student->first_name . ' ' . $submission->student->last_name,
+                        'admission_number' => $submission->student->admission_number,
+                        'roll_number' => $submission->student->roll_number,
+                    ]
+                ];
+            });
+
+        // Add computed attributes to assignment
+        $assignment->submission_statistics = [
+            'total_students' => $totalStudents,
+            'submitted_count' => $submittedCount,
+            'pending_count' => $pendingCount,
+            'graded_count' => $submissionStats->graded_count ?? 0,
+            'submission_rate' => $totalStudents > 0 ? round(($submittedCount / $totalStudents) * 100, 2) : 0,
+            'grading_progress' => $submittedCount > 0 ? round((($submissionStats->graded_count ?? 0) / $submittedCount) * 100, 2) : 0,
+            'average_marks' => $submissionStats->avg_marks ? round($submissionStats->avg_marks, 2) : null,
+        ];
+
+        $assignment->lightweight_submissions = $submissions;
+
+        return $assignment;
+    }
+
+    /**
      * Submit assignment by student
      */
     public function submitAssignment($assignmentId, $studentId, $data)
@@ -243,6 +332,20 @@ class AssignmentService extends BaseService
 
             return $submission->load(['assignment', 'student', 'gradedBy.user']);
         });
+    }
+
+    /**
+     * Get student submission for specific assignment
+     */
+    public function getStudentSubmission($assignmentId, $studentId)
+    {
+        return AssignmentSubmission::whereHas('assignment', function ($query) {
+                $query->where('school_id', $this->getSchoolId());
+            })
+            ->where('assignment_id', $assignmentId)
+            ->where('student_id', $studentId)
+            ->with(['assignment', 'student'])
+            ->first();
     }
 
     /**

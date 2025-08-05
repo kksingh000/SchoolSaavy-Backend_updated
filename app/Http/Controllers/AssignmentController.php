@@ -97,7 +97,7 @@ class AssignmentController extends BaseController
     }
 
     /**
-     * Get specific assignment
+     * Get specific assignment with optimized submission data
      */
     public function show($id): JsonResponse
     {
@@ -106,10 +106,72 @@ class AssignmentController extends BaseController
         }
 
         try {
-            $assignment = $this->assignmentService->getAssignmentWithSubmissions($id);
+            $startTime = microtime(true);
+            
+            // Use optimized method for better performance
+            $assignment = $this->assignmentService->getAssignmentWithOptimizedSubmissions($id);
+
+            $executionTime = round((microtime(true) - $startTime) * 1000, 2);
+
+            // Prepare response data
+            $responseData = [
+                'assignment' => [
+                    'id' => $assignment->id,
+                    'title' => $assignment->title,
+                    'description' => $assignment->description,
+                    'instructions' => $assignment->instructions,
+                    'type' => $assignment->type,
+                    'status' => $assignment->status,
+                    'assigned_date' => $assignment->assigned_date->format('Y-m-d'),
+                    'due_date' => $assignment->due_date->format('Y-m-d'),
+                    'due_time' => $assignment->due_time ? $assignment->due_time->format('H:i') : null,
+                    'max_marks' => $assignment->max_marks,
+                    'attachments' => $assignment->attachments,
+                    'allow_late_submission' => $assignment->allow_late_submission,
+                    'grading_criteria' => $assignment->grading_criteria,
+                    'is_active' => $assignment->is_active,
+                    'is_overdue' => $assignment->is_overdue,
+                    'days_until_due' => $assignment->days_until_due,
+                    'can_be_edited' => $assignment->canBeEdited(),
+                    'can_be_deleted' => $assignment->canBeDeleted(),
+                    'can_accept_submissions' => $assignment->canAcceptSubmissions(),
+                    'created_at' => $assignment->created_at->format('Y-m-d H:i:s'),
+                    'updated_at' => $assignment->updated_at->format('Y-m-d H:i:s'),
+
+                    // Related data
+                    'teacher' => [
+                        'id' => $assignment->teacher->id,
+                        'name' => $assignment->teacher->user->name,
+                        'email' => $assignment->teacher->user->email,
+                    ],
+                    'class' => [
+                        'id' => $assignment->class->id,
+                        'name' => $assignment->class->name,
+                        'section' => $assignment->class->section,
+                        'grade_level' => $assignment->class->grade_level,
+                    ],
+                    'subject' => [
+                        'id' => $assignment->subject->id,
+                        'name' => $assignment->subject->name,
+                        'code' => $assignment->subject->code,
+                    ],
+                ],
+
+                // Optimized submission statistics
+                'submission_statistics' => $assignment->submission_statistics,
+
+                // Lightweight submissions (no content field for performance)
+                'submissions' => $assignment->lightweight_submissions,
+
+                // Performance metadata
+                'meta' => [
+                    'execution_time_ms' => $executionTime,
+                    'total_submissions' => $assignment->lightweight_submissions->count(),
+                ]
+            ];
 
             return $this->successResponse(
-                new AssignmentResource($assignment),
+                $responseData,
                 'Assignment retrieved successfully'
             );
         } catch (\Exception $e) {
@@ -224,6 +286,32 @@ class AssignmentController extends BaseController
             return $this->successResponse(
                 new AssignmentSubmissionResource($submission),
                 'Assignment graded successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get detailed submission by student ID and assignment ID
+     * This endpoint fetches full submission content and attachments
+     */
+    public function getSubmissionDetail($assignmentId, $studentId): JsonResponse
+    {
+        if (!$this->checkModuleAccess('assignment-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $submission = $this->assignmentService->getStudentSubmission($assignmentId, $studentId);
+
+            if (!$submission) {
+                return $this->errorResponse('Submission not found', 404);
+            }
+
+            return $this->successResponse(
+                new AssignmentSubmissionResource($submission),
+                'Submission details retrieved successfully'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
