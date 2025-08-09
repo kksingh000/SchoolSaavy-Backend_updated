@@ -665,10 +665,25 @@ class GalleryService
     {
         // Add thumbnail photos array with full URLs
         $album->thumbnail_photos = $album->media->map(function ($media) {
+            // Check if file_path is already a complete URL
+            $isExternalUrl = filter_var($media->file_path, FILTER_VALIDATE_URL);
+
+            // For complete URLs, use as-is. For local paths, add asset() wrapper
+            $url = $isExternalUrl ? $media->file_path : asset('storage/' . $media->file_path);
+
+            // Same logic for thumbnail
+            $thumbnailUrl = null;
+            if ($media->thumbnail_path) {
+                $isThumbnailExternal = filter_var($media->thumbnail_path, FILTER_VALIDATE_URL);
+                $thumbnailUrl = $isThumbnailExternal ? $media->thumbnail_path : asset('storage/' . $media->thumbnail_path);
+            } else {
+                $thumbnailUrl = $url; // Use main URL as thumbnail if no separate thumbnail
+            }
+
             return [
                 'id' => $media->id,
-                'url' => asset('storage/' . $media->file_path),
-                'thumbnail_url' => $media->thumbnail_path ? asset('storage/' . $media->thumbnail_path) : asset('storage/' . $media->file_path),
+                'url' => $url,
+                'thumbnail_url' => $thumbnailUrl,
                 'title' => $media->title,
             ];
         });
