@@ -17,6 +17,7 @@ use App\Http\Controllers\StudentPerformanceController;
 use App\Http\Controllers\AssessmentTypeController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentResultController;
+use App\Http\Controllers\GalleryController;
 
 /*
 |--------------------------------------------------------------------------
@@ -232,6 +233,27 @@ Route::middleware('json.response')->group(function () {
             Route::patch('{id}/publish', [AssessmentResultController::class, 'publish']);
             Route::get('student/{studentId}', [AssessmentResultController::class, 'getStudentResults']);
             Route::get('student/{studentId}/subject/{subjectId}', [AssessmentResultController::class, 'getStudentSubjectResults']);
+        });
+
+        Route::prefix('gallery')->group(function () {
+            // Get classes and events (smart endpoints - simple list or paginated based on query params)
+            Route::get('classes', [GalleryController::class, 'getClasses']);
+            Route::get('events', [GalleryController::class, 'getEvents']);
+
+            // Gallery statistics
+            Route::get('stats', [GalleryController::class, 'getStats']);
+
+            // Gallery albums
+            Route::get('/', [GalleryController::class, 'index']);
+            Route::post('/', [GalleryController::class, 'store']);
+            Route::get('{id}', [GalleryController::class, 'show']);
+            Route::put('{id}', [GalleryController::class, 'update']);
+            Route::delete('{id}', [GalleryController::class, 'destroy']);
+
+            // Media management
+            Route::get('{albumId}/media', [GalleryController::class, 'getAlbumMedia']);
+            Route::post('{albumId}/media', [GalleryController::class, 'addMedia']);
+            Route::delete('{albumId}/media/{mediaId}', [GalleryController::class, 'deleteMedia']);
         });
     });
 });

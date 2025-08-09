@@ -22,6 +22,7 @@ class DatabaseSeeder extends Seeder
             AssessmentSeeder::class,
             AssessmentResultSeeder::class,
             CambridgeSchoolSeeder::class, // Comprehensive test data for Cambridge International School
+            GallerySeeder::class, // Gallery dummy data with public URLs
         ]);
     }
 }

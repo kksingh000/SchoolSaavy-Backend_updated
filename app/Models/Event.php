@@ -70,6 +70,11 @@ class Event extends Model
             ->withTimestamps();
     }
 
+    public function galleryAlbums()
+    {
+        return $this->hasMany(GalleryAlbum::class, 'event_id');
+    }
+
     public function affectedClasses()
     {
         if (empty($this->affected_classes)) {

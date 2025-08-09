@@ -187,6 +187,24 @@ class ModuleSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 11,
             ],
+            [
+                'name' => 'Gallery Management',
+                'slug' => 'gallery-management',
+                'description' => 'School photo and video gallery for events and class activities',
+                'monthly_price' => 20.00,
+                'yearly_price' => 200.00,
+                'features' => [
+                    'Photo & Video Upload',
+                    'Event-based Albums',
+                    'Class-specific Galleries',
+                    'Bulk Media Upload',
+                    'Media Organization & Tagging',
+                    'Download & Sharing',
+                    'Storage Management'
+                ],
+                'is_active' => true,
+                'sort_order' => 12,
+            ],
         ];
 
         foreach ($modules as $module) {

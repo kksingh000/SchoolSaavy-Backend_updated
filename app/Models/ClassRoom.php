@@ -70,4 +70,9 @@ class ClassRoom extends Model
         return $this->belongsToMany(\App\Models\Subject::class, 'class_subject', 'class_id', 'subject_id')
             ->withTimestamps();
     }
+
+    public function galleryAlbums()
+    {
+        return $this->hasMany(GalleryAlbum::class, 'class_id');
+    }
 }
