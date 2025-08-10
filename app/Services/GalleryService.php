@@ -345,6 +345,13 @@ class GalleryService
             $query->where('event_id', $request->event_id);
         }
 
+        // Filter by event type (e.g., holiday, announcement, etc.)
+        if ($request->filled('event_type')) {
+            $query->whereHas('event', function ($q) use ($request) {
+                $q->where('type', $request->event_type);
+            });
+        }
+
         // Filter by status
         if ($request->filled('status')) {
             $query->where('status', $request->status);
