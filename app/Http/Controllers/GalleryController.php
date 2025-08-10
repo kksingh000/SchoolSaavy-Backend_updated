@@ -103,7 +103,7 @@ class GalleryController extends Controller
     public function update(UpdateGalleryAlbumRequest $request, $id)
     {
         try {
-            $schoolId = Auth::user()->school_id;
+            $schoolId = $request->school_id;
             $data = $request->validated();
 
             $album = $this->galleryService->updateAlbum($id, $data, $schoolId);
@@ -128,7 +128,7 @@ class GalleryController extends Controller
     public function destroy($id)
     {
         try {
-            $schoolId = Auth::user()->school_id;
+            $schoolId = request()->school_id;
 
             $this->galleryService->deleteAlbum($id, $schoolId);
 
@@ -151,11 +151,10 @@ class GalleryController extends Controller
     public function addMedia(AddGalleryMediaRequest $request, $albumId)
     {
         try {
-            $schoolId = Auth::user()->school_id;
+            $schoolId = $request->school_id;
             $data = $request->validated();
             // Get media files metadata from the validated data instead of file uploads
             $mediaFiles = $data['media_files'] ?? [];
-
             $uploadedMedia = $this->galleryService->addMediaToAlbum($albumId, $mediaFiles, $schoolId);
 
             return response()->json([
@@ -178,7 +177,7 @@ class GalleryController extends Controller
     public function deleteMedia($albumId, $mediaId)
     {
         try {
-            $schoolId = Auth::user()->school_id;
+            $schoolId = request()->school_id;
 
             $this->galleryService->deleteMediaFromAlbum($albumId, $mediaId, $schoolId);
 
@@ -244,7 +243,7 @@ class GalleryController extends Controller
     public function getAlbumMedia(Request $request, $albumId)
     {
         try {
-            $schoolId = Auth::user()->school_id;
+            $schoolId = $request->school_id;
             $perPage = min($request->get('per_page', 20), 100); // Max 100 media per page
 
             $media = $this->galleryService->getAlbumMedia($albumId, $schoolId, $perPage);
@@ -268,7 +267,7 @@ class GalleryController extends Controller
     public function getStats()
     {
         try {
-            $schoolId = Auth::user()->school_id;
+            $schoolId = request()->school_id;
             $stats = $this->galleryService->getGalleryStats($schoolId);
 
             return response()->json([
