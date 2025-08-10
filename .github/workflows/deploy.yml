@@ -8,6 +8,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    environment: production  # This tells GitHub Actions to use environment secrets
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
