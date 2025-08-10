@@ -55,8 +55,8 @@ class GalleryController extends Controller
             $userId = Auth::id();
 
             $data = $request->validated();
-            $mediaFiles = $request->file('media_files');
-
+            // Get media files metadata from the validated data instead of file uploads
+            $mediaFiles = $data['media_files'] ?? [];
             $result = $this->galleryService->createAlbum($data, $mediaFiles, $schoolId, $userId);
 
             return response()->json([
@@ -152,7 +152,9 @@ class GalleryController extends Controller
     {
         try {
             $schoolId = Auth::user()->school_id;
-            $mediaFiles = $request->file('media_files');
+            $data = $request->validated();
+            // Get media files metadata from the validated data instead of file uploads
+            $mediaFiles = $data['media_files'] ?? [];
 
             $uploadedMedia = $this->galleryService->addMediaToAlbum($albumId, $mediaFiles, $schoolId);
 

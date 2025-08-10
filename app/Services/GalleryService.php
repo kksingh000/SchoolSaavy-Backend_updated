@@ -81,19 +81,26 @@ class GalleryService
                 'is_public' => $data['is_public'] ?? true,
                 'status' => 'active',
             ]);
-
-            // Upload and process media files
+            // Process media files metadata
             $uploadedMedia = $this->processMediaFiles($mediaFiles, $album);
-
-            // Update album media count and set cover image
-            $album->update([
-                'media_count' => count($uploadedMedia),
-                'cover_image' => $uploadedMedia[0]['file_path'] ?? null,
-            ]);
+            // Update album media count and set cover image if media was uploaded
+            if (!empty($uploadedMedia)) {
+                $firstMedia = $uploadedMedia[0];
+                $album->update([
+                    'media_count' => count($uploadedMedia),
+                    'cover_image' => $firstMedia->file_path ?? null,
+                ]);
+            } else {
+                Log::error('No media was processed for album', [
+                    'album_id' => $album->id,
+                    'media_count' => count($mediaFiles)
+                ]);
+            }
 
             return [
                 'album' => $album->load(['class', 'event', 'creator']),
                 'media' => $uploadedMedia,
+                'media_count' => count($uploadedMedia)
             ];
         });
     }
@@ -137,7 +144,7 @@ class GalleryService
     }
 
     /**
-     * Add media files to existing album
+     * Add media files or metadata to existing album
      */
     public function addMediaToAlbum(int $albumId, array $mediaFiles, int $schoolId)
     {
@@ -145,10 +152,25 @@ class GalleryService
 
         return DB::transaction(function () use ($album, $mediaFiles) {
             $nextSortOrder = $album->media()->max('sort_order') + 1;
+
+            // Log the media files for debugging
+            Log::info('Adding media to album', [
+                'album_id' => $album->id,
+                'media_count' => count($mediaFiles),
+                'first_media_type' => !empty($mediaFiles) ? (is_array($mediaFiles[0]) ? 'metadata' : 'file') : 'none'
+            ]);
+
             $uploadedMedia = $this->processMediaFiles($mediaFiles, $album, $nextSortOrder);
 
-            // Update album media count
-            $album->increment('media_count', count($uploadedMedia));
+            // Update album media count only if media was added
+            if (!empty($uploadedMedia)) {
+                $album->increment('media_count', count($uploadedMedia));
+            } else {
+                Log::warning('No media was processed for album during add media operation', [
+                    'album_id' => $album->id,
+                    'media_files_count' => count($mediaFiles)
+                ]);
+            }
 
             return $uploadedMedia;
         });
@@ -382,18 +404,30 @@ class GalleryService
     }
 
     /**
-     * Process and upload multiple media files
+     * Process and upload multiple media files or metadata
      */
     private function processMediaFiles(array $mediaFiles, GalleryAlbum $album, int $startSortOrder = 1)
     {
         $uploadedMedia = [];
         $sortOrder = $startSortOrder;
 
+        // Log the media files count for debugging
+        Log::info('Processing media files', [
+            'count' => count($mediaFiles),
+            'album_id' => $album->id,
+            'first_item_type' => !empty($mediaFiles) ? (is_array($mediaFiles[0]) ? 'array (metadata)' : 'object (file)') : 'none'
+        ]);
+
         foreach ($mediaFiles as $file) {
             $mediaData = $this->uploadMediaFile($file, $album, $sortOrder);
             if ($mediaData) {
                 $uploadedMedia[] = $mediaData;
                 $sortOrder++;
+            } else {
+                Log::warning('Failed to process media file', [
+                    'album_id' => $album->id,
+                    'file_data' => is_array($file) ? json_encode($file) : 'file_upload'
+                ]);
             }
         }
 
@@ -401,69 +435,42 @@ class GalleryService
     }
 
     /**
-     * Upload and process a single media file
+     * Process a single media file or metadata and create database record
      */
-    private function uploadMediaFile($file, GalleryAlbum $album, int $sortOrder)
+    private function uploadMediaFile($fileMetadata, GalleryAlbum $album, int $sortOrder)
     {
+        $originalName = $fileMetadata['original_name'];
+        $mimeType = $fileMetadata['mime_type'] ?? 'application/octet-stream';
+        $fileSize = $fileMetadata['file_size'] ?? 0;
+        $filePath = $fileMetadata['file_path'];
+        $type = $fileMetadata['type'] ?? (str_starts_with($mimeType, 'image/') ? 'photo' : 'video');
         try {
-            $originalName = $file->getClientOriginalName();
-            $mimeType = $file->getMimeType();
-            $fileSize = $file->getSize();
-
-            // Determine media type
-            $type = str_starts_with($mimeType, 'image/') ? 'photo' : 'video';
-
-            // Generate unique filename
-            $extension = $file->getClientOriginalExtension();
-            $filename = Str::uuid() . '.' . $extension;
-
-            // Create S3 directory structure: schoolId/galleryAlbumId
-            $directory = "{$album->school_id}/{$album->id}";
-            $filePath = "{$directory}/{$filename}";
-
-            // Get the gallery disk (S3)
-            $galleryDisk = config('filesystems.gallery_disk', 's3');
-
-            // Store the file in S3
-            $stored = Storage::disk('s3')->putFileAs($directory, $file, $filename);
-
-            if (!$stored) {
-                throw new \Exception('Failed to upload file to S3');
-            }
-
-            // Create thumbnail for images
-            $thumbnailPath = null;
-            if ($type === 'photo') {
-                $thumbnailPath = $this->createImageThumbnailS3($file, $album, $filename, $galleryDisk);
-            }
-
-            // Get the full S3 URL for the uploaded file (store the relative path, URL will be generated on access)
-            $s3Path = $stored; // This is the relative path returned by putFileAs
-
-            // Create media record with auto-generated title
-            $autoTitle = $type === 'photo' ? "Photo {$sortOrder}" : "Video {$sortOrder}";
-
+            // Create media record
             $media = GalleryMedia::create([
                 'album_id' => $album->id,
-                'uploaded_by' => Auth::id(),
-                'type' => $type,
-                'title' => $autoTitle,
-                'description' => null, // No individual descriptions needed
-                'file_path' => $s3Path, // Store the S3 relative path
+                'file_path' => $filePath,
                 'file_name' => $originalName,
                 'mime_type' => $mimeType,
                 'file_size' => $fileSize,
-                'thumbnail_path' => $thumbnailPath,
+                'type' => $type,
                 'sort_order' => $sortOrder,
+                'uploaded_by' => auth()->id(),
                 'status' => 'active',
             ]);
 
-            // For S3, we'll skip metadata extraction as it requires local file access
-            // You can implement S3-compatible metadata extraction if needed
-
+            Log::info('Media record created successfully', [
+                'media_id' => $media->id,
+                'album_id' => $album->id,
+                'file_path' => $filePath
+            ]);
             return $media;
         } catch (\Exception $e) {
-            Log::error($e);
+            Log::error('Failed to process media file', [
+                'error' => $e->getMessage(),
+                'album_id' => $album->id,
+                'file_data' => is_array($fileMetadata) ? json_encode($fileMetadata) : 'file_upload',
+                'stack_trace' => $e->getTraceAsString()
+            ]);
             return null;
         }
     }
