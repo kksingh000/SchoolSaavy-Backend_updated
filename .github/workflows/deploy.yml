@@ -8,7 +8,6 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: production  # This tells GitHub Actions to use environment secrets
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -36,7 +35,7 @@ jobs:
 
       - name: Run database migrations
         run: |
-          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /var/www/schoolsaavy && php artisan migrate"
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} "cd /var/www/schoolsaavy && php artisan migrate --force"
 
       - name: Clear cache (optional)
         run: |
