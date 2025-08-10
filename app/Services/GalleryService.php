@@ -345,6 +345,19 @@ class GalleryService
             ->active()
             ->ordered()
             ->paginate($mediaPerPage);
+        // Normalize URLs (cover image + each media item)
+
+        if ($album->cover_image) {
+            $album->cover_image = $this->buildFileUrl($album->cover_image);
+        }
+        // update links
+        $media->getCollection()->transform(function ($item) {
+            $item->file_path = $this->buildFileUrl($item->file_path);
+            $item->thumbnail_path = $item->file_path;
+            return $item;
+        });
+
+        // Keep media collection raw (DB values) without adding file_url/thumbnail_url
 
         return [
             'album' => $album,
@@ -753,6 +766,19 @@ class GalleryService
     public function getGalleryStats(int $schoolId)
     {
         $stats = Cache::remember("school_{$schoolId}_gallery_stats", 1800, function () use ($schoolId) { // 30 minutes
+            $galleryDisk = config('filesystems.gallery_disk', 's3');
+            $recent = GalleryAlbum::where('school_id', $schoolId)
+                ->with(['class', 'event'])
+                ->orderBy('created_at', 'desc')
+                ->limit(5)
+                ->get(['id', 'title', 'media_count', 'cover_image', 'created_at', 'class_id', 'event_id']);
+            // Normalize cover images
+            $recent->transform(function ($album) {
+                if ($album->cover_image) {
+                    $album->cover_image = $this->buildFileUrl($album->cover_image);
+                }
+                return $album;
+            });
             return [
                 'total_albums' => GalleryAlbum::where('school_id', $schoolId)->count(),
                 'total_photos' => GalleryMedia::whereHas('album', function ($query) use ($schoolId) {
@@ -761,11 +787,7 @@ class GalleryService
                 'total_videos' => GalleryMedia::whereHas('album', function ($query) use ($schoolId) {
                     $query->where('school_id', $schoolId);
                 })->where('type', 'video')->count(),
-                'recent_albums' => GalleryAlbum::where('school_id', $schoolId)
-                    ->with(['class', 'event'])
-                    ->orderBy('created_at', 'desc')
-                    ->limit(5)
-                    ->get(['id', 'title', 'media_count', 'cover_image', 'created_at', 'class_id', 'event_id']),
+                'recent_albums' => $recent,
                 'storage_used' => GalleryMedia::whereHas('album', function ($query) use ($schoolId) {
                     $query->where('school_id', $schoolId);
                 })->sum('file_size'),
@@ -841,69 +863,42 @@ class GalleryService
      */
     private function formatAlbumWithPhotos($album)
     {
-        $galleryDisk = config('filesystems.gallery_disk', 's3');
+        if (isset($album->cover_image) && $album->cover_image) {
+            $album->cover_image = $this->buildFileUrl($album->cover_image);
+        }
 
-        // Add thumbnail photos array with full URLs
-        $album->thumbnail_photos = $album->media->map(function ($media) use ($galleryDisk) {
-            // Check if file_path is already a complete URL
-            $isExternalUrl = filter_var($media->file_path, FILTER_VALIDATE_URL);
-
-            if ($isExternalUrl) {
-                // Already a complete URL (S3 or external)
-                $url = $media->file_path;
-            } else {
-                // Relative path - generate URL based on storage disk
-                if ($galleryDisk === 's3') {
-                    try {
-                        // For S3, manually construct the URL
-                        $bucket = config('filesystems.disks.s3.bucket');
-                        $region = config('filesystems.disks.s3.region');
-                        $url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$media->file_path}";
-                    } catch (\Exception $e) {
-                        // Fallback to local storage
-                        $url = asset('storage/' . $media->file_path);
-                    }
-                } else {
-                    $url = asset('storage/' . $media->file_path);
-                }
-            }
-
-            // Same logic for thumbnail
-            $thumbnailUrl = null;
-            if ($media->thumbnail_path) {
-                $isThumbnailExternal = filter_var($media->thumbnail_path, FILTER_VALIDATE_URL);
-
-                if ($isThumbnailExternal) {
-                    $thumbnailUrl = $media->thumbnail_path;
-                } else {
-                    if ($galleryDisk === 's3') {
-                        try {
-                            // For S3, manually construct the URL
-                            $bucket = config('filesystems.disks.s3.bucket');
-                            $region = config('filesystems.disks.s3.region');
-                            $thumbnailUrl = "https://{$bucket}.s3.{$region}.amazonaws.com/{$media->thumbnail_path}";
-                        } catch (\Exception $e) {
-                            $thumbnailUrl = asset('storage/' . $media->thumbnail_path);
-                        }
-                    } else {
-                        $thumbnailUrl = asset('storage/' . $media->thumbnail_path);
-                    }
-                }
-            } else {
-                $thumbnailUrl = $url; // Use main URL as thumbnail if no separate thumbnail
-            }
-
+        $album->thumbnail_photos = $album->media->map(function ($media) {
+            $full = $this->buildFileUrl($media->file_path);
+            $thumb = $media->thumbnail_path ? $this->buildFileUrl($media->thumbnail_path) : $full;
             return [
                 'id' => $media->id,
-                'url' => $url,
-                'thumbnail_url' => $thumbnailUrl,
+                'url' => $full,
+                'thumbnail_url' => $thumb,
                 'title' => $media->title,
             ];
         });
 
-        // Remove the media relation to avoid confusion
         unset($album->media);
-
         return $album;
+    }
+
+    /**
+     * Build a full accessible URL for a stored file path (handles S3 or local, leaves absolute URLs untouched)
+     */
+    private function buildFileUrl(?string $path): ?string
+    {
+        $url = config('upload.media_url');
+        if (!$path) {
+            return null;
+        }
+
+        // Already an absolute URL
+        if (filter_var($path, FILTER_VALIDATE_URL)) {
+            return $path;
+        }
+
+        // lets append media_url
+        $url .= '/' . ltrim($path, '/');
+        return $url;
     }
 }

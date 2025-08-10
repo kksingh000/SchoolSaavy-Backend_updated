@@ -39,5 +39,6 @@ return [
     ],
 
     // Storage configuration
-    'storage_disk' => env('UPLOAD_DISK', 's3')
+    'storage_disk' => env('UPLOAD_DISK', 's3'),
+    'media_url' => env('MEDIA_URL', 'https://schoolsaavy.s3.ap-south-1.amazonaws.com')
 ];
