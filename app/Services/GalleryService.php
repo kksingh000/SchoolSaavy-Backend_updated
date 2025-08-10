@@ -417,17 +417,28 @@ class GalleryService
             $extension = $file->getClientOriginalExtension();
             $filename = Str::uuid() . '.' . $extension;
 
-            // Create directory structure
-            $directory = "gallery/{$album->school_id}/{$album->id}";
+            // Create S3 directory structure: schoolId/galleryAlbumId
+            $directory = "{$album->school_id}/{$album->id}";
+            $filePath = "{$directory}/{$filename}";
 
-            // Store the file
-            $filePath = $file->storeAs($directory, $filename, 'public');
+            // Get the gallery disk (S3)
+            $galleryDisk = config('filesystems.gallery_disk', 's3');
+
+            // Store the file in S3
+            $stored = Storage::disk('s3')->putFileAs($directory, $file, $filename);
+
+            if (!$stored) {
+                throw new \Exception('Failed to upload file to S3');
+            }
 
             // Create thumbnail for images
             $thumbnailPath = null;
             if ($type === 'photo') {
-                $thumbnailPath = $this->createImageThumbnail($filePath);
+                $thumbnailPath = $this->createImageThumbnailS3($file, $album, $filename, $galleryDisk);
             }
+
+            // Get the full S3 URL for the uploaded file (store the relative path, URL will be generated on access)
+            $s3Path = $stored; // This is the relative path returned by putFileAs
 
             // Create media record with auto-generated title
             $autoTitle = $type === 'photo' ? "Photo {$sortOrder}" : "Video {$sortOrder}";
@@ -438,7 +449,7 @@ class GalleryService
                 'type' => $type,
                 'title' => $autoTitle,
                 'description' => null, // No individual descriptions needed
-                'file_path' => $filePath,
+                'file_path' => $s3Path, // Store the S3 relative path
                 'file_name' => $originalName,
                 'mime_type' => $mimeType,
                 'file_size' => $fileSize,
@@ -447,12 +458,129 @@ class GalleryService
                 'status' => 'active',
             ]);
 
-            // Extract metadata
-            $media->extractMetadata();
+            // For S3, we'll skip metadata extraction as it requires local file access
+            // You can implement S3-compatible metadata extraction if needed
 
             return $media;
         } catch (\Exception $e) {
-            Log::error('Failed to upload media file: ' . $e->getMessage());
+            Log::error($e);
+            return null;
+        }
+    }
+
+    /**
+     * Create thumbnail for image uploaded to S3
+     */
+    private function createImageThumbnailS3($file, GalleryAlbum $album, $filename, $galleryDisk)
+    {
+        try {
+            // For S3, we'll create thumbnail locally first, then upload it
+            $tempPath = sys_get_temp_dir() . '/' . $filename;
+            $file->move(sys_get_temp_dir(), $filename);
+
+            // Check if it's a valid image
+            $imageInfo = getimagesize($tempPath);
+            if ($imageInfo === false) {
+                unlink($tempPath);
+                return null;
+            }
+
+            $width = $imageInfo[0];
+            $height = $imageInfo[1];
+            $type = $imageInfo[2];
+
+            // Calculate thumbnail dimensions
+            $thumbWidth = 300;
+            $thumbHeight = 300;
+
+            if ($width > $height) {
+                $thumbHeight = ($height / $width) * $thumbWidth;
+            } else {
+                $thumbWidth = ($width / $height) * $thumbHeight;
+            }
+
+            // Create image resource based on type
+            $source = null;
+            switch ($type) {
+                case IMAGETYPE_JPEG:
+                    $source = imagecreatefromjpeg($tempPath);
+                    break;
+                case IMAGETYPE_PNG:
+                    $source = imagecreatefrompng($tempPath);
+                    break;
+                case IMAGETYPE_GIF:
+                    $source = imagecreatefromgif($tempPath);
+                    break;
+                default:
+                    unlink($tempPath);
+                    return null;
+            }
+
+            if (!$source) {
+                unlink($tempPath);
+                return null;
+            }
+
+            // Create thumbnail
+            $thumbnail = imagecreatetruecolor($thumbWidth, $thumbHeight);
+
+            // Preserve transparency for PNG and GIF
+            if ($type == IMAGETYPE_PNG || $type == IMAGETYPE_GIF) {
+                imagealphablending($thumbnail, false);
+                imagesavealpha($thumbnail, true);
+                $transparent = imagecolorallocatealpha($thumbnail, 255, 255, 255, 127);
+                imagefill($thumbnail, 0, 0, $transparent);
+            }
+
+            // Resize image
+            imagecopyresampled($thumbnail, $source, 0, 0, 0, 0, $thumbWidth, $thumbHeight, $width, $height);
+
+            // Create temporary thumbnail file
+            $thumbnailTempPath = sys_get_temp_dir() . '/thumb_' . $filename;
+
+            // Save thumbnail based on original type
+            $success = false;
+            switch ($type) {
+                case IMAGETYPE_JPEG:
+                    $success = imagejpeg($thumbnail, $thumbnailTempPath, 85);
+                    break;
+                case IMAGETYPE_PNG:
+                    $success = imagepng($thumbnail, $thumbnailTempPath, 8);
+                    break;
+                case IMAGETYPE_GIF:
+                    $success = imagegif($thumbnail, $thumbnailTempPath);
+                    break;
+            }
+
+            // Clean up memory
+            imagedestroy($source);
+            imagedestroy($thumbnail);
+            unlink($tempPath);
+
+            if (!$success) {
+                if (file_exists($thumbnailTempPath)) {
+                    unlink($thumbnailTempPath);
+                }
+                return null;
+            }
+
+            // Upload thumbnail to S3
+            $thumbnailFilename = 'thumb_' . $filename;
+            $thumbnailDirectory = "{$album->school_id}/{$album->id}";
+
+            $thumbnailUploaded = Storage::disk($galleryDisk)->putFileAs(
+                $thumbnailDirectory,
+                new \Illuminate\Http\File($thumbnailTempPath),
+                $thumbnailFilename,
+                'public'
+            );
+
+            // Clean up temporary thumbnail file
+            unlink($thumbnailTempPath);
+
+            return $thumbnailUploaded ?: null;
+        } catch (\Exception $e) {
+            Log::error('Failed to create S3 thumbnail: ' . $e->getMessage());
             return null;
         }
     }
@@ -462,13 +590,49 @@ class GalleryService
      */
     private function deleteMediaFile(GalleryMedia $media)
     {
-        // Delete physical files
-        if ($media->file_path && Storage::disk('public')->exists($media->file_path)) {
-            Storage::disk('public')->delete($media->file_path);
+        $galleryDisk = config('filesystems.gallery_disk', 's3');
+
+        // Delete physical files from S3 or local storage
+        if ($media->file_path) {
+            // Check if it's a URL (S3) or local path
+            $isUrl = filter_var($media->file_path, FILTER_VALIDATE_URL);
+
+            if ($isUrl) {
+                // For S3 URLs, extract the path
+                $parsedUrl = parse_url($media->file_path);
+                $s3Path = ltrim($parsedUrl['path'], '/');
+                if (Storage::disk($galleryDisk)->exists($s3Path)) {
+                    Storage::disk($galleryDisk)->delete($s3Path);
+                }
+            } else {
+                // For relative paths, try both disks
+                if (Storage::disk($galleryDisk)->exists($media->file_path)) {
+                    Storage::disk($galleryDisk)->delete($media->file_path);
+                } elseif (Storage::disk('public')->exists($media->file_path)) {
+                    Storage::disk('public')->delete($media->file_path);
+                }
+            }
         }
 
-        if ($media->thumbnail_path && Storage::disk('public')->exists($media->thumbnail_path)) {
-            Storage::disk('public')->delete($media->thumbnail_path);
+        if ($media->thumbnail_path) {
+            // Check if it's a URL (S3) or local path
+            $isUrl = filter_var($media->thumbnail_path, FILTER_VALIDATE_URL);
+
+            if ($isUrl) {
+                // For S3 URLs, extract the path
+                $parsedUrl = parse_url($media->thumbnail_path);
+                $s3Path = ltrim($parsedUrl['path'], '/');
+                if (Storage::disk($galleryDisk)->exists($s3Path)) {
+                    Storage::disk($galleryDisk)->delete($s3Path);
+                }
+            } else {
+                // For relative paths, try both disks
+                if (Storage::disk($galleryDisk)->exists($media->thumbnail_path)) {
+                    Storage::disk($galleryDisk)->delete($media->thumbnail_path);
+                } elseif (Storage::disk('public')->exists($media->thumbnail_path)) {
+                    Storage::disk('public')->delete($media->thumbnail_path);
+                }
+            }
         }
 
         // Delete the record
@@ -670,19 +834,54 @@ class GalleryService
      */
     private function formatAlbumWithPhotos($album)
     {
+        $galleryDisk = config('filesystems.gallery_disk', 's3');
+
         // Add thumbnail photos array with full URLs
-        $album->thumbnail_photos = $album->media->map(function ($media) {
+        $album->thumbnail_photos = $album->media->map(function ($media) use ($galleryDisk) {
             // Check if file_path is already a complete URL
             $isExternalUrl = filter_var($media->file_path, FILTER_VALIDATE_URL);
 
-            // For complete URLs, use as-is. For local paths, add asset() wrapper
-            $url = $isExternalUrl ? $media->file_path : asset('storage/' . $media->file_path);
+            if ($isExternalUrl) {
+                // Already a complete URL (S3 or external)
+                $url = $media->file_path;
+            } else {
+                // Relative path - generate URL based on storage disk
+                if ($galleryDisk === 's3') {
+                    try {
+                        // For S3, manually construct the URL
+                        $bucket = config('filesystems.disks.s3.bucket');
+                        $region = config('filesystems.disks.s3.region');
+                        $url = "https://{$bucket}.s3.{$region}.amazonaws.com/{$media->file_path}";
+                    } catch (\Exception $e) {
+                        // Fallback to local storage
+                        $url = asset('storage/' . $media->file_path);
+                    }
+                } else {
+                    $url = asset('storage/' . $media->file_path);
+                }
+            }
 
             // Same logic for thumbnail
             $thumbnailUrl = null;
             if ($media->thumbnail_path) {
                 $isThumbnailExternal = filter_var($media->thumbnail_path, FILTER_VALIDATE_URL);
-                $thumbnailUrl = $isThumbnailExternal ? $media->thumbnail_path : asset('storage/' . $media->thumbnail_path);
+
+                if ($isThumbnailExternal) {
+                    $thumbnailUrl = $media->thumbnail_path;
+                } else {
+                    if ($galleryDisk === 's3') {
+                        try {
+                            // For S3, manually construct the URL
+                            $bucket = config('filesystems.disks.s3.bucket');
+                            $region = config('filesystems.disks.s3.region');
+                            $thumbnailUrl = "https://{$bucket}.s3.{$region}.amazonaws.com/{$media->thumbnail_path}";
+                        } catch (\Exception $e) {
+                            $thumbnailUrl = asset('storage/' . $media->thumbnail_path);
+                        }
+                    } else {
+                        $thumbnailUrl = asset('storage/' . $media->thumbnail_path);
+                    }
+                }
             } else {
                 $thumbnailUrl = $url; // Use main URL as thumbnail if no separate thumbnail
             }

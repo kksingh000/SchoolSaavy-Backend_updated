@@ -51,7 +51,7 @@ class GalleryController extends Controller
     public function store(StoreGalleryAlbumRequest $request)
     {
         try {
-            $schoolId = Auth::user()->school_id;
+            $schoolId = $request->school_id;
             $userId = Auth::id();
 
             $data = $request->validated();
