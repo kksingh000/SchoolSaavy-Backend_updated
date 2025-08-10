@@ -104,6 +104,60 @@ class EventService extends BaseService
         return $query->get();
     }
 
+    /**
+     * Paginate events with optional search and upcoming filter
+     */
+    public function paginateEvents(array $filters = [], int $perPage = 15)
+    {
+        $schoolId = Auth::user()->getSchoolId();
+        $query = Event::where('school_id', $schoolId)
+            ->published()
+            ->with(['creator', 'school']);
+
+        $upcoming = !empty($filters['upcoming_only']);
+        if ($upcoming) {
+            $query->whereDate('event_date', '>=', now()->toDateString());
+        }
+
+        // Filters (reuse logic similar to getUpcomingEvents)
+        if (!empty($filters['type'])) {
+            $query->byType($filters['type']);
+        }
+        if (!empty($filters['priority'])) {
+            $query->byPriority($filters['priority']);
+        }
+        if (!empty($filters['audience'])) {
+            $query->forAudience($filters['audience']);
+        }
+        if (!empty($filters['class_id'])) {
+            $query->forClass($filters['class_id']);
+        }
+        if (!empty($filters['date_from'])) {
+            $query->where('event_date', '>=', $filters['date_from']);
+        }
+        if (!empty($filters['date_to'])) {
+            $query->where('event_date', '<=', $filters['date_to']);
+        }
+
+        // Search
+        if (!empty($filters['search'])) {
+            $term = $filters['search'];
+            $query->where(function ($q) use ($term) {
+                $q->where('title', 'like', "%$term%")
+                    ->orWhere('description', 'like', "%$term%");
+            });
+        }
+
+        // Sorting
+        if ($upcoming) {
+            $query->orderBy('event_date')->orderBy('start_time');
+        } else {
+            $query->orderBy('event_date', 'desc')->orderBy('start_time', 'asc');
+        }
+
+        return $query->paginate($perPage);
+    }
+
     public function getTodaysEvents()
     {
         return Event::where('school_id', Auth::user()->getSchoolId())

@@ -37,14 +37,19 @@ class EventController extends BaseController
                 'upcoming_only'
             ]);
 
-            if ($request->upcoming_only) {
-                $events = $this->eventService->getUpcomingEvents($filters);
-            } else {
-                $events = $this->eventService->getAll($filters, ['creator', 'school']);
-            }
+            $perPage = min((int)$request->get('per_page', 15), 100);
+            $filters['upcoming_only'] = $request->boolean('upcoming_only');
+            $filters['search'] = $request->get('search');
+
+            $events = $this->eventService->paginateEvents($filters, $perPage);
+
+            // Wrap paginator items in resource collection while preserving pagination meta
+            $events->getCollection()->transform(function ($event) {
+                return new EventResource($event);
+            });
 
             return $this->successResponse(
-                EventResource::collection($events),
+                $events,
                 'Events retrieved successfully'
             );
         } catch (\Exception $e) {
