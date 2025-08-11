@@ -66,15 +66,12 @@ jobs:
       - name: Deploy to VPS
         run: |
           # Copy only Docker configuration and persistent data directories
-          rsync -avz \
+          rsync --exclude='.env' -avz \
             docker-compose.yml \
             docker/ \
             storage/ \
             public/ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
-          
-          # Ensure nginx.conf is copied as a file, not directory
-          scp docker/nginx/nginx.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/nginx/nginx.conf
 
       - name: Deploy with Docker Compose
         run: |
@@ -111,6 +108,12 @@ jobs:
             
             # Wait for services to be ready
             sleep 30
+            
+            # Debug: Check if .env file exists and app can start
+            echo "🔍 Debugging application startup..."
+            docker compose exec -T app ls -la /var/www/html/.env || echo "❌ .env file not found"
+            docker compose exec -T app php artisan --version || echo "❌ Laravel not working"
+            docker compose exec -T app php artisan config:show database.default || echo "❌ Database config issue"
             
             # Run database migrations
             docker compose exec -T app php artisan migrate --force || true
