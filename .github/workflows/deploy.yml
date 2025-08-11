@@ -65,19 +65,22 @@ jobs:
 
       - name: Deploy to VPS
         run: |
-          # Copy docker-compose and related files to VPS (exclude .env files)
-          rsync -avz --include='docker-compose.yml' \
-            --include='docker/' \
-            --include='storage/' \
-            --exclude='.env*' \
-            --exclude='*' \
-            ./ \
+          # Copy only Docker configuration and persistent data directories
+          rsync -avz \
+            docker-compose.yml \
+            docker/ \
+            storage/ \
+            public/ \
+            .rr.yaml \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
 
       - name: Deploy with Docker Compose
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd /var/www/schoolsaavy
+            
+            # Ensure required directories exist
+            mkdir -p docker/nginx storage/app/public storage/logs public
             
             # Log in to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
