@@ -11,7 +11,6 @@ services:
       - APP_ENV=production
     volumes:
       - ./storage:/var/www/html/storage
-      - ./.env.production:/var/www/html/.env:ro
     depends_on:
       - redis
       - db

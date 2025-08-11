@@ -1,6 +1,8 @@
+FROM ghcr.io/roadrunner-server/roadrunner:2024.X.X AS roadrunner
 # Quick Build Dockerfile for SchoolSavvy with RoadRunner
 FROM php:8.3-fpm-alpine
 
+COPY --from=roadrunner /usr/bin/rr /usr/local/bin/rr
 # Install system dependencies and basic PHP extensions
 RUN apk add --no-cache \
     git \
@@ -30,8 +32,6 @@ RUN apk add --no-cache \
     gd \
     zip \
     sockets \
-    # && pecl install redis \
-    # && docker-php-ext-enable redis \
     && rm -rf /var/cache/apk/*# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
@@ -42,16 +42,13 @@ WORKDIR /var/www/html
 COPY composer.json composer.lock ./
 
 # Install PHP dependencies
-# RUN composer install --no-dev --optimize-autoloader --no-scripts
-
-# Install RoadRunner via Composer
-# RUN ./vendor/bin/rr get-binary
+RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 # Copy custom PHP configuration
 COPY docker/php/php.ini /usr/local/etc/php/conf.d/99-custom.ini
 
 # Copy application code
-# COPY . .
+COPY . .
 
 # Copy RoadRunner configuration
 COPY .rr.yaml .
