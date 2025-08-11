@@ -1,7 +1,7 @@
 services:
   # Laravel Application with RoadRunner
   app:
-    image: ghcr.io/${GITHUB_REPOSITORY:-schoolsaavy/schoolsaavy-php}:latest
+    image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest
     container_name: schoolsavvy_app
     restart: unless-stopped
     command: php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
@@ -71,7 +71,7 @@ services:
 
   # Queue Worker
   queue:
-    image: ghcr.io/${GITHUB_REPOSITORY:-schoolsaavy/schoolsaavy-php}:latest
+    image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest
     container_name: schoolsavvy_queue
     restart: unless-stopped
     command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --timeout=300
@@ -95,7 +95,7 @@ services:
 
   # Scheduler (Cron jobs)
   scheduler:
-    image: ghcr.io/${GITHUB_REPOSITORY:-schoolsaavy/schoolsaavy-php}:latest
+    image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest
     container_name: schoolsavvy_scheduler
     restart: unless-stopped
     command: php artisan schedule:work

@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository }}
+  IMAGE_NAME: sunnybhadana/schoolsaavy-backend
 
 jobs:
   build-and-deploy:
@@ -83,7 +83,7 @@ jobs:
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
             # Update the image tag in docker-compose.yml
-            sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:latest|g" docker-compose.yml || true
+            sed -i "s|image: ghcr.io/sunnybhadana/schoolsaavy-backend:.*|image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest|g" docker-compose.yml || true
             
             # Pull the latest images
             docker compose pull
