@@ -1,4 +1,4 @@
-FROM ghcr.io/roadrunner-server/roadrunner:2024.X.X AS roadrunner
+FROM ghcr.io/roadrunner-server/roadrunner:2025.1.2 AS roadrunner
 # Quick Build Dockerfile for SchoolSavvy with RoadRunner
 FROM php:8.3-fpm-alpine
 
