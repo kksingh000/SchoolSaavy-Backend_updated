@@ -85,17 +85,69 @@ class GalleryMedia extends Model
 
     public function getThumbnailUrlAttribute()
     {
+        // If this is a photo/image, try to get the generated thumbnail
+        if ($this->type === 'photo' && $this->file_path) {
+            $thumbnailUrls = $this->getGeneratedThumbnailUrls();
+
+            // Return small thumbnail if available, otherwise medium, then large
+            if (!empty($thumbnailUrls['small'])) {
+                return $thumbnailUrls['small'];
+            } elseif (!empty($thumbnailUrls['medium'])) {
+                return $thumbnailUrls['medium'];
+            } elseif (!empty($thumbnailUrls['large'])) {
+                return $thumbnailUrls['large'];
+            }
+        }
+
+        // Fallback to the old thumbnail_path if it exists
         if ($this->thumbnail_path) {
             return Storage::url($this->thumbnail_path);
         }
 
-        // For photos, return the same URL
+        // For photos without thumbnails, return the original image
         if ($this->type === 'photo') {
             return $this->file_url;
         }
 
         // For videos without thumbnail, return a default
         return asset('images/video-placeholder.png');
+    }
+
+    /**
+     * Get all generated thumbnail URLs
+     */
+    public function getThumbnailUrlsAttribute()
+    {
+        if ($this->type === 'photo' && $this->file_path) {
+            return $this->getGeneratedThumbnailUrls();
+        }
+
+        return [];
+    }
+
+    /**
+     * Get generated thumbnail URLs for this media
+     */
+    private function getGeneratedThumbnailUrls(): array
+    {
+        if (!$this->file_path) {
+            return [];
+        }
+
+        $thumbnailUrls = [];
+        $pathInfo = pathinfo($this->file_path);
+        $directory = $pathInfo['dirname'];
+        $filename = $pathInfo['filename'];
+
+        // Define thumbnail sizes
+        $sizes = ['small' => 150, 'medium' => 300, 'large' => 600];
+
+        foreach ($sizes as $sizeName => $dimension) {
+            $thumbnailPath = $directory . '/thumbnails/' . $sizeName . '/' . $filename . '.jpg';
+            $thumbnailUrls[$sizeName] = config('upload.media_url') . $thumbnailPath;
+        }
+
+        return $thumbnailUrls;
     }
 
     public function getFileSizeFormattedAttribute()

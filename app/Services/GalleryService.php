@@ -353,7 +353,15 @@ class GalleryService
         // update links
         $media->getCollection()->transform(function ($item) {
             $item->file_path = $this->buildFileUrl($item->file_path);
-            $item->thumbnail_path = $item->file_path;
+
+            // Generate thumbnail URLs without checking existence
+            if ($item->type === 'photo' && $item->file_path) {
+                $thumbnails = $this->getGeneratedThumbnailUrls($item->file_path);
+                $item->thumbnail_path = $thumbnails['small'] ?? $thumbnails['medium'] ?? $thumbnails['large'] ?? $item->file_path;
+            } else {
+                $item->thumbnail_path = $item->file_path;
+            }
+
             return $item;
         });
 
@@ -869,12 +877,26 @@ class GalleryService
 
         $album->thumbnail_photos = $album->media->map(function ($media) {
             $full = $this->buildFileUrl($media->file_path);
-            $thumb = $media->thumbnail_path ? $this->buildFileUrl($media->thumbnail_path) : $full;
+
+            // Get generated thumbnail URLs for images (without checking existence)
+            $thumbnails = [];
+            if ($media->type === 'photo' && $media->file_path) {
+                $thumbnails = $this->getGeneratedThumbnailUrls($media->file_path);
+            }
+
+            // Determine the best thumbnail URL (prefer small, then medium, then large, then original)
+            $thumb = $thumbnails['small'] ??
+                $thumbnails['medium'] ??
+                $thumbnails['large'] ??
+                ($media->thumbnail_path ? $this->buildFileUrl($media->thumbnail_path) : $full);
+
             return [
                 'id' => $media->id,
                 'url' => $full,
                 'thumbnail_url' => $thumb,
+                'thumbnails' => $thumbnails, // Include all available thumbnail sizes
                 'title' => $media->title,
+                'type' => $media->type,
             ];
         });
 
@@ -900,5 +922,30 @@ class GalleryService
         // lets append media_url
         $url .= '/' . ltrim($path, '/');
         return $url;
+    }
+
+    /**
+     * Get generated thumbnail URLs for a given file path (without checking existence)
+     */
+    private function getGeneratedThumbnailUrls(string $filePath): array
+    {
+        $thumbnailUrls = [];
+        $pathInfo = pathinfo($filePath);
+        $directory = $pathInfo['dirname'];
+        $filename = $pathInfo['filename'];
+
+        // Define thumbnail sizes (same as in ThumbnailService)
+        $sizes = ['small' => 150, 'medium' => 300, 'large' => 600];
+
+        foreach ($sizes as $sizeName => $dimension) {
+            $thumbnailPath = $directory . '/thumbnails/' . $sizeName . '/' . $filename . '.jpg';
+
+            // Generate thumbnail URL directly without checking existence (for speed)
+            $bucket = config('filesystems.disks.s3.bucket');
+            $region = config('filesystems.disks.s3.region');
+            $thumbnailUrls[$sizeName] = "https://{$bucket}.s3.{$region}.amazonaws.com/{$thumbnailPath}";
+        }
+
+        return $thumbnailUrls;
     }
 }
