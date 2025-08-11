@@ -884,16 +884,10 @@ class GalleryService
                 $thumbnails = $this->getGeneratedThumbnailUrls($media->file_path);
             }
 
-            // Determine the best thumbnail URL (prefer small, then medium, then large, then original)
-            $thumb = $thumbnails['small'] ??
-                $thumbnails['medium'] ??
-                $thumbnails['large'] ??
-                ($media->thumbnail_path ? $this->buildFileUrl($media->thumbnail_path) : $full);
-
             return [
                 'id' => $media->id,
                 'url' => $full,
-                'thumbnail_url' => $thumb,
+                'thumbnail_url' => $thumbnails['small'] ?? null,
                 'thumbnails' => $thumbnails, // Include all available thumbnail sizes
                 'title' => $media->title,
                 'type' => $media->type,
@@ -939,7 +933,7 @@ class GalleryService
 
         foreach ($sizes as $sizeName => $dimension) {
             $thumbnailPath = $directory . '/thumbnails/' . $sizeName . '/' . $filename . '.jpg';
-            $thumbnailUrls[$sizeName] = $thumbnailPath; // Use relative path for thumbnails
+            $thumbnailUrls[$sizeName] = $this->buildFileUrl($thumbnailPath); // Use relative path for thumbnails
         }
 
         return $thumbnailUrls;
