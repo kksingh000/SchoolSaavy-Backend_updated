@@ -65,11 +65,11 @@ jobs:
 
       - name: Deploy to VPS
         run: |
-          # Copy docker-compose and related files to VPS
+          # Copy docker-compose and related files to VPS (exclude .env files)
           rsync -avz --include='docker-compose.yml' \
             --include='docker/' \
-            --include='.env.production' \
             --include='storage/' \
+            --exclude='.env*' \
             --exclude='*' \
             ./ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
@@ -86,30 +86,30 @@ jobs:
             sed -i "s|image: ghcr.io/${{ github.repository }}:.*|image: ghcr.io/${{ github.repository }}:latest|g" docker-compose.yml || true
             
             # Pull the latest images
-            docker-compose pull
+            docker compose pull
             
             # Stop existing containers
-            docker-compose down
+            docker compose down
             
             # Remove old images to save space (keep last 2 versions)
             docker image prune -f
             
             # Start the application
-            docker-compose up -d
+            docker compose up -d
             
             # Wait for services to be ready
             sleep 30
             
             # Run database migrations
-            docker-compose exec -T app php artisan migrate --force || true
+            docker compose exec -T app php artisan migrate --force || true
             
             # Clear cache
-            docker-compose exec -T app php artisan cache:clear || true
-            docker-compose exec -T app php artisan config:clear || true
-            docker-compose exec -T app php artisan route:clear || true
+            docker compose exec -T app php artisan cache:clear || true
+            docker compose exec -T app php artisan config:clear || true
+            docker compose exec -T app php artisan route:clear || true
             
             # Show running containers
-            docker-compose ps
+            docker compose ps
           EOF
 
       - name: Verify deployment
@@ -118,12 +118,12 @@ jobs:
             cd /var/www/schoolsaavy
             
             # Check if containers are running
-            if docker-compose ps | grep -q "Up"; then
+            if docker compose ps | grep -q "Up"; then
               echo "✅ Deployment successful! Containers are running."
-              docker-compose ps
+              docker compose ps
             else
               echo "❌ Deployment failed! Containers are not running."
-              docker-compose logs --tail=50
+              docker compose logs --tail=50
               exit 1
             fi
           EOF
