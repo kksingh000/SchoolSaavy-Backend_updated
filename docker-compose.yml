@@ -1,20 +1,38 @@
 services:
   # Laravel Application with RoadRunner
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile.quick
+    image: ghcr.io/${GITHUB_REPOSITORY:-schoolsaavy/schoolsaavy-php}:latest
     container_name: schoolsavvy_app
     restart: unless-stopped
     command: php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
     ports:
       - "8080:8080"
-    # environment:
-    #   - APP_ENV=production
+    environment:
+      - APP_ENV=production
     volumes:
-      - ./:/var/www/html
+      - ./storage:/var/www/html/storage
+      - ./.env.production:/var/www/html/.env:ro
     depends_on:
       - redis
+      - db
+    networks:
+      - schoolsavvy_network
+
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: schoolsavvy_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: schoolsaavy_secure_password_2024
+      MYSQL_DATABASE: schoolsaavy
+      MYSQL_USER: schoolsaavy
+      MYSQL_PASSWORD: schoolsaavy_secure_password_2024
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+    ports:
+      - "3306:3306"
     networks:
       - schoolsavvy_network
 
@@ -44,7 +62,8 @@ services:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./docker/nginx/mime.types:/etc/nginx/conf.d/mime.types
       - ./docker/nginx/ssl:/etc/nginx/ssl
-      - ./public:/var/www/html/public
+      - ./public:/var/www/html/public:ro
+      - ./storage/app/public:/var/www/html/storage/app/public:ro
       - nginx_logs:/var/log/nginx
     depends_on:
       - app
@@ -53,9 +72,7 @@ services:
 
   # Queue Worker
   queue:
-    build:
-      context: .
-      dockerfile: Dockerfile.quick
+    image: ghcr.io/${GITHUB_REPOSITORY:-schoolsaavy/schoolsaavy-php}:latest
     container_name: schoolsavvy_queue
     restart: unless-stopped
     command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --timeout=300
@@ -69,17 +86,17 @@ services:
       - SESSION_DRIVER=redis
       - QUEUE_CONNECTION=redis
     volumes:
-      - ./:/var/www/html
+      - ./storage:/var/www/html/storage
+      - ./.env.production:/var/www/html/.env:ro
     depends_on:
       - redis
+      - db
     networks:
       - schoolsavvy_network
 
   # Scheduler (Cron jobs)
   scheduler:
-    build:
-      context: .
-      dockerfile: Dockerfile.quick
+    image: ghcr.io/${GITHUB_REPOSITORY:-schoolsaavy/schoolsaavy-php}:latest
     container_name: schoolsavvy_scheduler
     restart: unless-stopped
     command: php artisan schedule:work
@@ -88,13 +105,17 @@ services:
       - REDIS_HOST=redis
       - REDIS_PORT=6379
     volumes:
-      - ./:/var/www/html
+      - ./storage:/var/www/html/storage
+      - ./.env.production:/var/www/html/.env:ro
     depends_on:
       - redis
+      - db
     networks:
       - schoolsavvy_network
 
 volumes:
+  mysql_data:
+    driver: local
   redis_data:
     driver: local
   nginx_logs:
