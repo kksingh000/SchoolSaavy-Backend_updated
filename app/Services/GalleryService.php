@@ -939,11 +939,7 @@ class GalleryService
 
         foreach ($sizes as $sizeName => $dimension) {
             $thumbnailPath = $directory . '/thumbnails/' . $sizeName . '/' . $filename . '.jpg';
-
-            // Generate thumbnail URL directly without checking existence (for speed)
-            $bucket = config('filesystems.disks.s3.bucket');
-            $region = config('filesystems.disks.s3.region');
-            $thumbnailUrls[$sizeName] = "https://{$bucket}.s3.{$region}.amazonaws.com/{$thumbnailPath}";
+            $thumbnailUrls[$sizeName] = $thumbnailPath; // Use relative path for thumbnails
         }
 
         return $thumbnailUrls;
