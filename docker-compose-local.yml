@@ -1,0 +1,140 @@
+services:
+  # Laravel Application with RoadRunner
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.quick
+    container_name: schoolsavvy_app_local
+    restart: unless-stopped
+    command: php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
+    ports:
+      - "8080:8080"
+    environment:
+      - APP_ENV=local
+    volumes:
+      - ./:/var/www/html
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - redis
+      - db
+    networks:
+      - schoolsavvy_network
+
+  # MySQL Database
+  db:
+    image: mysql:8.0
+    container_name: schoolsavvy_db_local
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: schoolsaavy_local
+      MYSQL_USER: schoolsaavy
+      MYSQL_PASSWORD: password
+    volumes:
+      - mysql_data_local:/var/lib/mysql
+    ports:
+      - "3306:3306"
+    networks:
+      - schoolsavvy_network
+
+  # Redis Cache & Session Store
+  redis:
+    image: redis:7-alpine
+    container_name: schoolsavvy_redis_local
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - schoolsavvy_network
+
+  # Nginx Load Balancer (Optional for local)
+  nginx:
+    image: nginx:alpine
+    container_name: schoolsavvy_nginx_local
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./public:/var/www/html/public:ro
+      - ./storage/app/public:/var/www/html/storage/app/public:ro
+    command: |
+      sh -c "
+      cat > /etc/nginx/nginx.conf << 'EOF'
+      events {
+          worker_connections 1024;
+      }
+      http {
+          include /etc/nginx/mime.types;
+          default_type application/octet-stream;
+          client_max_body_size 100M;
+          
+          server {
+              listen 80;
+              server_name localhost;
+              
+              location / {
+                  proxy_pass http://app:8080;
+                  proxy_set_header Host \$$host;
+                  proxy_set_header X-Real-IP \$$remote_addr;
+                  proxy_set_header X-Forwarded-For \$$proxy_add_x_forwarded_for;
+                  proxy_set_header X-Forwarded-Proto \$$scheme;
+              }
+          }
+      }
+      EOF
+      nginx -g 'daemon off;'
+      "
+    depends_on:
+      - app
+    networks:
+      - schoolsavvy_network
+
+  # Queue Worker (Optional for local development)
+  queue:
+    build:
+      context: .
+      dockerfile: Dockerfile.quick
+    container_name: schoolsavvy_queue_local
+    restart: unless-stopped
+    command: php artisan queue:work redis --sleep=3 --tries=3 --timeout=300
+    environment:
+      - APP_ENV=local
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - redis
+      - db
+    networks:
+      - schoolsavvy_network
+    profiles:
+      - with-queue  # Optional service, start with: docker compose --profile with-queue up
+
+  # Scheduler (Optional for local development)
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.quick
+    container_name: schoolsavvy_scheduler_local
+    restart: unless-stopped
+    command: php artisan schedule:work
+    environment:
+      - APP_ENV=local
+    volumes:
+      - ./:/var/www/html
+    depends_on:
+      - redis
+      - db
+    networks:
+      - schoolsavvy_network
+    profiles:
+      - with-scheduler  # Optional service
+
+volumes:
+  mysql_data_local:
+    driver: local
+
+networks:
+  schoolsavvy_network:
+    driver: bridge
