@@ -4,7 +4,22 @@ services:
     image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest
     container_name: schoolsavvy_app
     restart: unless-stopped
-    command: php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
+    command: |
+      sh -c "
+      # Ensure storage directories exist with proper permissions
+      mkdir -p /var/www/html/storage/framework/cache/data
+      mkdir -p /var/www/html/storage/framework/sessions  
+      mkdir -p /var/www/html/storage/framework/views
+      mkdir -p /var/www/html/storage/logs
+      mkdir -p /var/www/html/storage/app/public
+      
+      # Set proper ownership and permissions
+      chown -R www-data:www-data /var/www/html/storage
+      chmod -R 755 /var/www/html/storage
+      
+      # Start Laravel Octane
+      php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
+      "
     ports:
       - "8080:8080"
     environment:

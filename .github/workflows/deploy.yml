@@ -84,9 +84,21 @@ jobs:
               rm -rf docker/nginx/nginx.conf
             fi
             
-            # Ensure required directories exist
-            mkdir -p docker/nginx storage/app/public storage/logs public
-            mkdir -p docker/nginx storage/app/public storage/logs public
+            # Ensure required directories exist with proper Laravel storage structure
+            mkdir -p docker/nginx public
+            mkdir -p storage/app/public
+            mkdir -p storage/framework/cache/data
+            mkdir -p storage/framework/sessions
+            mkdir -p storage/framework/views
+            mkdir -p storage/logs
+            
+            # Set proper permissions for storage directories
+            chmod -R 755 storage/
+            
+            # Create .gitkeep files to ensure directories persist
+            touch storage/framework/cache/data/.gitkeep
+            touch storage/framework/sessions/.gitkeep
+            touch storage/framework/views/.gitkeep
             
             # Log in to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
