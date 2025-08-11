@@ -71,7 +71,6 @@ jobs:
             docker/ \
             storage/ \
             public/ \
-            .rr.yaml \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
 
       - name: Deploy with Docker Compose
