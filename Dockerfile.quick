@@ -30,8 +30,8 @@ RUN apk add --no-cache \
     gd \
     zip \
     sockets \
-    && pecl install redis \
-    && docker-php-ext-enable redis \
+    # && pecl install redis \
+    # && docker-php-ext-enable redis \
     && rm -rf /var/cache/apk/*# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
@@ -42,10 +42,13 @@ WORKDIR /var/www/html
 COPY composer.json composer.lock ./
 
 # Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --no-scripts
+# RUN composer install --no-dev --optimize-autoloader --no-scripts
 
 # Install RoadRunner via Composer
-RUN ./vendor/bin/rr get-binary
+# RUN ./vendor/bin/rr get-binary
+
+# Copy custom PHP configuration
+COPY docker/php/php.ini /usr/local/etc/php/conf.d/99-custom.ini
 
 # Copy application code
 # COPY . .
@@ -61,16 +64,8 @@ RUN chown -R www-data:www-data /var/www/html \
 COPY docker/scripts/startup.sh /usr/local/bin/startup.sh
 RUN chmod +x /usr/local/bin/startup.sh
 
-# Copy health check script
-COPY docker/scripts/healthcheck.sh /usr/local/bin/healthcheck.sh
-RUN chmod +x /usr/local/bin/healthcheck.sh
-
 # Expose port
 EXPOSE 8080
-
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD /usr/local/bin/healthcheck.sh
 
 # Start RoadRunner
 CMD ["/usr/local/bin/startup.sh"]

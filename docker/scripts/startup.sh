@@ -41,7 +41,8 @@ php artisan cache:clear
 
 # Optimize autoloader
 composer dump-autoload --optimize --no-dev
-
+# Start Normal PHP Server
+exec php artisan serve --host=0.0.0.0 --port=8080
 # Start RoadRunner with Octane
-echo "🏁 Starting RoadRunner server..."
-exec php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
+# echo "🏁 Starting RoadRunner server..."
+# exec php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4

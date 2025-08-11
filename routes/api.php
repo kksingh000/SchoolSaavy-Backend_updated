@@ -38,6 +38,12 @@ Route::get('/health', function () {
             'message' => 'Redis connection failed: ' . $e->getMessage(),
             'code' => 'REDIS_CONNECTION_FAILED'
         ], 500);
+    } catch (\Throwable $e) {
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Unexpected error occurred: ' . $e->getMessage(),
+            'code' => 'UNEXPECTED_ERROR'
+        ], 500);
     }
     return response()->json([
         'status' => 'ok',
@@ -178,6 +184,7 @@ Route::middleware('json.response')->group(function () {
             Route::post('multiple', [FileUploadController::class, 'uploadMultiple']);
             Route::delete('file', [FileUploadController::class, 'deleteFile']);
             Route::post('file-info', [FileUploadController::class, 'getFileInfo']);
+            Route::post('regenerate-thumbnails', [FileUploadController::class, 'regenerateThumbnails']);
         });
 
         // Student Performance Routes

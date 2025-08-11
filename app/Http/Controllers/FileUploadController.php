@@ -10,9 +10,16 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Services\ThumbnailService;
 
 class FileUploadController extends BaseController
 {
+    protected ThumbnailService $thumbnailService;
+
+    public function __construct(ThumbnailService $thumbnailService)
+    {
+        $this->thumbnailService = $thumbnailService;
+    }
     /**
      * Set runtime PHP limits for large file uploads
      */
@@ -340,7 +347,9 @@ class FileUploadController extends BaseController
             'mime_type' => $mimeType,
             'size' => $size,
             'size_human' => $this->formatBytes($size),
-            'uploaded_at' => Carbon::now()->toISOString()
+            'uploaded_at' => Carbon::now()->toISOString(),
+            'is_image' => $this->thumbnailService->isImageFile($extension),
+            'thumbnail_queued' => $this->queueThumbnailIfImage($storedPath, $filename, $extension, $uploadDisk)
         ];
     }
 
@@ -405,6 +414,98 @@ class FileUploadController extends BaseController
         $month = Carbon::now()->format('m');
 
         return "uploads/{$type}/{$schoolId}/{$year}/{$month}";
+    }
+
+    /**
+     * Regenerate thumbnails for an image
+     */
+    public function regenerateThumbnails(Request $request): JsonResponse
+    {
+        $validator = Validator::make($request->all(), [
+            'file_path' => 'required|string',
+            'sizes' => 'sometimes|array',
+            'sizes.*' => 'integer|min:50|max:2000'
+        ]);
+
+        if ($validator->fails()) {
+            return $this->errorResponse('Validation failed', $validator->errors(), 422);
+        }
+
+        try {
+            $filePath = $request->input('file_path');
+            $customSizes = $request->input('sizes');
+
+            // Security check: ensure file path is within uploads directory
+            if (!str_starts_with($filePath, '/uploads/') && !str_starts_with($filePath, 'uploads/')) {
+                return $this->errorResponse('Invalid file path', null, 422);
+            }
+
+            // Remove leading slash if present
+            $cleanPath = ltrim($filePath, '/');
+
+            // Get upload disk (S3 or local)
+            $uploadDisk = config('filesystems.gallery_disk', 'public');
+
+            // Check if original file exists
+            if (!Storage::disk($uploadDisk)->exists($cleanPath)) {
+                return $this->errorResponse('Original file not found', null, 404);
+            }
+
+            // Get file extension and filename
+            $extension = pathinfo($cleanPath, PATHINFO_EXTENSION);
+            $filename = pathinfo($cleanPath, PATHINFO_FILENAME);
+
+            // Check if it's an image file
+            if (!$this->thumbnailService->isImageFile($extension)) {
+                return $this->errorResponse('File is not an image', null, 422);
+            }
+
+            // Delete existing thumbnails first
+            $this->thumbnailService->deleteThumbnails($cleanPath, $uploadDisk);
+
+            // Prepare thumbnail sizes
+            $thumbnailSizes = null;
+            if ($customSizes) {
+                $thumbnailSizes = [];
+                foreach ($customSizes as $size) {
+                    $thumbnailSizes["custom_{$size}"] = $size;
+                }
+            }
+
+            // Queue thumbnail generation
+            $queued = $this->thumbnailService->queueThumbnailGeneration(
+                $cleanPath,
+                $filename,
+                $thumbnailSizes,
+                $uploadDisk
+            );
+
+            if ($queued) {
+                return $this->successResponse([
+                    'file_path' => $filePath,
+                    'thumbnail_generation_queued' => true,
+                    'custom_sizes' => $thumbnailSizes ?? $this->thumbnailService->getDefaultThumbnailSizes()
+                ], 'Thumbnail regeneration queued successfully');
+            } else {
+                return $this->errorResponse('Failed to queue thumbnail regeneration', null, 500);
+            }
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to regenerate thumbnails: ' . $e->getMessage(), null, 500);
+        }
+    }
+
+    /**
+     * Queue thumbnail generation if the uploaded file is an image
+     */
+    private function queueThumbnailIfImage(string $filePath, string $filename, string $extension, string $uploadDisk): bool
+    {
+        // Check if the file is an image
+        if (!$this->thumbnailService->isImageFile($extension)) {
+            return false;
+        }
+
+        // Queue thumbnail generation
+        return $this->thumbnailService->queueThumbnailGeneration($filePath, $filename, null, $uploadDisk);
     }
 
     /**
