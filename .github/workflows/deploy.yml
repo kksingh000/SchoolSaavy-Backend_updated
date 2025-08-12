@@ -97,6 +97,15 @@ jobs:
             # Set proper permissions for storage directories
             chmod -R 755 storage/
             
+            # Verify nginx.conf was copied and show diff if changed
+            echo "🔍 Checking nginx.conf..."
+            if [ -f docker/nginx/nginx.conf ]; then
+              echo "✅ nginx.conf exists"
+              ls -la docker/nginx/nginx.conf
+            else
+              echo "❌ nginx.conf missing!"
+            fi
+            
             # Create .gitkeep files to ensure directories persist
             touch storage/framework/cache/data/.gitkeep
             touch storage/framework/sessions/.gitkeep
@@ -136,6 +145,14 @@ jobs:
             docker compose exec -T app php artisan cache:clear || true
             docker compose exec -T app php artisan config:clear || true
             docker compose exec -T app php artisan route:clear || true
+            
+            # Restart services to pick up config changes
+            echo "🔄 Restarting services..."
+            docker compose restart app
+            docker compose restart nginx
+            
+            # Wait for services to be ready
+            sleep 10
             
             # Show running containers
             docker compose ps
