@@ -78,6 +78,8 @@ services:
       - ./public:/var/www/html/public:ro
       - ./storage/app/public:/var/www/html/storage/app/public:ro
       - nginx_logs:/var/log/nginx
+      - ./docker/certbot:/var/www/certbot
+      - ./docker/letsencrypt:/etc/letsencrypt
     depends_on:
       - app
     networks:
