@@ -65,6 +65,11 @@ jobs:
 
       - name: Deploy to VPS
         run: |
+          # Debug: Check what docker files exist in GitHub runner
+          echo "🔍 Checking docker directory contents in GitHub runner:"
+          ls -la docker/ || echo "❌ docker directory not found"
+          ls -la docker/nginx/ || echo "❌ docker/nginx directory not found"
+          
           # Copy only Docker configuration and persistent data directories
           rsync --exclude='.env' \
             --exclude='docker/certbot/' \
@@ -83,10 +88,20 @@ jobs:
               echo "🧹 Removing nginx.conf directory..."
               rm -rf docker/nginx/nginx.conf
             fi
+            # Ensure nginx directory exists
+            mkdir -p docker/nginx
           CLEANUP
           
-          # Now copy nginx.conf explicitly as a file
-          scp docker/nginx/nginx.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/nginx/nginx.conf
+          # Copy nginx.conf from repository (must exist)
+          if [ -f "docker/nginx/nginx.conf" ]; then
+            echo "📁 Copying nginx.conf from repository..."
+            scp docker/nginx/nginx.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/nginx/nginx.conf
+            echo "✅ nginx.conf copied successfully"
+          else
+            echo "❌ ERROR: nginx.conf not found in repository!"
+            echo "❌ Please ensure docker/nginx/nginx.conf is committed to the repository"
+            exit 1
+          fi
 
       - name: Deploy with Docker Compose
         run: |
