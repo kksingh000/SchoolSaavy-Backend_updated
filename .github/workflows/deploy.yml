@@ -74,6 +74,19 @@ jobs:
             storage/ \
             public/ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
+          
+          # Force copy nginx.conf as file (not inside directory)
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'CLEANUP'
+            cd /var/www/schoolsaavy
+            # Remove any nginx.conf directory
+            if [ -d "docker/nginx/nginx.conf" ]; then
+              echo "🧹 Removing nginx.conf directory..."
+              rm -rf docker/nginx/nginx.conf
+            fi
+          CLEANUP
+          
+          # Now copy nginx.conf explicitly as a file
+          scp docker/nginx/nginx.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/nginx/nginx.conf
 
       - name: Deploy with Docker Compose
         run: |
