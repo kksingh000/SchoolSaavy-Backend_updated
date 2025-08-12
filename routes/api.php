@@ -18,6 +18,7 @@ use App\Http\Controllers\AssessmentTypeController;
 use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentResultController;
 use App\Http\Controllers\GalleryController;
+use App\Http\Controllers\ContactController;
 
 /*
 |--------------------------------------------------------------------------
@@ -74,6 +75,22 @@ Route::middleware('json.response')->group(function () {
     // Public Module Information (for pricing page)
 
     // Route::get('modules/{id}', [ModuleController::class, 'show']);
+
+    // Public Contact Form Routes (no authentication required)
+    Route::prefix('contact')->group(function () {
+        Route::get('form-token', [ContactController::class, 'getFormToken']);
+        Route::post('submit', [ContactController::class, 'submit']);
+
+        // Debug endpoint for testing
+        Route::post('debug', function (Request $request) {
+            return response()->json([
+                'headers' => $request->headers->all(),
+                'user_agent' => $request->userAgent(),
+                'ip' => $request->ip(),
+                'data' => $request->all()
+            ]);
+        });
+    });
 
     // Protected Routes with school data injection
     Route::middleware(['auth:sanctum', 'inject.school'])->group(function () {
@@ -261,6 +278,12 @@ Route::middleware('json.response')->group(function () {
             Route::get('{albumId}/media', [GalleryController::class, 'getAlbumMedia']);
             Route::post('{albumId}/media', [GalleryController::class, 'addMedia']);
             Route::delete('{albumId}/media/{mediaId}', [GalleryController::class, 'deleteMedia']);
+        });
+
+        // Contact Form Management (Admin only)
+        Route::prefix('admin/contact-submissions')->group(function () {
+            Route::get('/', [ContactController::class, 'index']);
+            Route::patch('{submission}/status', [ContactController::class, 'updateStatus']);
         });
     });
 });

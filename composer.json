@@ -17,6 +17,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
         "league/flysystem-aws-s3-v3": "^3.15",
+        "phpmailer/phpmailer": "^6.10",
         "predis/predis": "^3.2",
         "spiral/roadrunner-cli": "^2.7",
         "spiral/roadrunner-laravel": "^6.0"
