@@ -25,12 +25,19 @@ class AuthController extends Controller
         try {
             $result = $this->authService->login($request->validated());
 
-            return response()->json([
+            $response = [
                 'message' => 'Login successful',
                 'user' => new UserResource($result['user']),
                 'token' => $result['token'],
                 'expires_at' => $result['expires_at']
-            ]);
+            ];
+
+            // Add students data for parent users
+            if (isset($result['students'])) {
+                $response['students'] = $result['students'];
+            }
+
+            return response()->json($response);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Login failed',
@@ -88,14 +95,21 @@ class AuthController extends Controller
 
             $result = $this->authService->refreshToken($token);
 
-            return response()->json([
+            $response = [
                 'message' => 'Token refreshed successfully',
                 'access_token' => $result['access_token'],
                 'token_type' => $result['token_type'],
                 'expires_in' => $result['expires_in'],
                 'expires_at' => $result['expires_at'],
                 'user' => new UserResource($result['user'])
-            ]);
+            ];
+
+            // Add students data for parent users
+            if (isset($result['students'])) {
+                $response['students'] = $result['students'];
+            }
+
+            return response()->json($response);
         } catch (\Exception $e) {
             return response()->json([
                 'message' => 'Token refresh failed',
