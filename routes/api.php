@@ -19,6 +19,7 @@ use App\Http\Controllers\AssessmentController;
 use App\Http\Controllers\AssessmentResultController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\ContactController;
+use App\Http\Controllers\ParentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -284,6 +285,22 @@ Route::middleware('json.response')->group(function () {
         Route::prefix('admin/contact-submissions')->group(function () {
             Route::get('/', [ContactController::class, 'index']);
             Route::patch('{submission}/status', [ContactController::class, 'updateStatus']);
+        });
+
+        // Parent APIs - For Parent Mobile Application
+        Route::prefix('parent')->middleware('user.type:parent')->group(function () {
+            // Get parent's children
+            Route::get('children', [ParentController::class, 'getChildren']);
+
+            // Student Statistics APIs
+            Route::post('student/statistics', [ParentController::class, 'getStudentStatistics']);
+            Route::post('student/statistics/refresh', [ParentController::class, 'refreshStatistics']);
+
+            // Student Attendance APIs
+            Route::post('student/attendance', [ParentController::class, 'getStudentAttendance']);
+
+            // Student Assignment APIs
+            Route::post('student/assignments', [ParentController::class, 'getStudentAssignments']);
         });
     });
 });

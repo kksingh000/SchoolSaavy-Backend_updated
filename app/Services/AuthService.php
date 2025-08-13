@@ -3,11 +3,18 @@
 namespace App\Services;
 
 use App\Models\User;
+use App\Services\ParentService;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 
 class AuthService
 {
+    protected ParentService $parentService;
+
+    public function __construct(ParentService $parentService)
+    {
+        $this->parentService = $parentService;
+    }
     public function login(array $credentials)
     {
         $user = User::where('email', $credentials['email'])
@@ -26,16 +33,27 @@ class AuthService
             ]);
         }
 
-        // Load the specific user type relationship
-        $relation = $this->getUserRelation($user->user_type);
-        if ($relation) {
-            $user->load($relation);
+        // For parent users, get detailed student information efficiently
+        $additionalData = [];
+        if ($user->user_type === 'parent') {
+            // Load only the parent relationship to get parent ID
+            $user->load('parent');
+            if ($user->parent) {
+                $additionalData['students'] = $this->parentService->getParentChildren($user->parent->id);
+            }
+        } else {
+            // Load the specific user type relationship for non-parent users
+            $relation = $this->getUserRelation($user->user_type);
+            if ($relation) {
+                $user->load($relation);
+            }
         }
 
         return [
             'user' => $user,
             'token' => $user->createToken('auth-token')->plainTextToken,
-            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString()
+            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString(),
+            ...$additionalData
         ];
     }
 
@@ -44,7 +62,7 @@ class AuthService
         return match ($userType) {
             'admin', 'school_admin' => 'schoolAdmin.school',
             'teacher' => 'teacher.school',
-            'parent' => 'parent.students',
+            'parent' => 'parent', // Load only parent profile, not students (we'll add detailed students separately)
             default => null,
         };
     }
@@ -106,12 +124,6 @@ class AuthService
             ]);
         }
 
-        // Load the specific user type relationship
-        $relation = $this->getUserRelation($user->user_type);
-        if ($relation) {
-            $user->load($relation);
-        }
-
         // Create a new token with expiration FIRST
         $tokenResult = $user->createToken('auth-token');
         $token = $tokenResult->plainTextToken; // This is the actual token string
@@ -119,12 +131,29 @@ class AuthService
         // Only delete the old token AFTER successfully creating the new one
         $tokenModel->delete();
 
+        // For parent users, get detailed student information efficiently
+        $additionalData = [];
+        if ($user->user_type === 'parent') {
+            // Load only the parent relationship to get parent ID
+            $user->load('parent');
+            if ($user->parent) {
+                $additionalData['students'] = $this->parentService->getParentChildren($user->parent->id);
+            }
+        } else {
+            // Load the specific user type relationship for non-parent users
+            $relation = $this->getUserRelation($user->user_type);
+            if ($relation) {
+                $user->load($relation);
+            }
+        }
+
         return [
             'user' => $user,
             'access_token' => $token, // Use 'access_token' as standard naming
             'token_type' => 'Bearer',
             'expires_in' => (int) config('sanctum.expiration', 1440) * 60, // Convert minutes to seconds
-            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString()
+            'expires_at' => now()->addMinutes((int) config('sanctum.expiration', 1440))->toISOString(),
+            ...$additionalData
         ];
     }
 }

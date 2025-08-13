@@ -16,6 +16,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'inject.school' => \App\Http\Middleware\InjectSchoolData::class,
             'json.response' => \App\Http\Middleware\ForceJsonResponse::class,
             'refresh.token' => \App\Http\Middleware\RefreshTokenIfNeeded::class,
+            'user.type' => \App\Http\Middleware\CheckUserType::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
