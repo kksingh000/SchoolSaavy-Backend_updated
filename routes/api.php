@@ -301,6 +301,7 @@ Route::middleware('json.response')->group(function () {
 
             // Student Assignment APIs
             Route::post('student/assignments', [ParentController::class, 'getStudentAssignments']);
+            Route::post('student/assignment/details', [ParentController::class, 'getAssignmentDetails']);
         });
     });
 });
