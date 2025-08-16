@@ -80,7 +80,17 @@ class GalleryMedia extends Model
     // Accessors
     public function getFileUrlAttribute()
     {
-        return Storage::url($this->file_path);
+        if (!$this->file_path) {
+            return null;
+        }
+
+        // If it's already a full URL, return as is
+        if (filter_var($this->file_path, FILTER_VALIDATE_URL)) {
+            return $this->file_path;
+        }
+
+        // Use the media_url config for consistency with thumbnails
+        return config('upload.media_url') . '/' . ltrim($this->file_path, '/');
     }
 
     public function getThumbnailUrlAttribute()
@@ -144,7 +154,7 @@ class GalleryMedia extends Model
 
         foreach ($sizes as $sizeName => $dimension) {
             $thumbnailPath = $directory . '/thumbnails/' . $sizeName . '/' . $filename . '.jpg';
-            $thumbnailUrls[$sizeName] = config('upload.media_url') . $thumbnailPath;
+            $thumbnailUrls[$sizeName] = config('upload.media_url') . '/' . ltrim($thumbnailPath, '/');
         }
 
         return $thumbnailUrls;

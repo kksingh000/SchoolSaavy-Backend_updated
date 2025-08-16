@@ -250,4 +250,88 @@ class ParentController extends BaseController
             return $this->errorResponse('Failed to refresh statistics.', $e->getMessage(), 500);
         }
     }
+
+    /**
+     * Get gallery albums for a student
+     * Shows album list with thumbnails and media counts
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getStudentGalleryAlbums(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'student_id' => 'required|integer|exists:students,id',
+                'per_page' => 'nullable|integer|between:5,50',
+                'page' => 'nullable|integer|min:1',
+            ]);
+
+            $authResult = $this->getAuthenticatedParent();
+            if (!$authResult['success']) {
+                return $authResult['response'];
+            }
+
+            // Check if school has gallery module active
+            if (!$this->checkModuleAccess('gallery-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $albums = $this->parentService->getStudentGalleryAlbums(
+                $authResult['parent']->id,
+                $validated['student_id'],
+                $validated['per_page'] ?? 15
+            );
+
+            return $this->successResponse($albums, 'Student gallery albums retrieved successfully.');
+        } catch (ValidationException $e) {
+            return $this->errorResponse('Validation failed.', $e->errors(), 422);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to retrieve student gallery albums.', $e->getMessage(), 500);
+        }
+    }
+
+    /**
+     * Get media items from a specific gallery album
+     * Shows paginated media items within an album
+     * 
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function getStudentGalleryAlbumMedia(Request $request): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'student_id' => 'required|integer|exists:students,id',
+                'album_id' => 'required|integer|exists:gallery_albums,id',
+                'media_type' => 'nullable|string|in:photo,video,document',
+                'per_page' => 'nullable|integer|between:5,50',
+                'page' => 'nullable|integer|min:1',
+            ]);
+
+            $authResult = $this->getAuthenticatedParent();
+            if (!$authResult['success']) {
+                return $authResult['response'];
+            }
+
+            // Check if school has gallery module active
+            if (!$this->checkModuleAccess('gallery-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $media = $this->parentService->getStudentGalleryAlbumMedia(
+                $authResult['parent']->id,
+                $validated['student_id'],
+                $validated['album_id'],
+                $validated['media_type'] ?? null,
+                $validated['per_page'] ?? 20
+            );
+
+            return $this->successResponse($media, 'Album media retrieved successfully.');
+        } catch (ValidationException $e) {
+            return $this->errorResponse('Validation failed.', $e->errors(), 422);
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to retrieve album media.', $e->getMessage(), 500);
+        }
+    }
 }

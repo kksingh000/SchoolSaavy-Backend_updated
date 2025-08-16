@@ -11,6 +11,8 @@ use App\Models\AssessmentResult;
 use App\Models\Event;
 use App\Models\FeePayment;
 use App\Models\StudentFee;
+use App\Models\GalleryAlbum;
+use App\Models\GalleryMedia;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
@@ -917,5 +919,517 @@ class ParentService
         }
 
         return $this->formatBytes($totalBytes);
+    }
+
+    /**
+     * Get gallery albums for a student (with thumbnails and counts)
+     * Returns paginated albums that the student has access to
+     */
+    public function getStudentGalleryAlbums($parentId, $studentId, $perPage = 15)
+    {
+        // Verify parent-student relationship
+        if (!$this->verifyParentStudentRelationship($parentId, $studentId)) {
+            throw new \Exception('Student does not belong to this parent.');
+        }
+
+        // Get student with class information for school isolation
+        $student = Student::with(['currentClass', 'school'])
+            ->findOrFail($studentId);
+
+        $schoolId = $student->school_id;
+        $currentClass = $student->currentClass()->first();
+
+        // Build the query for albums student has access to
+        $albumsQuery = GalleryAlbum::with([
+            'class:id,name,section',
+            'event:id,title,event_date',
+            'creator:id,name'
+        ])
+            ->withCount([
+                'media as total_media_count' => function ($query) {
+                    $query->where('status', 'active');
+                },
+                'media as photos_count' => function ($query) {
+                    $query->where('type', 'photo')->where('status', 'active');
+                },
+                'media as videos_count' => function ($query) {
+                    $query->where('type', 'video')->where('status', 'active');
+                },
+                'media as documents_count' => function ($query) {
+                    $query->where('type', 'document')->where('status', 'active');
+                }
+            ])
+            ->where('school_id', $schoolId)
+            ->where('status', 'active')
+            ->where('is_public', true);
+
+        // Only include albums for student's class if they have one
+        if ($currentClass) {
+            $albumsQuery->where('class_id', $currentClass->id);
+        } else {
+            // If student has no class, return empty result
+            $albumsQuery->whereRaw('1 = 0'); // This will return no results
+        }
+
+        $albumsQuery->orderBy('event_date', 'desc');
+
+        // Get paginated albums
+        $albums = $albumsQuery->paginate($perPage);
+
+        // For each album, get up to 3 thumbnail images
+        $albums->getCollection()->transform(function ($album) {
+            // Get up to 3 featured or recent photos for thumbnails
+            $thumbnails = $album->media()
+                ->where('type', 'photo')
+                ->where('status', 'active')
+                ->orderByRaw('is_featured DESC, sort_order ASC, created_at DESC')
+                ->limit(3)
+                ->get(['id', 'file_path', 'thumbnail_path', 'title']);
+
+            $album->thumbnails = $thumbnails->map(function ($media) {
+                // Get proper thumbnail URLs with sizes
+                $thumbnailUrls = $this->getGeneratedThumbnailUrls($media->file_path);
+
+                return [
+                    'id' => $media->id,
+                    'title' => $media->title,
+                    'url' => $this->buildFileUrl($media->file_path), // Full size URL
+                    'thumbnail_url' => $thumbnailUrls['small'] ?? $this->buildFileUrl($media->file_path), // Small thumbnail (150px)
+                    'thumbnail_urls' => $thumbnailUrls, // All available sizes
+                ];
+            });
+
+            // Add formatted data
+            $album->album_type = 'class'; // All albums are class-specific
+            $album->class_name = $album->class ? $album->class->name . ' ' . $album->class->section : null;
+            $album->event_title = $album->event ? $album->event->title : null;
+            $album->creator_name = $album->creator ? $album->creator->name : null;
+
+            // Clean up relations to avoid over-loading the response
+            unset($album->class, $album->event, $album->creator);
+
+            return $album;
+        });
+
+        return [
+            'student' => [
+                'id' => $student->id,
+                'name' => $student->first_name . ' ' . $student->last_name,
+                'admission_number' => $student->admission_number,
+                'class' => $currentClass ? [
+                    'id' => $currentClass->id,
+                    'name' => $currentClass->name,
+                    'section' => $currentClass->section,
+                ] : null,
+            ],
+            'albums' => [
+                'data' => $albums->items(),
+                'pagination' => [
+                    'current_page' => $albums->currentPage(),
+                    'per_page' => $albums->perPage(),
+                    'total' => $albums->total(),
+                    'last_page' => $albums->lastPage(),
+                    'from' => $albums->firstItem(),
+                    'to' => $albums->lastItem(),
+                    'has_more_pages' => $albums->hasMorePages(),
+                ]
+            ]
+        ];
+    }
+
+    /**
+     * Get media items from a specific gallery album
+     * Returns paginated media items with filtering options
+     */
+    public function getStudentGalleryAlbumMedia($parentId, $studentId, $albumId, $mediaType = null, $perPage = 20)
+    {
+        // Verify parent-student relationship
+        if (!$this->verifyParentStudentRelationship($parentId, $studentId)) {
+            throw new \Exception('Student does not belong to this parent.');
+        }
+
+        // Get student for school isolation
+        $student = Student::findOrFail($studentId);
+        $schoolId = $student->school_id;
+
+        // Get and verify album access
+        $album = GalleryAlbum::with(['class:id,name,section', 'event:id,title'])
+            ->where('id', $albumId)
+            ->where('school_id', $schoolId)
+            ->where('status', 'active')
+            ->where('is_public', true)
+            ->first();
+
+        if (!$album) {
+            throw new \Exception('Album not found or not accessible.');
+        }
+
+        // Check if student has access to this album
+        $currentClass = $student->currentClass()->first();
+        if (!$currentClass || $album->class_id !== $currentClass->id) {
+            throw new \Exception('Student does not have access to this album.');
+        }
+
+        // Build media query
+        $mediaQuery = $album->media()
+            ->where('status', 'active')
+            ->orderByRaw('is_featured DESC, sort_order ASC, created_at DESC');
+
+        // Apply media type filter if specified
+        if ($mediaType) {
+            $mediaQuery->where('type', $mediaType);
+        }
+
+        // Get paginated media
+        $media = $mediaQuery->paginate($perPage);
+
+        // Transform media items for response
+        $media->getCollection()->transform(function ($mediaItem) {
+            // Get proper thumbnail URLs with sizes  
+            $thumbnailUrls = $this->getGeneratedThumbnailUrls($mediaItem->file_path);
+
+            return [
+                'id' => $mediaItem->id,
+                'type' => $mediaItem->type,
+                'title' => $mediaItem->title,
+                'description' => $mediaItem->description,
+                'file_url' => $this->buildFileUrl($mediaItem->file_path),
+                'thumbnail_url' => $thumbnailUrls['small'] ?? $this->buildFileUrl($mediaItem->file_path), // Small thumbnail (150px)
+                'thumbnail_urls' => $thumbnailUrls, // All available sizes
+                'file_size' => $mediaItem->file_size,
+                'file_size_formatted' => $mediaItem->file_size_formatted,
+                'dimensions' => $mediaItem->dimensions,
+                'duration' => $mediaItem->duration,
+                'duration_formatted' => $mediaItem->duration_formatted,
+                'views_count' => $mediaItem->views_count,
+                'is_featured' => $mediaItem->is_featured,
+                'created_at' => $mediaItem->created_at,
+                'metadata' => $mediaItem->metadata,
+            ];
+        });
+
+        return [
+            'album' => [
+                'id' => $album->id,
+                'title' => $album->title,
+                'description' => $album->description,
+                'event_date' => $album->event_date,
+                'album_type' => 'class', // All albums are class-specific
+                'class_name' => $album->class ? $album->class->name . ' ' . $album->class->section : null,
+                'event_title' => $album->event ? $album->event->title : null,
+                'total_media_count' => $album->media_count,
+                'cover_image_url' => $album->cover_image_url,
+            ],
+            'media' => [
+                'data' => $media->items(),
+                'pagination' => [
+                    'current_page' => $media->currentPage(),
+                    'per_page' => $media->perPage(),
+                    'total' => $media->total(),
+                    'last_page' => $media->lastPage(),
+                    'from' => $media->firstItem(),
+                    'to' => $media->lastItem(),
+                    'has_more_pages' => $media->hasMorePages(),
+                ]
+            ],
+            'summary' => [
+                'total_items' => $media->total(),
+                'photos_count' => $album->media()->where('type', 'photo')->where('status', 'active')->count(),
+                'videos_count' => $album->media()->where('type', 'video')->where('status', 'active')->count(),
+                'documents_count' => $album->media()->where('type', 'document')->where('status', 'active')->count(),
+            ]
+        ];
+    }
+
+    /**
+     * Get gallery items from student's class albums
+     */
+    private function getClassGalleryItems($classId, $schoolId, $mediaType = null): \Illuminate\Support\Collection
+    {
+        $query = GalleryMedia::whereHas('album', function ($albumQuery) use ($classId, $schoolId) {
+            $albumQuery->where('class_id', $classId)
+                ->where('school_id', $schoolId)
+                ->where('status', 'active')
+                ->where('is_public', true);
+        })
+            ->where('status', 'active')
+            ->with(['album:id,title,description,event_date,class_id'])
+            ->orderBy('created_at', 'desc');
+
+        if ($mediaType) {
+            $query->where('type', $mediaType);
+        }
+
+        return $query->get()->map(function ($media) {
+            return [
+                'id' => 'gallery_' . $media->id,
+                'type' => 'class_gallery',
+                'media_type' => $media->type,
+                'title' => $media->title ?: $media->album->title,
+                'description' => $media->description ?: $media->album->description,
+                'file_url' => $this->getMediaFileUrl($media),
+                'thumbnail_url' => $this->getMediaThumbnailUrl($media),
+                'file_size' => $media->file_size,
+                'file_size_human' => $this->formatBytes($media->file_size),
+                'dimensions' => $media->metadata['dimensions'] ?? null,
+                'duration' => $media->metadata['duration'] ?? null,
+                'created_at' => $media->created_at,
+                'event_date' => $media->album->event_date,
+                'album' => [
+                    'id' => $media->album->id,
+                    'title' => $media->album->title,
+                    'description' => $media->album->description,
+                ],
+                'source' => 'Class Gallery',
+                'views_count' => $media->views_count,
+                'is_featured' => $media->is_featured,
+            ];
+        });
+    }
+
+    /**
+     * Get gallery items from school-wide albums (not class-specific)
+     */
+    private function getSchoolGalleryItems($schoolId, $mediaType = null): \Illuminate\Support\Collection
+    {
+        $query = GalleryMedia::whereHas('album', function ($albumQuery) use ($schoolId) {
+            $albumQuery->whereNull('class_id') // School-wide albums
+                ->where('school_id', $schoolId)
+                ->where('status', 'active')
+                ->where('is_public', true);
+        })
+            ->where('status', 'active')
+            ->with(['album:id,title,description,event_date,class_id'])
+            ->orderBy('created_at', 'desc');
+
+        if ($mediaType) {
+            $query->where('type', $mediaType);
+        }
+
+        return $query->get()->map(function ($media) {
+            return [
+                'id' => 'school_gallery_' . $media->id,
+                'type' => 'school_gallery',
+                'media_type' => $media->type,
+                'title' => $media->title ?: $media->album->title,
+                'description' => $media->description ?: $media->album->description,
+                'file_url' => $this->getMediaFileUrl($media),
+                'thumbnail_url' => $this->getMediaThumbnailUrl($media),
+                'file_size' => $media->file_size,
+                'file_size_human' => $this->formatBytes($media->file_size),
+                'dimensions' => $media->metadata['dimensions'] ?? null,
+                'duration' => $media->metadata['duration'] ?? null,
+                'created_at' => $media->created_at,
+                'event_date' => $media->album->event_date,
+                'album' => [
+                    'id' => $media->album->id,
+                    'title' => $media->album->title,
+                    'description' => $media->album->description,
+                ],
+                'source' => 'School Gallery',
+                'views_count' => $media->views_count,
+                'is_featured' => $media->is_featured,
+            ];
+        });
+    }
+
+    /**
+     * Get media from student's assignment submissions
+     */
+    private function getStudentAssignmentMedia($studentId, $schoolId, $mediaType = null): \Illuminate\Support\Collection
+    {
+        $submissions = AssignmentSubmission::where('student_id', $studentId)
+            ->whereHas('assignment', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
+            ->where('status', 'submitted')
+            ->whereNotNull('attachments')
+            ->with([
+                'assignment:id,title,description,type,due_date',
+                'assignment.subject:id,name',
+                'assignment.class:id,name,section'
+            ])
+            ->orderBy('submitted_at', 'desc')
+            ->get();
+
+        $mediaItems = collect();
+
+        foreach ($submissions as $submission) {
+            if (!$submission->attachments || empty($submission->attachments)) {
+                continue;
+            }
+
+            foreach ($submission->attachments as $index => $attachment) {
+                $attachmentMediaType = $this->getAttachmentMediaType($attachment);
+
+                // Filter by media type if specified
+                if ($mediaType && $attachmentMediaType !== $mediaType) {
+                    continue;
+                }
+
+                $mediaItems->push([
+                    'id' => 'assignment_' . $submission->id . '_' . $index,
+                    'type' => 'assignment_submission',
+                    'media_type' => $attachmentMediaType,
+                    'title' => $this->getAttachmentName($attachment),
+                    'description' => $submission->assignment->title . ' - Assignment Submission',
+                    'file_url' => $this->getAttachmentUrl($attachment, $submission),
+                    'thumbnail_url' => $this->getAttachmentThumbnailUrl($attachment, $submission),
+                    'file_size' => $attachment['size'] ?? null,
+                    'file_size_human' => isset($attachment['size']) ? $this->formatBytes($attachment['size']) : 'Unknown',
+                    'dimensions' => null, // Assignment attachments don't typically store dimensions
+                    'duration' => null,
+                    'created_at' => $submission->submitted_at,
+                    'event_date' => $submission->submitted_at,
+                    'assignment' => [
+                        'id' => $submission->assignment->id,
+                        'title' => $submission->assignment->title,
+                        'type' => $submission->assignment->type,
+                        'subject' => $submission->assignment->subject?->name,
+                        'class' => $submission->assignment->class ? [
+                            'name' => $submission->assignment->class->name,
+                            'section' => $submission->assignment->class->section,
+                        ] : null,
+                    ],
+                    'submission' => [
+                        'id' => $submission->id,
+                        'status' => $submission->status,
+                        'marks_obtained' => $submission->marks_obtained,
+                        'is_late' => $submission->is_late_submission,
+                    ],
+                    'source' => 'Assignment Submission',
+                    'views_count' => 0,
+                    'is_featured' => false,
+                ]);
+            }
+        }
+
+        return $mediaItems;
+    }
+
+    /**
+     * Get file URL for gallery media
+     */
+    private function getMediaFileUrl(GalleryMedia $media): string
+    {
+        // Check if it's an external URL (from seeders)
+        if (filter_var($media->file_path, FILTER_VALIDATE_URL)) {
+            return $media->file_path;
+        }
+
+        // For local files, use Storage URL
+        return Storage::url($media->file_path);
+    }
+
+    /**
+     * Get thumbnail URL for gallery media
+     */
+    private function getMediaThumbnailUrl(GalleryMedia $media): ?string
+    {
+        if ($media->thumbnail_path) {
+            // Check if it's an external URL
+            if (filter_var($media->thumbnail_path, FILTER_VALIDATE_URL)) {
+                return $media->thumbnail_path;
+            }
+            return Storage::url($media->thumbnail_path);
+        }
+
+        // For photos without explicit thumbnail, use the main image
+        if ($media->type === 'photo') {
+            return $this->getMediaFileUrl($media);
+        }
+
+        return null;
+    }
+
+    /**
+     * Get media type from attachment data
+     */
+    private function getAttachmentMediaType($attachment): string
+    {
+        $mimeType = $attachment['mime_type'] ?? '';
+
+        if (str_starts_with($mimeType, 'image/')) {
+            return 'photo';
+        } elseif (str_starts_with($mimeType, 'video/')) {
+            return 'video';
+        }
+
+        // Check by file extension if mime type not available
+        $filename = $attachment['name'] ?? $attachment['filename'] ?? '';
+        $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
+
+        $imageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+        $videoExtensions = ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm'];
+
+        if (in_array($extension, $imageExtensions)) {
+            return 'photo';
+        } elseif (in_array($extension, $videoExtensions)) {
+            return 'video';
+        }
+
+        return 'document'; // Default for other file types
+    }
+
+    /**
+     * Get attachment name from attachment data
+     */
+    private function getAttachmentName($attachment): string
+    {
+        return $attachment['name'] ?? $attachment['filename'] ?? $attachment['original_name'] ?? 'Attachment';
+    }
+
+    /**
+     * Get attachment URL for assignment submissions
+     */
+    private function getAttachmentUrl($attachment, AssignmentSubmission $submission): string
+    {
+        // Use the assignment controller's download endpoint
+        $baseUrl = url('/api');
+        $filename = $attachment['filename'] ?? $attachment['name'] ?? '';
+        return $baseUrl . '/assignment-submissions/' . $submission->id . '/download?filename=' . urlencode($filename) . '&action=view';
+    }
+
+    /**
+     * Get attachment thumbnail URL
+     */
+    private function getAttachmentThumbnailUrl($attachment, AssignmentSubmission $submission): ?string
+    {
+        // For images, use the same URL as the main file
+        if ($this->getAttachmentMediaType($attachment) === 'photo') {
+            return $this->getAttachmentUrl($attachment, $submission);
+        }
+
+        return null;
+    }
+
+    /**
+     * Build file URL using the media_url config
+     */
+    private function buildFileUrl(string $filePath): string
+    {
+        $mediaUrl = rtrim(config('upload.media_url'), '/');
+        return $mediaUrl . '/' . ltrim($filePath, '/');
+    }
+
+    /**
+     * Get generated thumbnail URLs for a given file path
+     */
+    private function getGeneratedThumbnailUrls(string $filePath): array
+    {
+        $thumbnailUrls = [];
+        $pathInfo = pathinfo($filePath);
+        $directory = $pathInfo['dirname'];
+        $filename = $pathInfo['filename'];
+
+        // Define thumbnail sizes (same as in GalleryService)
+        $sizes = ['small' => 150, 'medium' => 300, 'large' => 600];
+
+        foreach ($sizes as $sizeName => $dimension) {
+            $thumbnailPath = $directory . '/thumbnails/' . $sizeName . '/' . $filename . '.jpg';
+            $thumbnailUrls[$sizeName] = $this->buildFileUrl($thumbnailPath);
+        }
+
+        return $thumbnailUrls;
     }
 }

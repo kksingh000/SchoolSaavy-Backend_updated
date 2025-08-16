@@ -30,10 +30,12 @@ use App\Http\Controllers\ParentController;
 // Health check endpoint
 Route::get('/health', function () {
     $isRedisWorking = false;
+    $isDatabaseWorking = false;
     // check redis working or not 
     try {
         \Illuminate\Support\Facades\Redis::ping();
         $isRedisWorking = true;
+        $isDatabaseWorking = \DB::connection()->getPdo() !== null;
     } catch (\Exception $e) {
         return response()->json([
             'status' => 'error',
@@ -51,6 +53,7 @@ Route::get('/health', function () {
         'status' => 'ok',
         'message' => 'API is running',
         'redis' => $isRedisWorking ? 'connected' : 'not connected',
+        'database' => $isDatabaseWorking ? 'connected' : 'not connected',
         'timestamp' => now()->toISOString(),
         'version' => config('app.version', '1.0.0'),
         'server' => 'RoadRunner'
@@ -302,6 +305,10 @@ Route::middleware('json.response')->group(function () {
             // Student Assignment APIs
             Route::post('student/assignments', [ParentController::class, 'getStudentAssignments']);
             Route::post('student/assignment/details', [ParentController::class, 'getAssignmentDetails']);
+
+            // Student Gallery APIs
+            Route::post('student/gallery/albums', [ParentController::class, 'getStudentGalleryAlbums']);
+            Route::post('student/gallery/album/media', [ParentController::class, 'getStudentGalleryAlbumMedia']);
         });
     });
 });
