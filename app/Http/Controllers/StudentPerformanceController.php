@@ -10,6 +10,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class StudentPerformanceController extends BaseController
 {
@@ -28,7 +29,7 @@ class StudentPerformanceController extends BaseController
                 'parents.user:id,name,email',
                 'currentClass:id,name'
             ])->findOrFail($studentId);
-
+            $student->currentClass = $student->currentClass ? $student->currentClass->first() : null;
             // Get performance data with optimized methods
             $attendanceData = $this->getAttendancePerformance($studentId, $month, $year);
             $assignmentData = $this->getAssignmentPerformance($studentId, $month, $year);
@@ -71,6 +72,7 @@ class StudentPerformanceController extends BaseController
                 'execution_time_ms' => $executionTime, // Debug info
             ], 'Student performance report generated successfully');
         } catch (\Exception $e) {
+            Log::error($e);
             return $this->errorResponse($e->getMessage());
         }
     }
@@ -258,7 +260,6 @@ class StudentPerformanceController extends BaseController
             ->groupBy(function ($record) {
                 return Carbon::parse($record->date)->month;
             });
-
         // Get all assignments and submissions for the year in optimized queries
         $assignments = Assignment::where('class_id', $currentClass->id)
             ->where('status', 'published')
