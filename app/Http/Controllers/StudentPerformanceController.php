@@ -883,10 +883,10 @@ class StudentPerformanceController extends BaseController
                     $lateSubmissions++;
                 }
 
-                if ($submission->grade !== null) {
+                if ($submission->marks_obtained !== null) {
                     $gradedAssignments++;
                     $totalMarks += $assignment->total_marks ?? 0;
-                    $obtainedMarks += $submission->grade ?? 0;
+                    $obtainedMarks += $submission->marks_obtained ?? 0;
 
                     // Subject-wise performance
                     $subjectName = $assignment->subject->name ?? 'Unknown';
@@ -899,7 +899,7 @@ class StudentPerformanceController extends BaseController
                     }
 
                     $subjectPerformance[$subjectName]['total_marks'] += $assignment->total_marks ?? 0;
-                    $subjectPerformance[$subjectName]['obtained_marks'] += $submission->grade ?? 0;
+                    $subjectPerformance[$subjectName]['obtained_marks'] += $submission->marks_obtained ?? 0;
                     $subjectPerformance[$subjectName]['assignments_count']++;
                 }
             }
@@ -984,10 +984,10 @@ class StudentPerformanceController extends BaseController
                     $lateSubmissions++;
                 }
 
-                if ($submission->grade !== null) {
+                if ($submission->marks_obtained !== null) {
                     $gradedAssignments++;
                     $totalMarks += $assignment->total_marks ?? 0;
-                    $obtainedMarks += $submission->grade ?? 0;
+                    $obtainedMarks += $submission->marks_obtained ?? 0;
 
                     // Subject-wise performance
                     $subjectName = $assignment->subject->name ?? 'Unknown';
@@ -1000,7 +1000,7 @@ class StudentPerformanceController extends BaseController
                     }
 
                     $subjectPerformance[$subjectName]['total_marks'] += $assignment->total_marks ?? 0;
-                    $subjectPerformance[$subjectName]['obtained_marks'] += $submission->grade ?? 0;
+                    $subjectPerformance[$subjectName]['obtained_marks'] += $submission->marks_obtained ?? 0;
                     $subjectPerformance[$subjectName]['assignments_count']++;
                 }
             }
