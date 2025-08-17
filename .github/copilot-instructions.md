@@ -56,6 +56,9 @@ Student::where('school_id', auth()->user()->getSchool()->id)->get();
 // ❌ WRONG - Never query without school isolation
 Student::all(); // This will leak data between schools
 ```
+**MANDATORY**: Always use Academic Year for all queries and data manipulations.
+
+
 
 ### 🛡️ BaseController & BaseService Usage
 
@@ -519,7 +522,7 @@ The project uses **Docker with RoadRunner** for production performance:
 
 ```bash
 # Start development environment
-docker-compose up -d
+docker-compose -f docker-compose-local.yml up -d
 
 # The application runs on Laravel Octane with RoadRunner
 # - Main app: http://localhost:8080
@@ -588,4 +591,20 @@ $stats = Cache::remember("stats_{$id}", 300, fn() => $this->calculateStats($id))
 
 ---
 
-**🎓 Remember**: SchoolSavvy is a production-ready SaaS platform with sophisticated multi-tenant architecture. Always prioritize security, performance, and maintainability in your code contributions. Follow the established patterns and this codebase will continue to scale beautifully!
+### Controller -> Service -> Model
+
+1. **Controller**: Handles HTTP requests and responses.
+   - Validates input data.
+   - Calls the appropriate service methods.
+   - Returns the final response.
+
+2. **Service**: Contains business logic and interacts with models.
+   - Fetches data from models.
+   - Applies business rules.
+   - Returns data to the controller.
+
+3. **Model**: Represents the data structure and interacts with the database.
+   - Defines relationships and database queries.
+   - Provides an interface for data manipulation.
+
+   **🎓 Remember**: SchoolSavvy is a production-ready SaaS platform with sophisticated multi-tenant architecture. Always prioritize security, performance, and maintainability in your code contributions. Follow the established patterns and this codebase will continue to scale beautifully!
