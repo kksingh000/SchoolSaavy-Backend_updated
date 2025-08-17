@@ -9,6 +9,7 @@ use App\Http\Requests\Student\StoreStudentRequest;
 use App\Http\Requests\Student\UpdateStudentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\BaseController;
 
 class StudentController extends BaseController
@@ -23,6 +24,11 @@ class StudentController extends BaseController
     public function index(Request $request): JsonResponse
     {
         try {
+            // Check if module access is required (uncomment if needed)
+            // if (!$this->checkModuleAccess('student-management')) {
+            //     return $this->moduleAccessDenied();
+            // }
+
             $filters = $request->only([
                 'search',
                 'class_id',
@@ -32,17 +38,31 @@ class StudentController extends BaseController
                 'admission_date'
             ]);
 
-            $students = $this->studentService->getAllStudents($filters);
+            // Get pagination parameters
+            $perPage = $request->get('per_page', 15); // Default 15 items per page
+            $page = $request->get('page', 1);
 
-            return response()->json([
-                'status' => 'success',
-                'data' => StudentResource::collection($students)
-            ]);
+            // Validate per_page parameter
+            $perPage = max(1, min(100, (int)$perPage)); // Between 1 and 100
+
+            $students = $this->studentService->getAllStudents($filters, $perPage);
+
+            return $this->successResponse([
+                'data' => StudentResource::collection($students->items()),
+                'pagination' => [
+                    'current_page' => $students->currentPage(),
+                    'last_page' => $students->lastPage(),
+                    'per_page' => $students->perPage(),
+                    'total' => $students->total(),
+                    'from' => $students->firstItem(),
+                    'to' => $students->lastItem(),
+                    'has_more_pages' => $students->hasMorePages(),
+                    'prev_page_url' => $students->previousPageUrl(),
+                    'next_page_url' => $students->nextPageUrl(),
+                ]
+            ], 'Students retrieved successfully');
         } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => $e->getMessage()
-            ], 500);
+            return $this->errorResponse($e->getMessage());
         }
     }
 
@@ -105,7 +125,7 @@ class StudentController extends BaseController
                 'data' => new StudentResource($student)
             ]);
         } catch (\Exception $e) {
-            \Log::error('Student Update Error:', [
+            Log::error('Student Update Error:', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);

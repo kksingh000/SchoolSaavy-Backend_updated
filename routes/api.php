@@ -120,9 +120,26 @@ Route::middleware('json.response')->group(function () {
         Route::get('students/{id}/attendance', [StudentController::class, 'getAttendanceReport']);
         Route::get('students/{id}/fees', [StudentController::class, 'getFeeStatus']);
 
+        // Parent-Student Management Routes
+        Route::prefix('students/{studentId}/parents')->group(function () {
+            Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getStudentParents']);
+            Route::post('assign', [\App\Http\Controllers\ParentStudentController::class, 'assignParent']);
+            Route::post('create', [\App\Http\Controllers\ParentStudentController::class, 'createAndAssignParent']);
+            Route::put('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'updateParentStudentRelationship']);
+            Route::delete('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'removeParentFromStudent']);
+        });
+
+        // Parent Management Routes
+        Route::prefix('parents')->group(function () {
+            Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getAllParents']);
+            Route::get('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'getParentDetails']);
+            Route::post('bulk-assign', [\App\Http\Controllers\ParentStudentController::class, 'bulkAssignParent']);
+        });
+
         // Class Management Routes
         Route::get('classes/teachers-classes', [ClassController::class, 'myClasses']);
         Route::get('classes/my-classes-simple', [ClassController::class, 'getMyClassesSimplified']);
+        Route::get('classes/simple', [ClassController::class, 'getSimpleClasses']);
         Route::apiResource('classes', ClassController::class);
         Route::post('classes/{id}/assign-students', [ClassController::class, 'assignStudents']);
         Route::get('classes/{id}/students', [ClassController::class, 'getStudents']);

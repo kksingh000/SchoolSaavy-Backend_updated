@@ -24,10 +24,10 @@ return new class extends Migration
             $table->integer('sort_order')->default(0); // For ordering
             $table->boolean('is_active')->default(true);
             $table->timestamps();
-            
+
             // Foreign key constraint (self-referencing)
             $table->foreign('parent_id')->references('id')->on('admin_menus')->onDelete('cascade');
-            
+
             // Indexes
             $table->index(['parent_id', 'type', 'sort_order']);
             $table->index(['code']);

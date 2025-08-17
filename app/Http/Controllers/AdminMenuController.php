@@ -18,7 +18,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $menus = $this->adminMenuService->getMenuHierarchy();
-            
+
             return $this->successResponse($menus, 'Admin menus retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -32,7 +32,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $menus = $this->adminMenuService->getAllMenus();
-            
+
             return $this->successResponse($menus, 'All menus retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -46,7 +46,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $menus = $this->adminMenuService->getMenusByType(strtoupper($type));
-            
+
             return $this->successResponse($menus, "Menus of type {$type} retrieved successfully");
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -60,7 +60,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $groups = $this->adminMenuService->getRootGroups();
-            
+
             return $this->successResponse($groups, 'Root groups retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -74,7 +74,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $children = $this->adminMenuService->getMenuChildren($menuId);
-            
+
             return $this->successResponse($children, 'Menu children retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -88,11 +88,11 @@ class AdminMenuController extends BaseController
     {
         try {
             $menu = $this->adminMenuService->find($id);
-            
+
             if (!$menu) {
                 return $this->errorResponse('Menu not found', null, 404);
             }
-            
+
             return $this->successResponse($menu, 'Menu retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -120,7 +120,7 @@ class AdminMenuController extends BaseController
             ]);
 
             $menu = $this->adminMenuService->createMenu($validated);
-            
+
             return $this->successResponse($menu, 'Menu created successfully', 201);
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->errorResponse('Validation failed', $e->errors(), 422);
@@ -149,7 +149,7 @@ class AdminMenuController extends BaseController
             ]);
 
             $menu = $this->adminMenuService->updateMenu($id, $validated);
-            
+
             return $this->successResponse($menu, 'Menu updated successfully');
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->errorResponse('Validation failed', $e->errors(), 422);
@@ -165,7 +165,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $this->adminMenuService->deleteMenu($id);
-            
+
             return $this->successResponse(null, 'Menu deleted successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -185,7 +185,7 @@ class AdminMenuController extends BaseController
             ]);
 
             $this->adminMenuService->reorderMenus($validated['menu_orders']);
-            
+
             return $this->successResponse(null, 'Menus reordered successfully');
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->errorResponse('Validation failed', $e->errors(), 422);
@@ -201,7 +201,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $menu = $this->adminMenuService->toggleMenuStatus($id);
-            
+
             return $this->successResponse($menu, 'Menu status updated successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -215,7 +215,7 @@ class AdminMenuController extends BaseController
     {
         try {
             $breadcrumb = $this->adminMenuService->getMenuBreadcrumb($menuId);
-            
+
             return $this->successResponse($breadcrumb, 'Menu breadcrumb retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
@@ -233,7 +233,7 @@ class AdminMenuController extends BaseController
             ]);
 
             $menus = $this->adminMenuService->searchMenus($validated['q']);
-            
+
             return $this->successResponse($menus, 'Menu search completed successfully');
         } catch (\Illuminate\Validation\ValidationException $e) {
             return $this->errorResponse('Validation failed', $e->errors(), 422);

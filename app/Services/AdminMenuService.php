@@ -66,7 +66,7 @@ class AdminMenuService extends BaseService
     public function getMenuChildren(string $menuId)
     {
         $menu = AdminMenu::active()->find($menuId);
-        
+
         if (!$menu) {
             return collect();
         }
@@ -110,10 +110,10 @@ class AdminMenuService extends BaseService
     public function deleteMenu(string $id)
     {
         $menu = AdminMenu::findOrFail($id);
-        
+
         // Delete all children recursively
         $this->deleteMenuWithChildren($menu);
-        
+
         return true;
     }
 
@@ -126,7 +126,7 @@ class AdminMenuService extends BaseService
         foreach ($menu->children as $child) {
             $this->deleteMenuWithChildren($child);
         }
-        
+
         // Then delete the menu itself
         $menu->delete();
     }
@@ -140,7 +140,7 @@ class AdminMenuService extends BaseService
             AdminMenu::where('id', $order['id'])
                 ->update(['sort_order' => $order['sort_order']]);
         }
-        
+
         return true;
     }
 
@@ -152,7 +152,7 @@ class AdminMenuService extends BaseService
         $menu = AdminMenu::findOrFail($id);
         $menu->is_active = !$menu->is_active;
         $menu->save();
-        
+
         return $menu;
     }
 
@@ -168,7 +168,7 @@ class AdminMenuService extends BaseService
 
         $breadcrumb = [];
         $current = $menu;
-        
+
         while ($current) {
             array_unshift($breadcrumb, [
                 'id' => $current->id,
@@ -178,7 +178,7 @@ class AdminMenuService extends BaseService
             ]);
             $current = $current->parent;
         }
-        
+
         return $breadcrumb;
     }
 
@@ -190,7 +190,7 @@ class AdminMenuService extends BaseService
         return AdminMenu::active()
             ->where(function ($q) use ($query) {
                 $q->where('name', 'like', "%{$query}%")
-                  ->orWhere('code', 'like', "%{$query}%");
+                    ->orWhere('code', 'like', "%{$query}%");
             })
             ->orderBy('sort_order')
             ->get()
