@@ -12,6 +12,7 @@ class Assessment extends Model
 
     protected $fillable = [
         'school_id',
+        'academic_year_id',
         'assessment_type_id',
         'class_id',
         'subject_id',
@@ -53,6 +54,11 @@ class Assessment extends Model
         return $this->belongsTo(School::class);
     }
 
+    public function academicYear()
+    {
+        return $this->belongsTo(AcademicYear::class);
+    }
+
     public function assessmentType()
     {
         return $this->belongsTo(AssessmentType::class);
@@ -76,6 +82,18 @@ class Assessment extends Model
     public function results()
     {
         return $this->hasMany(AssessmentResult::class);
+    }
+
+    public function scopeForAcademicYear($query, $academicYearId)
+    {
+        return $query->where('academic_year_id', $academicYearId);
+    }
+
+    public function scopeCurrentYear($query)
+    {
+        return $query->whereHas('academicYear', function ($q) {
+            $q->where('is_current', true);
+        });
     }
 
     // Scopes

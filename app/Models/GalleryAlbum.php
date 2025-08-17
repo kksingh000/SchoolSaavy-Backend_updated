@@ -12,6 +12,7 @@ class GalleryAlbum extends Model
 
     protected $fillable = [
         'school_id',
+        'academic_year_id',
         'class_id',
         'event_id',
         'created_by',
@@ -36,6 +37,11 @@ class GalleryAlbum extends Model
     public function school()
     {
         return $this->belongsTo(School::class);
+    }
+
+    public function academicYear()
+    {
+        return $this->belongsTo(AcademicYear::class);
     }
 
     public function class()
@@ -73,6 +79,18 @@ class GalleryAlbum extends Model
         return $this->hasMany(GalleryMedia::class, 'album_id')
             ->where('is_featured', true)
             ->orderBy('sort_order');
+    }
+
+    public function scopeForAcademicYear($query, $academicYearId)
+    {
+        return $query->where('academic_year_id', $academicYearId);
+    }
+
+    public function scopeCurrentYear($query)
+    {
+        return $query->whereHas('academicYear', function ($q) {
+            $q->where('is_current', true);
+        });
     }
 
     // Scopes

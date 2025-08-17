@@ -5,6 +5,8 @@ namespace App\Http\Middleware;
 use Closure;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\Auth;
+use App\Models\AcademicYear;
 
 class InjectSchoolData
 {
@@ -15,8 +17,8 @@ class InjectSchoolData
      */
     public function handle(Request $request, Closure $next): Response
     {
-        if (auth()->check()) {
-            $user = auth()->user();
+        if (Auth::check()) {
+            $user = Auth::user();
 
             // Get school_id based on user type
             $schoolId = match ($user->user_type) {
@@ -26,11 +28,31 @@ class InjectSchoolData
                 default => null
             };
 
-            // Merge school_id and created_by into request
+            // Get current academic year for the school
+            $currentAcademicYear = null;
+            $currentAcademicYearId = null;
+
+            if ($schoolId) {
+                $currentAcademicYear = AcademicYear::forSchool($schoolId)
+                    ->current()
+                    ->active()
+                    ->first();
+
+                $currentAcademicYearId = $currentAcademicYear?->id;
+            }
+
+            // Merge school_id, academic year, and created_by into request
             $request->merge([
                 'school_id' => $schoolId,
+                'academic_year_id' => $currentAcademicYearId,
+                'current_academic_year' => $currentAcademicYear?->year_label,
                 'created_by' => $user->id
             ]);
+
+            // Store current academic year in request for easy access
+            if ($currentAcademicYear) {
+                $request->attributes->set('currentAcademicYearModel', $currentAcademicYear);
+            }
         }
         return $next($request);
     }

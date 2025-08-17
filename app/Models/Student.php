@@ -82,4 +82,58 @@ class Student extends Model
     {
         return $this->belongsTo(User::class, 'created_by');
     }
+
+    public function promotions()
+    {
+        return $this->hasMany(StudentPromotion::class);
+    }
+
+    public function currentPromotion()
+    {
+        return $this->hasOne(StudentPromotion::class)
+            ->whereHas('academicYear', function ($query) {
+                $query->where('is_current', true);
+            });
+    }
+
+    public function promotionHistory()
+    {
+        return $this->hasMany(StudentPromotion::class)
+            ->with(['academicYear', 'fromClass', 'toClass'])
+            ->orderBy('created_at', 'desc');
+    }
+
+    // Scope to get students for a specific academic year
+    public function scopeForAcademicYear($query, $academicYearId)
+    {
+        return $query->whereHas('classes', function ($q) use ($academicYearId) {
+            $q->where('class_student.academic_year_id', $academicYearId)
+                ->where('class_student.is_active', true);
+        });
+    }
+
+    // Get current class for a specific academic year
+    public function getCurrentClassForYear($academicYearId)
+    {
+        return $this->classes()
+            ->wherePivot('academic_year_id', $academicYearId)
+            ->wherePivot('is_active', true)
+            ->first();
+    }
+
+    // Check if student was promoted in a specific academic year
+    public function wasPromotedInYear($academicYearId)
+    {
+        return $this->promotions()
+            ->where('academic_year_id', $academicYearId)
+            ->whereIn('promotion_status', ['promoted', 'conditionally_promoted'])
+            ->exists();
+    }
+
+    // Get promotion status for current academic year
+    public function getCurrentPromotionStatus()
+    {
+        $currentPromotion = $this->currentPromotion;
+        return $currentPromotion ? $currentPromotion->promotion_status : null;
+    }
 }

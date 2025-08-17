@@ -290,6 +290,39 @@ Route::middleware('json.response')->group(function () {
             Route::patch('{submission}/status', [ContactController::class, 'updateStatus']);
         });
 
+        // Academic Year & Promotion System Routes
+        Route::prefix('academic-years')->group(function () {
+            Route::get('/', [\App\Http\Controllers\AcademicYearController::class, 'index']);
+            Route::post('/', [\App\Http\Controllers\AcademicYearController::class, 'store']);
+            Route::get('{id}', [\App\Http\Controllers\AcademicYearController::class, 'show']);
+            Route::put('{id}', [\App\Http\Controllers\AcademicYearController::class, 'update']);
+            Route::delete('{id}', [\App\Http\Controllers\AcademicYearController::class, 'destroy']);
+            Route::post('{id}/set-current', [\App\Http\Controllers\AcademicYearController::class, 'setCurrent']);
+            Route::post('{id}/start-promotion', [\App\Http\Controllers\AcademicYearController::class, 'startPromotionPeriod']);
+            Route::post('{id}/complete', [\App\Http\Controllers\AcademicYearController::class, 'complete']);
+            Route::get('{id}/generate-next', [\App\Http\Controllers\AcademicYearController::class, 'generateNext']);
+            Route::post('{id}/clone-criteria', [\App\Http\Controllers\AcademicYearController::class, 'cloneCriteria']);
+        });
+
+        Route::prefix('promotions')->group(function () {
+            // Promotion Criteria Management
+            Route::get('criteria/{academicYearId}', [\App\Http\Controllers\PromotionController::class, 'getCriteria']);
+            Route::post('criteria', [\App\Http\Controllers\PromotionController::class, 'storeCriteria']);
+
+            // Student Evaluation & Promotion
+            Route::post('evaluate-student', [\App\Http\Controllers\PromotionController::class, 'evaluateStudent']);
+            Route::post('bulk-evaluate', [\App\Http\Controllers\PromotionController::class, 'bulkEvaluate']);
+            Route::post('apply-promotions', [\App\Http\Controllers\PromotionController::class, 'applyPromotions']);
+
+            // Statistics & Reports
+            Route::get('statistics/{academicYearId}', [\App\Http\Controllers\PromotionController::class, 'getStatistics']);
+            Route::get('students/{academicYearId}', [\App\Http\Controllers\PromotionController::class, 'getStudentPromotions']);
+            Route::get('batches/{academicYearId}', [\App\Http\Controllers\PromotionController::class, 'getBatches']);
+
+            // Manual Overrides
+            Route::post('{promotionId}/override', [\App\Http\Controllers\PromotionController::class, 'overrideDecision']);
+        });
+
         // Parent APIs - For Parent Mobile Application
         Route::prefix('parent')->middleware('user.type:parent')->group(function () {
             // Get parent's children

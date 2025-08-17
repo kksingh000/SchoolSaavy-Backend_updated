@@ -205,6 +205,27 @@ class ModuleSeeder extends Seeder
                 'is_active' => true,
                 'sort_order' => 12,
             ],
+            [
+                'name' => 'Student Promotion System',
+                'slug' => 'promotion-system',
+                'description' => 'Advanced academic year management and student promotion system',
+                'monthly_price' => 30.00,
+                'yearly_price' => 300.00,
+                'features' => [
+                    'Academic Year Management',
+                    'Promotion Criteria Configuration',
+                    'Automated Student Evaluation',
+                    'Bulk Promotion Processing',
+                    'Performance-based Promotion',
+                    'Manual Override Controls',
+                    'Promotion Statistics & Reports',
+                    'Parent Notification System',
+                    'Remedial Tracking',
+                    'Class Progression Management'
+                ],
+                'is_active' => true,
+                'sort_order' => 13,
+            ],
         ];
 
         foreach ($modules as $module) {

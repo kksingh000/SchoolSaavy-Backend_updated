@@ -12,6 +12,7 @@ class Assignment extends Model
 
     protected $fillable = [
         'school_id',
+        'academic_year_id',
         'teacher_id',
         'class_id',
         'subject_id',
@@ -46,6 +47,11 @@ class Assignment extends Model
         return $this->belongsTo(School::class);
     }
 
+    public function academicYear()
+    {
+        return $this->belongsTo(AcademicYear::class);
+    }
+
     public function teacher()
     {
         return $this->belongsTo(Teacher::class);
@@ -76,6 +82,18 @@ class Assignment extends Model
         return $this->hasMany(AssignmentSubmission::class)->where('status', 'graded');
     }
 
+
+    public function scopeForAcademicYear($query, $academicYearId)
+    {
+        return $query->where('academic_year_id', $academicYearId);
+    }
+
+    public function scopeCurrentYear($query)
+    {
+        return $query->whereHas('academicYear', function ($q) {
+            $q->where('is_current', true);
+        });
+    }
 
     // Scopes
     public function scopeActive($query)

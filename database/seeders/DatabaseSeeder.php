@@ -23,6 +23,8 @@ class DatabaseSeeder extends Seeder
             AssessmentResultSeeder::class,
             CambridgeSchoolSeeder::class, // Comprehensive test data for Cambridge International School
             GallerySeeder::class, // Gallery dummy data with public URLs
+            AcademicYearSeeder::class, // Academic years for promotion system
+            PromotionCriteriaSeeder::class, // Default promotion criteria
         ]);
     }
 }

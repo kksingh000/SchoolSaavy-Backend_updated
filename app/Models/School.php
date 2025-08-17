@@ -58,4 +58,19 @@ class School extends Model
     {
         return $this->hasMany(ClassRoom::class);
     }
+
+    public function academicYears()
+    {
+        return $this->hasMany(AcademicYear::class);
+    }
+
+    public function promotionCriteria()
+    {
+        return $this->hasMany(PromotionCriteria::class);
+    }
+
+    public function studentPromotions()
+    {
+        return $this->hasMany(StudentPromotion::class);
+    }
 }

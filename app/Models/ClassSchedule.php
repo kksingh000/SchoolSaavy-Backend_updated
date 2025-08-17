@@ -11,6 +11,7 @@ class ClassSchedule extends Model
 
     protected $fillable = [
         'school_id',
+        'academic_year_id',
         'class_id',
         'subject_id',
         'teacher_id',
@@ -34,6 +35,11 @@ class ClassSchedule extends Model
         return $this->belongsTo(School::class);
     }
 
+    public function academicYear()
+    {
+        return $this->belongsTo(AcademicYear::class);
+    }
+
     public function class()
     {
         return $this->belongsTo(ClassRoom::class, 'class_id');
@@ -47,6 +53,18 @@ class ClassSchedule extends Model
     public function teacher()
     {
         return $this->belongsTo(Teacher::class);
+    }
+
+    public function scopeForAcademicYear($query, $academicYearId)
+    {
+        return $query->where('academic_year_id', $academicYearId);
+    }
+
+    public function scopeCurrentYear($query)
+    {
+        return $query->whereHas('academicYear', function ($q) {
+            $q->where('is_current', true);
+        });
     }
 
     // Scopes

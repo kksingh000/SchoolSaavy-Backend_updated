@@ -11,6 +11,7 @@ class Attendance extends Model
 
     protected $fillable = [
         'school_id',
+        'academic_year_id',
         'class_id',
         'student_id',
         'date',
@@ -32,6 +33,11 @@ class Attendance extends Model
         return $this->belongsTo(School::class);
     }
 
+    public function academicYear()
+    {
+        return $this->belongsTo(AcademicYear::class);
+    }
+
     public function class()
     {
         return $this->belongsTo(ClassRoom::class, 'class_id');
@@ -45,5 +51,43 @@ class Attendance extends Model
     public function markedBy()
     {
         return $this->belongsTo(User::class, 'marked_by');
+    }
+
+    // Scopes
+    public function scopeForAcademicYear($query, $academicYearId)
+    {
+        return $query->where('academic_year_id', $academicYearId);
+    }
+
+    public function scopeCurrentYear($query)
+    {
+        return $query->whereHas('academicYear', function ($q) {
+            $q->where('is_current', true);
+        });
+    }
+
+    public function scopeForStudent($query, $studentId)
+    {
+        return $query->where('student_id', $studentId);
+    }
+
+    public function scopeForClass($query, $classId)
+    {
+        return $query->where('class_id', $classId);
+    }
+
+    public function scopePresent($query)
+    {
+        return $query->where('status', 'present');
+    }
+
+    public function scopeAbsent($query)
+    {
+        return $query->where('status', 'absent');
+    }
+
+    public function scopeInDateRange($query, $startDate, $endDate)
+    {
+        return $query->whereBetween('date', [$startDate, $endDate]);
     }
 }

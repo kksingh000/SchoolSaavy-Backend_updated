@@ -3,8 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Module;
+use App\Models\AcademicYear;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Http\Request;
 
 class BaseController extends Controller
 {
@@ -36,6 +38,42 @@ class BaseController extends Controller
             'message' => 'Module not activated for your school. Please contact administration.',
             'code' => 'MODULE_ACCESS_DENIED'
         ], 403);
+    }
+
+    /**
+     * Get current academic year ID from request (injected by middleware)
+     */
+    protected function getCurrentAcademicYearId(Request $request = null): ?int
+    {
+        $request = $request ?? request();
+        return $request->input('academic_year_id');
+    }
+
+    /**
+     * Get current academic year label from request (injected by middleware)
+     */
+    protected function getCurrentAcademicYear(Request $request = null): ?string
+    {
+        $request = $request ?? request();
+        return $request->input('current_academic_year');
+    }
+
+    /**
+     * Get current academic year model from request (injected by middleware)
+     */
+    protected function getCurrentAcademicYearModel(Request $request = null): ?AcademicYear
+    {
+        $request = $request ?? request();
+        return $request->attributes->get('currentAcademicYearModel');
+    }
+
+    /**
+     * Get school ID from request (injected by middleware)
+     */
+    protected function getSchoolId(Request $request = null): ?int
+    {
+        $request = $request ?? request();
+        return $request->input('school_id');
     }
 
     protected function successResponse($data = null, string $message = 'Success', int $code = 200): JsonResponse
