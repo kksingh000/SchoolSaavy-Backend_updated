@@ -13,6 +13,57 @@ class ClassService extends BaseService
         $this->model = ClassRoom::class;
     }
 
+    /**
+     * Override getAll to add search functionality and school filtering
+     */
+    public function getAll($filters = [], $relations = [], $perPage = 15)
+    {
+        $query = $this->model::query();
+
+        // Always filter by school_id for multi-tenant support
+        $schoolId = request()->input('school_id');
+        if ($schoolId) {
+            $query->where('school_id', $schoolId);
+        }
+
+        if (!empty($relations)) {
+            $query->with($relations);
+        }
+
+        // Handle search functionality
+        if (isset($filters['search']) && !empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'like', "%{$search}%")
+                    ->orWhere('section', 'like', "%{$search}%")
+                    ->orWhere('grade_level', 'like', "%{$search}%")
+                    ->orWhereHas('classTeacher', function ($teacherQuery) use ($search) {
+                        $teacherQuery->whereHas('user', function ($userQuery) use ($search) {
+                            $userQuery->where('name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%");
+                        });
+                    });
+            });
+            unset($filters['search']); // Remove search from regular filters
+        }
+
+        // Apply other filters
+        foreach ($filters as $field => $value) {
+            if ($value !== null && $value !== '') {
+                if (method_exists($this, 'filter' . ucfirst($field))) {
+                    $this->{'filter' . ucfirst($field)}($query, $value);
+                } else {
+                    $query->where($field, $value);
+                }
+            }
+        }
+
+        // Add consistent ordering
+        $query->orderBy('name')->orderBy('section')->orderBy('id');
+
+        return $query->paginate($perPage);
+    }
+
     public function find($id, $relations = [])
     {
         $query = $this->model::query();
@@ -42,11 +93,45 @@ class ClassService extends BaseService
         return $query->findOrFail($id);
     }
 
+    /**
+     * Get simplified classes (id, name only) for dropdowns and select lists
+     * Fast, lightweight with pagination and search support
+     */
+    public function getSimpleClasses($search = null, $perPage = 15)
+    {
+        $query = $this->model::query();
+
+        // Always filter by school_id for multi-tenant support
+        $schoolId = request()->input('school_id');
+        if ($schoolId) {
+            $query->where('school_id', $schoolId);
+        }
+
+        // Apply search if provided
+        if ($search) {
+            $search = trim($search);
+            $query->where(function ($q) use ($search) {
+                $q->where('name', 'LIKE', "%{$search}%")
+                    ->orWhere('section', 'LIKE', "%{$search}%")
+                    ->orWhere('grade_level', 'LIKE', "%{$search}%");
+            });
+        }
+
+        // Select only required fields for performance
+        $query->select('id', 'name', 'section', 'grade_level')
+            ->where('is_active', true)
+            ->orderBy('name')
+            ->orderBy('section')
+            ->orderBy('id');
+
+        return $query->paginate($perPage);
+    }
+
     public function createClass(array $data)
     {
         DB::beginTransaction();
         try {
-            $data['school_id'] = Auth::user()->getSchoolId();
+            $data['school_id'] = request()->input('school_id');
 
             // Create class
             $class = $this->create($data);
@@ -78,7 +163,7 @@ class ClassService extends BaseService
         DB::beginTransaction();
         try {
             $class = $this->find($classId);
-            $schoolId = Auth::user()->getSchoolId();
+            $schoolId = request()->input('school_id');
 
             // Validate that all students belong to the same school
             $validStudents = \App\Models\Student::whereIn('id', $studentIds)
@@ -276,7 +361,7 @@ class ClassService extends BaseService
      */
     public function getClassSubjects($classId)
     {
-        $schoolId = Auth::user()->getSchoolId();
+        $schoolId = request()->input('school_id');
 
         // Single optimized query with only necessary fields
         $class = ClassRoom::where('school_id', $schoolId)
@@ -302,7 +387,7 @@ class ClassService extends BaseService
     {
         DB::beginTransaction();
         try {
-            $schoolId = Auth::user()->getSchoolId();
+            $schoolId = request()->input('school_id');
 
             // Verify class belongs to school
             $class = ClassRoom::where('school_id', $schoolId)

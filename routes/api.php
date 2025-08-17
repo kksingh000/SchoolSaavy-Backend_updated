@@ -120,9 +120,26 @@ Route::middleware('json.response')->group(function () {
         Route::get('students/{id}/attendance', [StudentController::class, 'getAttendanceReport']);
         Route::get('students/{id}/fees', [StudentController::class, 'getFeeStatus']);
 
+        // Parent-Student Management Routes
+        Route::prefix('students/{studentId}/parents')->group(function () {
+            Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getStudentParents']);
+            Route::post('assign', [\App\Http\Controllers\ParentStudentController::class, 'assignParent']);
+            Route::post('create', [\App\Http\Controllers\ParentStudentController::class, 'createAndAssignParent']);
+            Route::put('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'updateParentStudentRelationship']);
+            Route::delete('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'removeParentFromStudent']);
+        });
+
+        // Parent Management Routes
+        Route::prefix('parents')->group(function () {
+            Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getAllParents']);
+            Route::get('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'getParentDetails']);
+            Route::post('bulk-assign', [\App\Http\Controllers\ParentStudentController::class, 'bulkAssignParent']);
+        });
+
         // Class Management Routes
         Route::get('classes/teachers-classes', [ClassController::class, 'myClasses']);
         Route::get('classes/my-classes-simple', [ClassController::class, 'getMyClassesSimplified']);
+        Route::get('classes/simple', [ClassController::class, 'getSimpleClasses']);
         Route::apiResource('classes', ClassController::class);
         Route::post('classes/{id}/assign-students', [ClassController::class, 'assignStudents']);
         Route::get('classes/{id}/students', [ClassController::class, 'getStudents']);
@@ -288,6 +305,23 @@ Route::middleware('json.response')->group(function () {
         Route::prefix('admin/contact-submissions')->group(function () {
             Route::get('/', [ContactController::class, 'index']);
             Route::patch('{submission}/status', [ContactController::class, 'updateStatus']);
+        });
+
+        // Admin Menu Management Routes
+        Route::prefix('admin/menus')->group(function () {
+            Route::get('/', [\App\Http\Controllers\AdminMenuController::class, 'index']);
+            Route::get('flat', [\App\Http\Controllers\AdminMenuController::class, 'getAllFlat']);
+            Route::get('type/{type}', [\App\Http\Controllers\AdminMenuController::class, 'getByType']);
+            Route::get('root-groups', [\App\Http\Controllers\AdminMenuController::class, 'getRootGroups']);
+            Route::get('{menuId}/children', [\App\Http\Controllers\AdminMenuController::class, 'getChildren']);
+            Route::get('{menuId}/breadcrumb', [\App\Http\Controllers\AdminMenuController::class, 'getBreadcrumb']);
+            Route::get('search', [\App\Http\Controllers\AdminMenuController::class, 'search']);
+            Route::post('/', [\App\Http\Controllers\AdminMenuController::class, 'store']);
+            Route::put('{id}', [\App\Http\Controllers\AdminMenuController::class, 'update']);
+            Route::delete('{id}', [\App\Http\Controllers\AdminMenuController::class, 'destroy']);
+            Route::post('reorder', [\App\Http\Controllers\AdminMenuController::class, 'reorder']);
+            Route::patch('{id}/toggle-status', [\App\Http\Controllers\AdminMenuController::class, 'toggleStatus']);
+            Route::get('{id}', [\App\Http\Controllers\AdminMenuController::class, 'show']);
         });
 
         // Academic Year & Promotion System Routes

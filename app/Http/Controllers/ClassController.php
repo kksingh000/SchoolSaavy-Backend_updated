@@ -28,13 +28,32 @@ class ClassController extends BaseController
         }
 
         try {
-            $filters = $request->only(['grade_level', 'is_active', 'class_teacher_id']);
-            $classes = $this->classService->getAll($filters, ['classTeacher.user', 'students']);
+            // Get pagination parameters
+            $perPage = $request->get('per_page', 15); // Default 15 items per page
+            $page = $request->get('page', 1);
 
-            return $this->successResponse(
-                ClassResource::collection($classes),
-                'Classes retrieved successfully'
-            );
+            // Validate per_page parameter
+            $perPage = max(1, min(100, (int)$perPage)); // Between 1 and 100
+
+            // Get filters including search
+            $filters = $request->only(['search', 'grade_level', 'is_active', 'class_teacher_id']);
+
+            $classes = $this->classService->getAll($filters, ['classTeacher.user', 'students'], $perPage);
+
+            return $this->successResponse([
+                'data' => ClassResource::collection($classes->items()),
+                'pagination' => [
+                    'current_page' => $classes->currentPage(),
+                    'last_page' => $classes->lastPage(),
+                    'per_page' => $classes->perPage(),
+                    'total' => $classes->total(),
+                    'from' => $classes->firstItem(),
+                    'to' => $classes->lastItem(),
+                    'has_more_pages' => $classes->hasMorePages(),
+                    'prev_page_url' => $classes->previousPageUrl(),
+                    'next_page_url' => $classes->nextPageUrl(),
+                ]
+            ], 'Classes retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
         }
@@ -120,6 +139,31 @@ class ClassController extends BaseController
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get simplified classes (only id and name) for dropdowns and select lists
+     * Supports pagination and search for fast, lightweight data retrieval
+     */
+    public function getSimpleClasses(Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('class-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            // Get pagination parameters
+            $perPage = $request->input('per_page', 15);
+            $perPage = is_numeric($perPage) && $perPage >= 1 && $perPage <= 100 ? (int)$perPage : 15;
+
+            $search = $request->input('search');
+
+            $simpleClasses = $this->classService->getSimpleClasses($search, $perPage);
+
+            return $this->successResponse($simpleClasses, 'Simple classes retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to retrieve simple classes: ' . $e->getMessage());
         }
     }
 

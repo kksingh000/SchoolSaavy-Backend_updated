@@ -5,11 +5,12 @@ namespace App\Services;
 use App\Models\Student;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Http\UploadedFile;
 
 class StudentService
 {
-    public function getAllStudents($filters = [])
+    public function getAllStudents($filters = [], $perPage = 15)
     {
         $query = Student::with(['school', 'parents'])
             ->where('school_id', request()->school_id);
@@ -43,7 +44,10 @@ class StudentService
             $query->whereDate('admission_date', $filters['admission_date']);
         }
 
-        return $query->paginate(10);
+        // Add ordering for consistent pagination
+        $query->orderBy('first_name')->orderBy('last_name')->orderBy('id');
+
+        return $query->paginate($perPage);
     }
 
     public function createStudent($data)
@@ -85,7 +89,7 @@ class StudentService
     {
         DB::beginTransaction();
         try {
-            \Log::info('Updating student with data:', $data);
+            Log::info('Updating student with data:', $data);
 
             $student = Student::where('school_id', request()->school_id)
                 ->findOrFail($id);
@@ -102,12 +106,12 @@ class StudentService
 
             DB::commit();
 
-            \Log::info('Student updated successfully:', ['id' => $student->id]);
+            Log::info('Student updated successfully:', ['id' => $student->id]);
 
             return $student->fresh()->load(['school', 'parents']);
         } catch (\Exception $e) {
             DB::rollBack();
-            \Log::error('Student update failed:', [
+            Log::error('Student update failed:', [
                 'error' => $e->getMessage(),
                 'data' => $data
             ]);
