@@ -14,9 +14,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Pagination\LengthAwarePaginator;
+use App\Traits\GeneratesFileUrls;
 
 class GalleryService
 {
+    use GeneratesFileUrls;
+
     /**
      * Get paginated gallery albums with filters
      */
@@ -896,26 +899,6 @@ class GalleryService
 
         unset($album->media);
         return $album;
-    }
-
-    /**
-     * Build a full accessible URL for a stored file path (handles S3 or local, leaves absolute URLs untouched)
-     */
-    private function buildFileUrl(?string $path): ?string
-    {
-        $url = config('upload.media_url');
-        if (!$path) {
-            return null;
-        }
-
-        // Already an absolute URL
-        if (filter_var($path, FILTER_VALIDATE_URL)) {
-            return $path;
-        }
-
-        // lets append media_url
-        $url .= '/' . ltrim($path, '/');
-        return $url;
     }
 
     /**

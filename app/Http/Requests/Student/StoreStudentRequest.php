@@ -28,7 +28,7 @@ class StoreStudentRequest extends FormRequest
             'parent_id' => 'required|exists:parents,id',
             'relationship' => 'required|string|in:father,mother,guardian',
             'is_primary' => 'boolean',
-            'profile_photo' => 'nullable|image|max:2048'
+            'profile_photo' => 'nullable|string|max:500' // Expecting S3 path string from upload API
         ];
     }
-} 
+}

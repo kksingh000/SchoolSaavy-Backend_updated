@@ -4,9 +4,7 @@ namespace App\Services;
 
 use App\Models\Student;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Http\UploadedFile;
 
 class StudentService
 {
@@ -54,9 +52,14 @@ class StudentService
     {
         DB::beginTransaction();
         try {
-            // Handle profile photo upload if present
-            if (isset($data['profile_photo'])) {
-                $data['profile_photo'] = $this->uploadProfilePhoto($data['profile_photo']);
+            // Handle profile photo path if present (expects S3 path string from upload API)
+            if (isset($data['profile_photo']) && !empty($data['profile_photo'])) {
+                // Validate the path format (should start with uploads/)
+                if (!str_starts_with($data['profile_photo'], 'uploads/')) {
+                    throw new \Exception('Invalid profile photo path format');
+                }
+                // Store the S3 path as-is
+                $data['profile_photo'] = $data['profile_photo'];
             }
 
             // school_id and created_by are already in $data from middleware
@@ -94,12 +97,19 @@ class StudentService
             $student = Student::where('school_id', request()->school_id)
                 ->findOrFail($id);
 
-            // Handle profile photo if provided
-            if (isset($data['profile_photo']) && $data['profile_photo'] instanceof UploadedFile) {
-                if ($student->profile_photo) {
-                    Storage::delete($student->profile_photo);
+            // Handle profile photo if provided (expects S3 path string from upload API)
+            if (isset($data['profile_photo']) && !empty($data['profile_photo'])) {
+                // Validate the path format (should start with uploads/)
+                if (!str_starts_with($data['profile_photo'], 'uploads/')) {
+                    throw new \Exception('Invalid profile photo path format');
                 }
-                $data['profile_photo'] = $this->uploadProfilePhoto($data['profile_photo']);
+
+                // If there's an old profile photo, we could optionally delete it
+                // but we'll leave that to the frontend to handle via the delete API
+                $data['profile_photo'] = $data['profile_photo'];
+            } elseif (array_key_exists('profile_photo', $data) && is_null($data['profile_photo'])) {
+                // If profile_photo is explicitly set to null, remove the photo
+                $data['profile_photo'] = null;
             }
 
             $student->update($data);
@@ -126,9 +136,9 @@ class StudentService
             $student = Student::where('school_id', request()->school_id)
                 ->findOrFail($id);
 
-            if ($student->profile_photo) {
-                Storage::delete($student->profile_photo);
-            }
+            // Note: We no longer automatically delete the profile photo file
+            // The frontend should use the FileUploadController's deleteFile method
+            // if they want to clean up the S3 files when deleting a student
 
             $student->delete();
 
@@ -278,10 +288,5 @@ class StudentService
                     ];
                 }),
         ];
-    }
-
-    protected function uploadProfilePhoto($photo)
-    {
-        return $photo->store('student-photos', 'public');
     }
 }

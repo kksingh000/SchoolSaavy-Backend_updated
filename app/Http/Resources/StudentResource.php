@@ -3,9 +3,12 @@
 namespace App\Http\Resources;
 
 use Illuminate\Http\Resources\Json\JsonResource;
+use App\Traits\GeneratesFileUrls;
 
 class StudentResource extends JsonResource
 {
+    use GeneratesFileUrls;
+
     public function toArray($request)
     {
         return [
@@ -19,6 +22,7 @@ class StudentResource extends JsonResource
             'admission_date' => $this->admission_date,
             'blood_group' => $this->blood_group,
             'profile_photo' => $this->profile_photo,
+            'profile_photo_url' => $this->buildFileUrl($this->profile_photo),
             'address' => $this->address,
             'phone' => $this->phone,
             'is_active' => $this->is_active,
@@ -27,4 +31,4 @@ class StudentResource extends JsonResource
             'updated_at' => $this->updated_at,
         ];
     }
-} 
+}

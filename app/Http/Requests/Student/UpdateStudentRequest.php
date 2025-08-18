@@ -33,7 +33,7 @@ class UpdateStudentRequest extends Request
             'address' => 'sometimes|string',
             'phone' => 'sometimes|nullable|string',
             'is_active' => 'sometimes|boolean',
-            'profile_photo' => 'sometimes|nullable|image|max:2048'
+            'profile_photo' => 'sometimes|nullable|string|max:500' // Expecting S3 path string from upload API
         ];
     }
 
@@ -46,4 +46,4 @@ class UpdateStudentRequest extends Request
             'raw' => $this->getContent()
         ]);
     }
-} 
+}

@@ -18,9 +18,12 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use App\Traits\GeneratesFileUrls;
 
 class ParentService
 {
+    use GeneratesFileUrls;
+
     /**
      * Verify if student belongs to the parent
      */
@@ -636,7 +639,7 @@ class ParentService
                     'name' => basename($attachment),
                     'original_name' => basename($attachment),
                     'filename' => basename($attachment),
-                    'url' => $this->generateFileUrl($attachment),
+                    'url' => $this->buildFileUrl($attachment),
                     'path' => $attachment,
                     'type' => pathinfo($attachment, PATHINFO_EXTENSION),
                     'mime_type' => $this->getMimeTypeFromExtension(pathinfo($attachment, PATHINFO_EXTENSION)),
@@ -663,7 +666,7 @@ class ParentService
                     'name' => $attachmentName,
                     'original_name' => $attachment['name'] ?? $attachmentName,
                     'filename' => $attachment['filename'] ?? basename($attachmentPath),
-                    'url' => $attachmentUrl ?: $this->generateFileUrl($attachmentPath),
+                    'url' => $attachmentUrl ?: $this->buildFileUrl($attachmentPath),
                     'path' => $attachmentPath,
                     'type' => $attachmentType,
                     'mime_type' => $attachment['mime_type'] ?? $fileInfo['mime_type'] ?? $this->getMimeTypeFromExtension($attachmentType),
@@ -792,33 +795,6 @@ class ParentService
         }
 
         return $summary;
-    }
-
-    /**
-     * Generate file URL based on storage configuration
-     */
-    private function generateFileUrl(string $filePath): string
-    {
-        if (empty($filePath)) {
-            return '';
-        }
-
-        // Check if it's already a full URL
-        if (str_starts_with($filePath, 'http')) {
-            return $filePath;
-        }
-
-        $uploadDisk = config('filesystems.gallery_disk', 'public');
-
-        if ($uploadDisk === 's3') {
-            // Generate S3 URL
-            $bucket = config('filesystems.disks.s3.bucket');
-            $region = config('filesystems.disks.s3.region');
-            return "https://{$bucket}.s3.{$region}.amazonaws.com/{$filePath}";
-        } else {
-            // Generate local storage URL
-            return asset('storage/' . $filePath);
-        }
     }
 
     /**
@@ -1401,15 +1377,6 @@ class ParentService
         }
 
         return null;
-    }
-
-    /**
-     * Build file URL using the media_url config
-     */
-    private function buildFileUrl(string $filePath): string
-    {
-        $mediaUrl = rtrim(config('upload.media_url'), '/');
-        return $mediaUrl . '/' . ltrim($filePath, '/');
     }
 
     /**
