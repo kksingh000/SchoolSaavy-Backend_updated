@@ -21,6 +21,7 @@ storage/framework/sessions/*
 storage/framework/testing/*
 storage/framework/views/*
 bootstrap/cache/*
+public/storage
 !storage/app/.gitkeep
 !storage/framework/.gitkeep
 !storage/logs/.gitkeep

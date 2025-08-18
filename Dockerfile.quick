@@ -1,9 +1,12 @@
 FROM ghcr.io/roadrunner-server/roadrunner:2025.1.2 AS roadrunner
+
 # Quick Build Dockerfile for SchoolSavvy with RoadRunner
 FROM php:8.3-fpm-alpine
 
+# Copy RoadRunner binary from official image
 COPY --from=roadrunner /usr/bin/rr /usr/local/bin/rr
-# Install system dependencies and basic PHP extensions
+
+# Install system dependencies and PHP extensions
 RUN apk add --no-cache \
     git \
     curl \
@@ -21,45 +24,55 @@ RUN apk add --no-cache \
     autoconf \
     g++ \
     make \
+    netcat-openbsd \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install \
-    pdo \
-    pdo_mysql \
-    mbstring \
-    exif \
-    pcntl \
-    bcmath \
-    gd \
-    zip \
-    sockets \
-    && rm -rf /var/cache/apk/*# Install Composer
+        pdo \
+        pdo_mysql \
+        mbstring \
+        exif \
+        pcntl \
+        bcmath \
+        gd \
+        zip \
+        sockets \
+    && rm -rf /var/cache/apk/*
+
+# Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy composer files
+# Copy composer files first for better Docker layer caching
 COPY composer.json composer.lock ./
 
 # Install PHP dependencies
-RUN composer install --no-dev --optimize-autoloader --no-scripts
-
-# Copy custom PHP configuration
-COPY docker/php/php.ini /usr/local/etc/php/conf.d/99-custom.ini
+RUN composer install --no-dev --optimize-autoloader --no-scripts --no-interaction
 
 # Copy application code
 COPY . .
 
-# Set permissions
-RUN chown -R www-data:www-data /var/www/html \
-    && chmod -R 755 /var/www/html
+# Create required directories and set permissions
+RUN mkdir -p storage/logs storage/framework/{cache,sessions,views} bootstrap/cache \
+    && chown -R www-data:www-data /var/www/html \
+    && chmod -R 755 /var/www/html \
+    && chmod -R 775 storage bootstrap/cache
 
-# Copy startup script
-COPY docker/scripts/startup.sh /usr/local/bin/startup.sh
-RUN chmod +x /usr/local/bin/startup.sh
+# Create a simple entrypoint script
+RUN echo '#!/bin/sh' > /usr/local/bin/entrypoint.sh \
+    && echo 'set -e' >> /usr/local/bin/entrypoint.sh \
+    && echo 'echo "🚀 Starting SchoolSavvy..."' >> /usr/local/bin/entrypoint.sh \
+    && echo 'chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache' >> /usr/local/bin/entrypoint.sh \
+    && echo 'chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache' >> /usr/local/bin/entrypoint.sh \
+    && echo 'exec "$@"' >> /usr/local/bin/entrypoint.sh \
+    && chmod +x /usr/local/bin/entrypoint.sh
 
 # Expose port
 EXPOSE 8080
 
-# Start RoadRunner
-CMD ["/usr/local/bin/startup.sh"]
+# Use the simple entrypoint
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+
+# Default command (can be overridden by docker-compose)
+CMD ["php", "artisan", "octane:start", "--server=roadrunner", "--host=0.0.0.0", "--port=8080", "--workers=4"]
