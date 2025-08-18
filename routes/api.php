@@ -182,6 +182,7 @@ Route::middleware('json.response')->group(function () {
             Route::get('class/{classId}', [TimetableController::class, 'getClassTimetable']);
             Route::get('teacher/{teacherId}', [TimetableController::class, 'getTeacherTimetable']);
             Route::get('weekly-overview', [TimetableController::class, 'getWeeklyOverview']);
+            Route::get('filter-options', [TimetableController::class, 'getFilterOptions']);
         });
 
         // Event Management Routes

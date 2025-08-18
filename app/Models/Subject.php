@@ -32,4 +32,9 @@ class Subject extends Model
         return $this->belongsToMany(ClassRoom::class, 'class_subject', 'subject_id', 'class_id')
             ->withTimestamps();
     }
+
+    public function schedules()
+    {
+        return $this->hasMany(ClassSchedule::class, 'subject_id');
+    }
 }

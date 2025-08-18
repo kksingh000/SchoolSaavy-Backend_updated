@@ -18,7 +18,7 @@ class TimetableService extends BaseService
         DB::beginTransaction();
         try {
             // Add school_id to data
-            $data['school_id'] = Auth::user()->getSchoolId();
+            $data['school_id'] = request()->school_id;
 
             // Validate for schedule conflicts
             $this->validateScheduleConflicts($data);
@@ -114,14 +114,32 @@ class TimetableService extends BaseService
         return $timetable;
     }
 
-    public function getWeeklyOverview()
+    public function getWeeklyOverview(array $filters = [])
     {
-        $schoolId = Auth::user()->getSchoolId();
+        $schoolId = request()->school_id;
 
-        $schedules = ClassSchedule::where('school_id', $schoolId)
+        $query = ClassSchedule::where('school_id', $schoolId)
             ->active()
-            ->with(['class', 'subject', 'teacher.user'])
-            ->orderBy('day_of_week')
+            ->with(['class', 'subject', 'teacher.user']);
+
+        // Apply filters
+        if (!empty($filters['class_id'])) {
+            $query->where('class_id', $filters['class_id']);
+        }
+
+        if (!empty($filters['teacher_id'])) {
+            $query->where('teacher_id', $filters['teacher_id']);
+        }
+
+        if (!empty($filters['subject_id'])) {
+            $query->where('subject_id', $filters['subject_id']);
+        }
+
+        if (!empty($filters['day_of_week'])) {
+            $query->where('day_of_week', $filters['day_of_week']);
+        }
+
+        $schedules = $query->orderBy('day_of_week')
             ->orderBy('start_time')
             ->get();
 
@@ -140,7 +158,85 @@ class TimetableService extends BaseService
             ];
         }
 
-        return $overview;
+        // Add summary information
+        $summary = [
+            'total_schedules' => $schedules->count(),
+            'active_classes' => $schedules->unique('class_id')->count(),
+            'active_teachers' => $schedules->unique('teacher_id')->count(),
+            'active_subjects' => $schedules->unique('subject_id')->count(),
+            'filters_applied' => array_filter($filters) // Only show applied filters
+        ];
+
+        return [
+            'summary' => $summary,
+            'weekly_schedule' => $overview
+        ];
+    }
+
+    /**
+     * Get filter options for dropdowns (classes, teachers, subjects)
+     */
+    public function getFilterOptions()
+    {
+        $schoolId = request()->school_id;
+
+        // Get classes that have scheduled sessions
+        $classes = \App\Models\ClassRoom::where('school_id', $schoolId)
+            ->whereHas('schedules') // Only classes with schedules
+            ->select('id', 'name', 'section')
+            ->get()
+            ->map(function ($class) {
+                return [
+                    'id' => $class->id,
+                    'name' => $class->name . ($class->section ? ' - ' . $class->section : ''),
+                    'full_name' => $class->name . ($class->section ? ' (' . $class->section . ')' : '')
+                ];
+            });
+
+        // Get teachers that have scheduled sessions
+        $teachers = \App\Models\Teacher::where('school_id', $schoolId)
+            ->whereHas('schedules') // Only teachers with schedules
+            ->with('user:id,name')
+            ->select('id', 'user_id', 'employee_id')
+            ->get()
+            ->map(function ($teacher) {
+                return [
+                    'id' => $teacher->id,
+                    'name' => $teacher->user->name ?? 'Unknown Teacher',
+                    'employee_id' => $teacher->employee_id
+                ];
+            });
+
+        // Get subjects that are scheduled
+        $subjects = \App\Models\Subject::where('school_id', $schoolId)
+            ->whereHas('schedules') // Only subjects with schedules
+            ->select('id', 'name', 'code')
+            ->get()
+            ->map(function ($subject) {
+                return [
+                    'id' => $subject->id,
+                    'name' => $subject->name,
+                    'code' => $subject->code,
+                    'display_name' => $subject->name . ($subject->code ? ' (' . $subject->code . ')' : '')
+                ];
+            });
+
+        $days = [
+            ['value' => 'monday', 'label' => 'Monday'],
+            ['value' => 'tuesday', 'label' => 'Tuesday'],
+            ['value' => 'wednesday', 'label' => 'Wednesday'],
+            ['value' => 'thursday', 'label' => 'Thursday'],
+            ['value' => 'friday', 'label' => 'Friday'],
+            ['value' => 'saturday', 'label' => 'Saturday'],
+            ['value' => 'sunday', 'label' => 'Sunday']
+        ];
+
+        return [
+            'classes' => $classes,
+            'teachers' => $teachers,
+            'subjects' => $subjects,
+            'days' => $days
+        ];
     }
 
     protected function validateScheduleConflicts($data, $excludeId = null)

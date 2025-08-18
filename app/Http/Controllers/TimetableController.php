@@ -168,20 +168,49 @@ class TimetableController extends BaseController
     }
 
     /**
-     * Get weekly overview for the school
+     * Get weekly overview for the school with optional filters
      */
-    public function getWeeklyOverview(): JsonResponse
+    public function getWeeklyOverview(Request $request): JsonResponse
     {
         if (!$this->checkModuleAccess('timetable')) {
             return $this->moduleAccessDenied();
         }
 
         try {
-            $overview = $this->timetableService->getWeeklyOverview();
+            $request->validate([
+                'class_id' => 'nullable|exists:classes,id',
+                'teacher_id' => 'nullable|exists:teachers,id',
+                'subject_id' => 'nullable|exists:subjects,id',
+                'day_of_week' => 'nullable|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday'
+            ]);
+
+            $filters = $request->only(['class_id', 'teacher_id', 'subject_id', 'day_of_week']);
+            $overview = $this->timetableService->getWeeklyOverview($filters);
 
             return $this->successResponse(
                 $overview,
                 'Weekly overview retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get filter options for timetable (classes, teachers, subjects)
+     */
+    public function getFilterOptions(): JsonResponse
+    {
+        if (!$this->checkModuleAccess('timetable')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $options = $this->timetableService->getFilterOptions();
+
+            return $this->successResponse(
+                $options,
+                'Filter options retrieved successfully'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());

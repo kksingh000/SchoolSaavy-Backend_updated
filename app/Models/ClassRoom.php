@@ -71,6 +71,11 @@ class ClassRoom extends Model
             ->withTimestamps();
     }
 
+    public function schedules()
+    {
+        return $this->hasMany(ClassSchedule::class, 'class_id');
+    }
+
     public function galleryAlbums()
     {
         return $this->hasMany(GalleryAlbum::class, 'class_id');
