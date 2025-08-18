@@ -6,14 +6,27 @@ services:
       dockerfile: Dockerfile.quick
     container_name: schoolsavvy_app_local
     restart: unless-stopped
-    command: php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
+    command: >
+      sh -c "
+        echo '🧹 Clearing Laravel caches...' &&
+        php artisan config:clear &&
+        php artisan cache:clear &&
+        php artisan route:clear &&
+        echo '🚀 Starting Octane with RoadRunner...' &&
+        php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4 --verbose
+      "
     ports:
       - "8080:8080"
     environment:
       - APP_ENV=local
+      - APP_DEBUG=true
+      - LOG_LEVEL=debug
+      - LOG_CHANNEL=stderr
     volumes:
       - ./:/var/www/html
       - ./storage:/var/www/html/storage
+      - ./.rr.yaml:/var/www/html/.rr.yaml
+      - ./.rr.dev.yaml:/var/www/html/.rr.dev.yaml
     depends_on:
       - redis
       - db

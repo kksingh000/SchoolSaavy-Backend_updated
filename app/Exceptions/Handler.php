@@ -4,6 +4,7 @@ namespace App\Exceptions;
 
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Support\Facades\Log;
 use Throwable;
 
 class Handler extends ExceptionHandler
@@ -25,7 +26,18 @@ class Handler extends ExceptionHandler
     public function register(): void
     {
         $this->reportable(function (Throwable $e) {
-            //
+            // Ensure errors are logged even in Octane environment
+            if (config('octane.server')) {
+                Log::error('Octane Error: ' . $e->getMessage(), [
+                    'exception' => $e,
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString()
+                ]);
+
+                // Also log to stderr for console visibility
+                error_log('Laravel Error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            }
         });
     }
 
@@ -41,4 +53,4 @@ class Handler extends ExceptionHandler
             ], 401)
             : redirect()->guest($exception->redirectTo() ?? route('login'));
     }
-} 
+}
