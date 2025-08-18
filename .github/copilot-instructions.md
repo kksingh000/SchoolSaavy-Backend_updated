@@ -623,3 +623,9 @@ $stats = Cache::remember("stats_{$id}", 300, fn() => $this->calculateStats($id))
    - Data privacy is crucial: Always sanitize and validate user inputs.
    - Make sure strictly that another school cannot access other school's data.
    - Before creating or updating any api or resource, make sure to check schema in database.
+   - When you reuse a code or module or add a new functionality, make sure that it adheres to the existing architecture and design patterns and do not break other functionalities.
+   - Always make sure that expect super admin, all the admins, teacher and students must strictly use school id when quering data from db
+   - Avoid using hardcoded values: Use configuration files or constants instead.
+   - Reuse existing components and services to avoid duplication of code where possible.
+   - Security of user data is essential, always make sure that no other school can access another school's data.
+   - Always validate and sanitize user inputs to prevent SQL injection and other security vulnerabilities.

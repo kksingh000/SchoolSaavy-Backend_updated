@@ -23,7 +23,7 @@ class AttendanceResource extends JsonResource
             'date' => $this->date,
             'status' => $this->status,
             'remarks' => $this->remarks,
-            'marked_by' => $this->whenLoaded('markedBy', function() {
+            'marked_by' => $this->whenLoaded('markedBy', function () {
                 return [
                     'id' => $this->markedBy->id,
                     'name' => $this->markedBy->name,
@@ -35,4 +35,4 @@ class AttendanceResource extends JsonResource
             'updated_at' => $this->updated_at,
         ];
     }
-} 
+}

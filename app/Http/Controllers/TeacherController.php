@@ -27,9 +27,9 @@ class TeacherController extends BaseController
     {
         try {
             // Check module access (uncomment if needed)
-            if (!$this->checkModuleAccess('teacher-management')) {
-                return $this->moduleAccessDenied();
-            }
+            // if (!$this->checkModuleAccess('teacher-management')) {
+            //     return $this->moduleAccessDenied();
+            // }
 
             $filters = $request->only([
                 'search',
