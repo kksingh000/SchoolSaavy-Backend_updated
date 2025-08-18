@@ -313,75 +313,43 @@ class ParentStudentService extends BaseService
     }
 
     /**
-     * Bulk assign parent to multiple students
+     * Create standalone parent (without student assignment)
      */
-    public function bulkAssignParent($data)
+    public function createParent($data)
     {
         return DB::transaction(function () use ($data) {
-            $schoolId = request()->input('school_id');
-            $parentId = $data['parent_id'];
-            $studentIds = $data['student_ids'];
-            $relationship = $data['relationship'];
-            $isPrimary = $data['is_primary'] ?? false;
+            // Create user account for parent
+            $user = User::create([
+                'name' => $data['name'],
+                'email' => $data['email'],
+                'password' => Hash::make($data['password']),
+                'user_type' => 'parent',
+                'is_active' => true,
+                'email_verified_at' => now()
+            ]);
 
-            // Verify parent exists
-            $parent = Parents::with('user:id,name,email')->findOrFail($parentId);
-
-            // Verify all students belong to school
-            $students = Student::where('school_id', $schoolId)
-                ->whereIn('id', $studentIds)
-                ->get();
-
-            if ($students->count() !== count($studentIds)) {
-                throw new \Exception('Some students do not belong to your school.');
-            }
-
-            $results = [];
-            $skipped = [];
-
-            foreach ($students as $student) {
-                // Check if relationship already exists
-                if ($student->parents()->where('parent_id', $parentId)->exists()) {
-                    $skipped[] = [
-                        'student_id' => $student->id,
-                        'student_name' => $student->first_name . ' ' . $student->last_name,
-                        'reason' => 'Already assigned'
-                    ];
-                    continue;
-                }
-
-                // If this is primary, remove primary status from other parents with same relationship
-                if ($isPrimary) {
-                    $this->updatePrimaryStatus($student->id, $relationship);
-                }
-
-                // Assign parent to student
-                $student->parents()->attach($parentId, [
-                    'relationship' => $relationship,
-                    'is_primary' => $isPrimary,
-                    'created_at' => now(),
-                    'updated_at' => now()
-                ]);
-
-                $results[] = [
-                    'student_id' => $student->id,
-                    'student_name' => $student->first_name . ' ' . $student->last_name,
-                    'admission_number' => $student->admission_number
-                ];
-            }
+            // Create parent profile
+            $parent = Parents::create([
+                'user_id' => $user->id,
+                'phone' => $data['phone'],
+                'alternate_phone' => $data['alternate_phone'] ?? null,
+                'relationship' => $data['relationship'],
+                'gender' => $data['gender'] ?? null,
+                'occupation' => $data['occupation'] ?? null,
+                'address' => $data['address'] ?? null,
+            ]);
 
             return [
-                'parent' => [
-                    'id' => $parent->id,
-                    'name' => $parent->user->name,
-                    'email' => $parent->user->email
-                ],
-                'relationship' => $relationship,
-                'is_primary' => $isPrimary,
-                'assigned_students' => $results,
-                'skipped_students' => $skipped,
-                'total_assigned' => count($results),
-                'total_skipped' => count($skipped)
+                'id' => $parent->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'phone' => $parent->phone,
+                'alternate_phone' => $parent->alternate_phone,
+                'gender' => $parent->gender,
+                'occupation' => $parent->occupation,
+                'address' => $parent->address,
+                'is_active' => true,
+                'created_at' => $parent->created_at->format('Y-m-d H:i:s')
             ];
         });
     }

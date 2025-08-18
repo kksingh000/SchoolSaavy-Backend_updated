@@ -132,8 +132,8 @@ Route::middleware('json.response')->group(function () {
         // Parent Management Routes
         Route::prefix('parents')->group(function () {
             Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getAllParents']);
+            Route::post('/', [\App\Http\Controllers\ParentStudentController::class, 'createParent']);
             Route::get('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'getParentDetails']);
-            Route::post('bulk-assign', [\App\Http\Controllers\ParentStudentController::class, 'bulkAssignParent']);
         });
 
         // Class Management Routes

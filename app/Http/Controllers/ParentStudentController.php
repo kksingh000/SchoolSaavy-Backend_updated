@@ -165,28 +165,20 @@ class ParentStudentController extends BaseController
     }
 
     /**
-     * Bulk assign parent to multiple students
+     * Create new parent (standalone, without student assignment)
      */
-    public function bulkAssignParent(Request $request): JsonResponse
+    public function createParent(\App\Http\Requests\ParentStudent\StoreParentRequest $request): JsonResponse
     {
         if (!$this->checkModuleAccess('student-management')) {
             return $this->moduleAccessDenied();
         }
-
         try {
-            $validated = $request->validate([
-                'parent_id' => 'required|exists:parents,id',
-                'student_ids' => 'required|array|min:1',
-                'student_ids.*' => 'exists:students,id',
-                'relationship' => 'required|string|in:father,mother,guardian',
-                'is_primary' => 'boolean'
-            ]);
+            $validated = $request->validated();
+            $parent = $this->parentStudentService->createParent($validated);
 
-            $result = $this->parentStudentService->bulkAssignParent($validated);
-
-            return $this->successResponse($result, 'Parent assigned to multiple students successfully');
+            return $this->successResponse($parent, 'Parent created successfully', 201);
         } catch (\Exception $e) {
-            return $this->errorResponse('Failed to bulk assign parent: ' . $e->getMessage());
+            return $this->errorResponse('Failed to create parent: ' . $e->getMessage());
         }
     }
 }
