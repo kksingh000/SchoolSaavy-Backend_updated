@@ -301,6 +301,9 @@ Route::middleware('json.response')->group(function () {
             Route::get('classes', [GalleryController::class, 'getClasses']);
             Route::get('events', [GalleryController::class, 'getEvents']);
 
+            // Filter options for gallery
+            Route::get('filter-options', [GalleryController::class, 'getFilterOptions']);
+
             // Gallery statistics
             Route::get('stats', [GalleryController::class, 'getStats']);
 

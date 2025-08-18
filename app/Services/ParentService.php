@@ -1084,6 +1084,9 @@ class ParentService
             ];
         });
 
+        // Transform album cover image with media URL
+        $albumCoverImage = $album->cover_image ? $this->buildFileUrl($album->cover_image) : null;
+
         return [
             'album' => [
                 'id' => $album->id,
@@ -1094,7 +1097,7 @@ class ParentService
                 'class_name' => $album->class ? $album->class->name . ' ' . $album->class->section : null,
                 'event_title' => $album->event ? $album->event->title : null,
                 'total_media_count' => $album->media_count,
-                'cover_image_url' => $album->cover_image_url,
+                'cover_image' => $albumCoverImage,
             ],
             'media' => [
                 'data' => $media->items(),

@@ -9,7 +9,13 @@ use App\Http\Requests\StoreGalleryAlbumRequest;
 use App\Http\Requests\UpdateGalleryAlbumRequest;
 use App\Http\Requests\AddGalleryMediaRequest;
 
-class GalleryController extends Controller
+/**
+ * @see file:copilot-instructions.md
+ * 
+ * GalleryController - Handles gallery album management
+ * Follows SchoolSavvy architecture patterns with proper validation and responses
+ */
+class GalleryController extends BaseController
 {
     protected $galleryService;
 
@@ -19,30 +25,80 @@ class GalleryController extends Controller
     }
 
     /**
-     * Display a listing of gallery albums
+     * Display a listing of gallery albums with filters
+     * 
+     * @param Request $request
+     * @return \Illuminate\Http\JsonResponse
      */
     public function index(Request $request)
     {
+        // Check module access
+        if (!$this->checkModuleAccess('gallery-management')) {
+            return $this->moduleAccessDenied();
+        }
+
         try {
-            $perPage = min($request->get('per_page', 15), 50); // Max 50 items per page
-            $schoolId = $request->school_id;
-
-            // Use search method for better performance and flexibility
-            $albums = $this->galleryService->searchAlbums($request, $schoolId, $perPage);
-
-            // Format albums with photo URLs
-            $albums = $this->galleryService->formatAlbumsWithPhotos($albums);
-
-            return response()->json([
-                'success' => true,
-                'data' => $albums,
+            // Validate request parameters
+            $request->validate([
+                'per_page' => 'nullable|integer|min:1|max:100',
+                'page' => 'nullable|integer|min:1',
+                'search' => 'nullable|string|max:255',
+                'class_id' => 'nullable|exists:classes,id',
+                'event_id' => 'nullable|exists:events,id',
+                'event_type' => 'nullable|in:holiday,announcement,sports,cultural,academic,exam,meeting',
+                'status' => 'nullable|in:active,inactive,archived',
+                'is_public' => 'nullable|boolean',
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+                'sort_by' => 'nullable|in:title,event_date,created_at,updated_at',
+                'sort_order' => 'nullable|in:asc,desc'
             ]);
+
+            $perPage = min($request->get('per_page', 15), 100);
+
+            // Get filtered albums
+            $albums = $this->galleryService->getAlbums($request, request()->school_id, $perPage);
+
+            return $this->successResponse(
+                $albums,
+                'Gallery albums retrieved successfully'
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->errorResponse('Validation failed', $e->errors(), 422);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch albums',
-                'error' => $e->getMessage(),
-            ], 500);
+            return $this->errorResponse(
+                'Failed to fetch gallery albums',
+                ['error' => $e->getMessage()],
+                500
+            );
+        }
+    }
+
+    /**
+     * Get filter options for gallery (classes, events, etc.)
+     * 
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getFilterOptions()
+    {
+        // Check module access
+        if (!$this->checkModuleAccess('gallery-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $options = $this->galleryService->getFilterOptions(request()->school_id);
+
+            return $this->successResponse(
+                $options,
+                'Gallery filter options retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse(
+                'Failed to fetch filter options',
+                ['error' => $e->getMessage()],
+                500
+            );
         }
     }
     /**
@@ -50,26 +106,33 @@ class GalleryController extends Controller
      */
     public function store(StoreGalleryAlbumRequest $request)
     {
+        // Check module access
+        if (!$this->checkModuleAccess('gallery-management')) {
+            return $this->moduleAccessDenied();
+        }
+
         try {
-            $schoolId = $request->school_id;
-            $userId = Auth::id();
-
             $data = $request->validated();
-            // Get media files metadata from the validated data instead of file uploads
             $mediaFiles = $data['media_files'] ?? [];
-            $result = $this->galleryService->createAlbum($data, $mediaFiles, $schoolId, $userId);
 
-            return response()->json([
-                'success' => true,
-                'message' => 'Gallery album created successfully',
-                'data' => $result,
-            ], 201);
+            $result = $this->galleryService->createAlbum(
+                $data,
+                $mediaFiles,
+                request()->school_id,
+                Auth::id()
+            );
+
+            return $this->successResponse(
+                $result,
+                'Gallery album created successfully',
+                201
+            );
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to create gallery album',
-                'error' => $e->getMessage(),
-            ], 500);
+            return $this->errorResponse(
+                'Failed to create gallery album',
+                ['error' => $e->getMessage()],
+                500
+            );
         }
     }
 
@@ -78,22 +141,31 @@ class GalleryController extends Controller
      */
     public function show(Request $request, $id)
     {
+        // Check module access
+        if (!$this->checkModuleAccess('gallery-management')) {
+            return $this->moduleAccessDenied();
+        }
+
         try {
-            $schoolId = $request->school_id;
-            $mediaPerPage = min($request->get('media_per_page', 20), 100); // Max 100 media per page
-
-            $result = $this->galleryService->getAlbumWithMedia($id, $schoolId, $mediaPerPage);
-
-            return response()->json([
-                'success' => true,
-                'data' => $result,
+            $request->validate([
+                'media_per_page' => 'nullable|integer|min:1|max:100'
             ]);
+
+            $mediaPerPage = min($request->get('media_per_page', 20), 100);
+            $result = $this->galleryService->getAlbumWithMedia($id, request()->school_id, $mediaPerPage);
+
+            return $this->successResponse(
+                $result,
+                'Gallery album retrieved successfully'
+            );
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return $this->errorResponse('Validation failed', $e->errors(), 422);
         } catch (\Exception $e) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Album not found',
-                'error' => $e->getMessage(),
-            ], 404);
+            return $this->errorResponse(
+                'Album not found',
+                ['error' => $e->getMessage()],
+                404
+            );
         }
     }
 

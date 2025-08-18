@@ -20,7 +20,7 @@ class StoreGalleryAlbumRequest extends FormRequest
             'event_id' => 'nullable|exists:events,id',
             'event_date' => 'required|date',
             'is_public' => 'boolean',
-            'status' => 'sometimes|string|in:active,inactive',
+            'status' => 'sometimes|string|in:active,inactive,archived',
             'media_files' => 'required|array|min:1|max:20', // Limit to 20 files per upload
             'media_files.*.file_path' => 'required|string', // S3 path to the uploaded file
             'media_files.*.original_name' => 'required|string|max:255', // Original filename for display
@@ -72,6 +72,7 @@ class StoreGalleryAlbumRequest extends FormRequest
             'event_id.exists' => 'Selected event is invalid.',
             'event_date.required' => 'Event date is required.',
             'event_date.date' => 'Please provide a valid event date.',
+            'status.in' => 'Status must be one of: active, inactive, archived.',
             'media_files.required' => 'Please provide at least one media file.',
             'media_files.array' => 'Media files must be provided as an array.',
             'media_files.min' => 'Please provide at least one media file.',

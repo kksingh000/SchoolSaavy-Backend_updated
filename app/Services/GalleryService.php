@@ -50,20 +50,57 @@ class GalleryService
         // Apply filters
         $this->applyFilters($query, $request);
 
-        return $query->paginate($perPage);
+        $albums = $query->paginate($perPage);
+
+        // Transform albums with URLs and thumbnails
+        $albums->getCollection()->transform(function ($album) {
+            return $this->transformAlbumWithUrls($album);
+        });
+
+        return $albums;
     }
 
     /**
-     * Get paginated media for an album
+     * Transform album with URLs and thumbnails for API response
+     */
+    private function transformAlbumWithUrls($album)
+    {
+        // Transform cover image with media URL
+        if ($album->cover_image) {
+            $album->cover_image = $this->buildFileUrl($album->cover_image);
+        }
+
+        // Transform media collection with URLs and thumbnails
+        if ($album->media) {
+            $album->media_preview = $album->media->map(function ($media) {
+                return $this->transformMediaWithUrls($media);
+            });
+
+            // Keep original media relation for other uses, but unset to avoid confusion
+            unset($album->media);
+        }
+
+        return $album;
+    }
+
+    /**
+     * Get paginated media for an album with URLs and thumbnails
      */
     public function getAlbumMedia(int $albumId, int $schoolId, int $perPage = 20)
     {
         $album = $this->getAlbumByIdAndSchool($albumId, $schoolId);
 
-        return $album->media()
+        $mediaPaginator = $album->media()
             ->active()
             ->ordered()
             ->paginate($perPage);
+
+        // Transform each media item with URLs and thumbnails
+        $mediaPaginator->getCollection()->transform(function ($media) {
+            return $this->transformMediaWithUrls($media);
+        });
+
+        return $mediaPaginator;
     }
 
     /**
@@ -348,27 +385,16 @@ class GalleryService
             ->active()
             ->ordered()
             ->paginate($mediaPerPage);
-        // Normalize URLs (cover image + each media item)
 
+        // Transform cover image with media URL
         if ($album->cover_image) {
             $album->cover_image = $this->buildFileUrl($album->cover_image);
         }
-        // update links
+
+        // Transform each media item with URLs and thumbnails
         $media->getCollection()->transform(function ($item) {
-            $item->file_path = $this->buildFileUrl($item->file_path);
-
-            // Generate thumbnail URLs without checking existence
-            if ($item->type === 'photo' && $item->file_path) {
-                $thumbnails = $this->getGeneratedThumbnailUrls($item->file_path);
-                $item->thumbnail_path = $thumbnails['small'] ?? $thumbnails['medium'] ?? $thumbnails['large'] ?? $item->file_path;
-            } else {
-                $item->thumbnail_path = $item->file_path;
-            }
-
-            return $item;
+            return $this->transformMediaWithUrls($item);
         });
-
-        // Keep media collection raw (DB values) without adding file_url/thumbnail_url
 
         return [
             'album' => $album,
@@ -425,6 +451,18 @@ class GalleryService
                     ->orWhere('description', 'like', "%{$search}%");
             });
         }
+
+        // Sorting
+        $sortBy = $request->get('sort_by', 'event_date');
+        $sortOrder = $request->get('sort_order', 'desc');
+
+        // Validate sort fields
+        $validSortFields = ['title', 'event_date', 'created_at', 'updated_at'];
+        if (in_array($sortBy, $validSortFields)) {
+            $query->orderBy($sortBy, $sortOrder === 'asc' ? 'asc' : 'desc');
+        } else {
+            $query->orderBy('event_date', 'desc');
+        }
     }
 
     /**
@@ -478,7 +516,7 @@ class GalleryService
                 'file_size' => $fileSize,
                 'type' => $type,
                 'sort_order' => $sortOrder,
-                'uploaded_by' => auth()->id(),
+                'uploaded_by' => Auth::id(),
                 'status' => 'active',
             ]);
 
@@ -487,7 +525,9 @@ class GalleryService
                 'album_id' => $album->id,
                 'file_path' => $filePath
             ]);
-            return $media;
+
+            // Transform media with URLs and thumbnails before returning
+            return $this->transformMediaWithUrls($media);
         } catch (\Exception $e) {
             Log::error('Failed to process media file', [
                 'error' => $e->getMessage(),
@@ -920,5 +960,86 @@ class GalleryService
         }
 
         return $thumbnailUrls;
+    }
+
+    /**
+     * Get filter options for gallery dropdowns
+     */
+    public function getFilterOptions(int $schoolId)
+    {
+        // Get classes that have gallery albums
+        $classes = ClassRoom::where('school_id', $schoolId)
+            ->whereHas('galleryAlbums')
+            ->select('id', 'name', 'section')
+            ->get()
+            ->map(function ($class) {
+                return [
+                    'id' => $class->id,
+                    'name' => $class->name . ($class->section ? ' - ' . $class->section : ''),
+                    'full_name' => $class->name . ($class->section ? ' (' . $class->section . ')' : '')
+                ];
+            });
+
+        // Get events that have gallery albums
+        $events = Event::where('school_id', $schoolId)
+            ->whereHas('galleryAlbums')
+            ->select('id', 'title', 'type', 'event_date')
+            ->get()
+            ->map(function ($event) {
+                return [
+                    'id' => $event->id,
+                    'title' => $event->title,
+                    'type' => $event->type,
+                    'event_date' => $event->event_date ? $event->event_date->format('Y-m-d') : null,
+                    'display_name' => $event->title . ($event->event_date ? ' (' . $event->event_date->format('M d, Y') . ')' : '')
+                ];
+            });
+
+        // Available event types
+        $eventTypes = [
+            ['value' => 'holiday', 'label' => 'Holiday'],
+            ['value' => 'announcement', 'label' => 'Announcement'],
+            ['value' => 'sports', 'label' => 'Sports'],
+            ['value' => 'cultural', 'label' => 'Cultural'],
+            ['value' => 'academic', 'label' => 'Academic'],
+            ['value' => 'exam', 'label' => 'Exam'],
+            ['value' => 'meeting', 'label' => 'Meeting']
+        ];
+
+        // Album status options
+        $statusOptions = [
+            ['value' => 'draft', 'label' => 'Draft'],
+            ['value' => 'published', 'label' => 'Published'],
+            ['value' => 'archived', 'label' => 'Archived']
+        ];
+
+        // Visibility options
+        $visibilityOptions = [
+            ['value' => true, 'label' => 'Public'],
+            ['value' => false, 'label' => 'Private']
+        ];
+
+        // Sort options
+        $sortOptions = [
+            ['value' => 'event_date', 'label' => 'Event Date'],
+            ['value' => 'created_at', 'label' => 'Created Date'],
+            ['value' => 'updated_at', 'label' => 'Updated Date'],
+            ['value' => 'title', 'label' => 'Title']
+        ];
+
+        $sortOrderOptions = [
+            ['value' => 'desc', 'label' => 'Descending'],
+            ['value' => 'asc', 'label' => 'Ascending']
+        ];
+
+        return [
+            'classes' => $classes,
+            'events' => $events,
+            'event_types' => $eventTypes,
+            'status_options' => $statusOptions,
+            'visibility_options' => $visibilityOptions,
+            'sort_options' => $sortOptions,
+            'sort_order_options' => $sortOrderOptions
+        ];
     }
 }

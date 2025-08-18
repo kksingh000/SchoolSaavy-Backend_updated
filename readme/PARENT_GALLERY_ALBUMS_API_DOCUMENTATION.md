@@ -199,7 +199,7 @@ Shows paginated media items from a specific gallery album with filtering options
             "class_name": "Grade 5 A",
             "event_title": "Science Fair Week",
             "total_media_count": 45,
-            "cover_image_url": "/storage/gallery/science-exhibition-cover.jpg"
+            "cover_image": "https://s3.amazonaws.com/bucket/gallery/science-exhibition-cover.jpg"
         },
         "media": {
             "data": [
