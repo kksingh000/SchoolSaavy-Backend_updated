@@ -20,6 +20,7 @@ use App\Http\Controllers\AssessmentResultController;
 use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ParentController;
+use App\Http\Controllers\TeacherController;
 
 /*
 |--------------------------------------------------------------------------
@@ -134,6 +135,20 @@ Route::middleware('json.response')->group(function () {
             Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getAllParents']);
             Route::post('/', [\App\Http\Controllers\ParentStudentController::class, 'createParent']);
             Route::get('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'getParentDetails']);
+        });
+
+        // Teacher Management Routes
+        Route::prefix('teachers')->group(function () {
+            Route::get('/', [TeacherController::class, 'index']);
+            Route::post('/', [TeacherController::class, 'store']);
+            Route::get('search', [TeacherController::class, 'search']);
+            Route::get('generate-employee-id', [TeacherController::class, 'generateEmployeeId']);
+            Route::get('{id}', [TeacherController::class, 'show']);
+            Route::put('{id}', [TeacherController::class, 'update']);
+            Route::delete('{id}', [TeacherController::class, 'destroy']);
+            Route::get('{id}/classes', [TeacherController::class, 'getClasses']);
+            Route::get('{id}/assignments', [TeacherController::class, 'getAssignments']);
+            Route::get('{id}/dashboard-stats', [TeacherController::class, 'getDashboardStats']);
         });
 
         // Class Management Routes

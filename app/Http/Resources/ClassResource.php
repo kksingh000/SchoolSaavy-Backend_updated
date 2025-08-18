@@ -11,11 +11,9 @@ class ClassResource extends JsonResource
         return [
             'id' => $this->id,
             'name' => $this->name,
-            'grade' => $this->grade,
+            'grade_level' => $this->grade_level,
             'section' => $this->section,
-            'academic_year' => $this->academic_year,
             'class_teacher' => new TeacherResource($this->whenLoaded('classTeacher')),
-            'room_number' => $this->room_number,
             'capacity' => $this->capacity,
             'description' => $this->description,
             'students_count' => $this->whenLoaded('students', function () {

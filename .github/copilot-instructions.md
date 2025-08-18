@@ -608,3 +608,18 @@ $stats = Cache::remember("stats_{$id}", 300, fn() => $this->calculateStats($id))
    - Provides an interface for data manipulation.
 
    **🎓 Remember**: SchoolSavvy is a production-ready SaaS platform with sophisticated multi-tenant architecture. Always prioritize security, performance, and maintainability in your code contributions. Follow the established patterns and this codebase will continue to scale beautifully!
+
+
+   **🎓 Best Practices**:
+   - Keep controllers thin: Move complex logic to services.
+   - Use form requests for validation.
+   - Leverage Eloquent relationships for data retrieval.
+   - Implement caching for expensive operations.
+   - Write unit tests for critical functionality.
+   - Use proper comments to explain complex logic.
+   - Use Laravel's Pagination features for API responses.
+   - Keep an eye on performance: Use tools like Laravel Telescope for monitoring.
+   - There is already a module i.e responsible for uploading files, you can leverage it for any file upload functionality.
+   - Data privacy is crucial: Always sanitize and validate user inputs.
+   - Make sure strictly that another school cannot access other school's data.
+   - Before creating or updating any api or resource, make sure to check schema in database.
