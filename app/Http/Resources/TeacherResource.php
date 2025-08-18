@@ -15,8 +15,8 @@ class TeacherResource extends JsonResource
             'id' => $this->id,
             'user_id' => $this->user_id,
             'employee_id' => $this->employee_id,
-            'name' => $this->user->name,
-            'email' => $this->user->email,
+            'name' => $this->user?->name ?? 'No User Account',
+            'email' => $this->user?->email ?? 'No Email',
             'phone' => $this->phone,
             'date_of_birth' => $this->date_of_birth ? $this->date_of_birth->format('Y-m-d') : null,
             'joining_date' => $this->joining_date ? $this->joining_date->format('Y-m-d') : null,
@@ -27,7 +27,7 @@ class TeacherResource extends JsonResource
             'profile_photo' => $this->profile_photo,
             'profile_photo_url' => $this->buildFileUrl($this->profile_photo),
             'address' => $this->address,
-            'is_active' => $this->user->is_active ?? true,
+            'is_active' => $this->user?->is_active ?? true,
 
             // Relationships (when loaded)
             'school' => new SchoolResource($this->whenLoaded('school')),

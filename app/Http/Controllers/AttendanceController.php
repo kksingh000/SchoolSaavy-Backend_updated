@@ -26,13 +26,12 @@ class AttendanceController extends BaseController
         try {
             $filters = $request->only(['class_id', 'student_id', 'date', 'status', 'per_page']);
             $attendance = $this->attendanceService->getAll($filters, ['student', 'class', 'markedBy']);
-
             return $this->successResponse(
                 AttendanceResource::collection($attendance),
                 'Attendance records retrieved successfully'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            return $this->errorResponse($e);
         }
     }
 

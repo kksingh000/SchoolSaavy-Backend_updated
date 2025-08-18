@@ -5,6 +5,15 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
+/**
+ * @see file:copilot-instructions.md
+ * 
+ * Attendance Model
+ * 
+ * CRITICAL: marked_by field stores user_id (from users table), NOT teacher_id
+ * The markedBy() relationship correctly returns User model, not Teacher model
+ * Always use Auth::id() when setting marked_by value
+ */
 class Attendance extends Model
 {
     use HasFactory;

@@ -3,7 +3,17 @@
 namespace App\Services;
 
 use App\Models\Attendance;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+
+/**
+ * @see file:copilot-instructions.md
+ * 
+ * AttendanceService - Handles attendance management business logic
+ * 
+ * CRITICAL SECURITY: All queries MUST include school_id isolation
+ * IMPORTANT: marked_by field stores user_id (Auth::id()), not teacher_id
+ */
 
 class AttendanceService extends BaseService
 {
@@ -15,6 +25,9 @@ class AttendanceService extends BaseService
     public function getAll($filters = [], $relations = [])
     {
         $query = $this->model::query();
+
+        // CRITICAL: Always filter by school_id for multi-tenant security
+        $query->where('school_id', request()->school_id);
 
         if (!empty($relations)) {
             $query->with($relations);
@@ -46,8 +59,8 @@ class AttendanceService extends BaseService
                     'date' => $data['date'],
                     'status' => $record['status'],
                     'remarks' => $record['remarks'] ?? null,
-                    'marked_by' => auth()->id(),
-                    'school_id' => auth()->user()->getSchoolId(),
+                    'marked_by' => Auth::id(),
+                    'school_id' => request()->school_id,
                 ];
 
                 // Use updateOrCreate to handle duplicates
@@ -55,7 +68,7 @@ class AttendanceService extends BaseService
                     [
                         'student_id' => $record['student_id'],
                         'date' => $data['date'],
-                        'school_id' => auth()->user()->getSchoolId(),
+                        'school_id' => request()->school_id,
                     ],
                     $attendanceData
                 );
@@ -78,8 +91,8 @@ class AttendanceService extends BaseService
                 'date' => $data['date'],
                 'status' => $data['status'],
                 'remarks' => $data['remarks'] ?? null,
-                'marked_by' => auth()->id(),
-                'school_id' => auth()->user()->getSchoolId(),
+                'marked_by' => Auth::id(),
+                'school_id' => request()->school_id,
             ];
 
             // Use updateOrCreate to handle duplicates
@@ -87,7 +100,7 @@ class AttendanceService extends BaseService
                 [
                     'student_id' => $data['student_id'],
                     'date' => $data['date'],
-                    'school_id' => auth()->user()->getSchoolId(),
+                    'school_id' => request()->school_id,
                 ],
                 $attendanceData
             );
@@ -99,6 +112,7 @@ class AttendanceService extends BaseService
     public function getClassAttendanceReport($classId, $startDate, $endDate)
     {
         return Attendance::where('class_id', $classId)
+            ->where('school_id', request()->school_id)
             ->whereBetween('date', [$startDate, $endDate])
             ->with('student')
             ->get()
@@ -108,6 +122,7 @@ class AttendanceService extends BaseService
     public function getStudentAttendanceReport($studentId, $startDate, $endDate)
     {
         return Attendance::where('student_id', $studentId)
+            ->where('school_id', request()->school_id)
             ->whereBetween('date', [$startDate, $endDate])
             ->get()
             ->groupBy('status');
@@ -115,11 +130,15 @@ class AttendanceService extends BaseService
 
     public function getClassAttendanceByDate($classId, $date)
     {
-        // Get the class with all its active students
-        $class = \App\Models\ClassRoom::with(['activeStudents'])->findOrFail($classId);
+        // Get the class with all its active students - ensure same school
+        $class = \App\Models\ClassRoom::where('id', $classId)
+            ->where('school_id', request()->school_id)
+            ->with(['activeStudents'])
+            ->firstOrFail();
 
         // Get attendance records for this class and date
         $attendanceRecords = Attendance::where('class_id', $classId)
+            ->where('school_id', request()->school_id)
             ->where('date', $date)
             ->with(['student', 'markedBy'])
             ->get()
