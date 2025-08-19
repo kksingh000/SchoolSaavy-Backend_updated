@@ -25,9 +25,9 @@ class StudentController extends BaseController
     {
         try {
             // Check if module access is required (uncomment if needed)
-            // if (!$this->checkModuleAccess('student-management')) {
-            //     return $this->moduleAccessDenied();
-            // }
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
 
             $filters = $request->only([
                 'search',

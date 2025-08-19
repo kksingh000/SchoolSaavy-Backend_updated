@@ -10,7 +10,7 @@ class StudentService
 {
     public function getAllStudents($filters = [], $perPage = 15)
     {
-        $query = Student::with(['school', 'parents'])
+        $query = Student::with(['school', 'parents', 'currentClass'])
             ->where('school_id', request()->school_id);
 
         if (isset($filters['search'])) {
@@ -23,7 +23,9 @@ class StudentService
         }
 
         if (isset($filters['class_id'])) {
-            $query->where('class_id', $filters['class_id']);
+            $query->whereHas('currentClass', function ($q) use ($filters) {
+                $q->where('classes.id', $filters['class_id']);
+            });
         }
 
         if (isset($filters['gender'])) {
@@ -39,7 +41,30 @@ class StudentService
         }
 
         if (isset($filters['admission_date'])) {
-            $query->whereDate('admission_date', $filters['admission_date']);
+            $admissionDate = $filters['admission_date'];
+
+            // Handle different date formats
+            if (preg_match('/^\d{4}$/', $admissionDate)) {
+                // Year only (e.g., "2025")
+                $query->whereYear('admission_date', $admissionDate);
+            } elseif (preg_match('/^\d{4}-\d{2}$/', $admissionDate)) {
+                // Year-Month format (e.g., "2025-08")
+                list($year, $month) = explode('-', $admissionDate);
+                $query->whereYear('admission_date', $year)
+                    ->whereMonth('admission_date', $month);
+            } elseif (preg_match('/^\d{4}-\d{2}-\d{2}$/', $admissionDate)) {
+                // Full date format (e.g., "2025-08-19")
+                $query->whereDate('admission_date', $admissionDate);
+            } else {
+                // Try to parse as a date and filter by year if it's valid
+                try {
+                    $parsedDate = \Carbon\Carbon::parse($admissionDate);
+                    $query->whereDate('admission_date', $parsedDate->format('Y-m-d'));
+                } catch (\Exception $e) {
+                    // If parsing fails, ignore the filter
+                    Log::warning('Invalid admission_date filter format: ' . $admissionDate);
+                }
+            }
         }
 
         // Add ordering for consistent pagination
@@ -74,7 +99,7 @@ class StudentService
             }
 
             DB::commit();
-            return $student->load(['school', 'parents']);
+            return $student->load(['school', 'parents', 'currentClass']);
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -83,7 +108,7 @@ class StudentService
 
     public function getStudentById($id)
     {
-        return Student::with(['school', 'parents'])
+        return Student::with(['school', 'parents', 'currentClass'])
             ->where('school_id', request()->school_id)
             ->findOrFail($id);
     }
@@ -118,7 +143,7 @@ class StudentService
 
             Log::info('Student updated successfully:', ['id' => $student->id]);
 
-            return $student->fresh()->load(['school', 'parents']);
+            return $student->fresh()->load(['school', 'parents', 'currentClass']);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Student update failed:', [

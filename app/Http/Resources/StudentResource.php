@@ -11,6 +11,9 @@ class StudentResource extends JsonResource
 
     public function toArray($request)
     {
+        // Get current class information
+        $currentClass = $this->currentClass->first();
+
         return [
             'id' => $this->id,
             'admission_number' => $this->admission_number,
@@ -26,6 +29,8 @@ class StudentResource extends JsonResource
             'address' => $this->address,
             'phone' => $this->phone,
             'is_active' => $this->is_active,
+            'class_id' => $currentClass ? $currentClass->id : null,
+            'class_name' => $currentClass ? $currentClass->name . ($currentClass->section ? ' ' . $currentClass->section : '') : null,
             'school' => new SchoolResource($this->whenLoaded('school')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
