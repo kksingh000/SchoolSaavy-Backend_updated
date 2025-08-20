@@ -16,7 +16,6 @@ class StoreStudentRequest extends FormRequest
         return [
             'school_id' => 'required|exists:schools,id',
             'admission_number' => 'required|string|unique:students',
-            'roll_number' => 'required|string',
             'first_name' => 'required|string|max:255',
             'last_name' => 'required|string|max:255',
             'date_of_birth' => 'required|date|before:today',
@@ -26,12 +25,25 @@ class StoreStudentRequest extends FormRequest
             'address' => 'required|string',
             'phone' => 'nullable|string',
             'class_id' => 'nullable|exists:classes,id',
-            'class_roll_number' => 'nullable|string',
+            'class_roll_number' => 'nullable|numeric', // Changed to accept numeric values
             'parent_id' => 'required|exists:parents,id',
             'relationship' => 'required|string|in:father,mother,guardian',
             'is_primary' => 'boolean',
             'profile_photo' => 'nullable|string|max:500' // Expecting S3 path string from upload API
         ];
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        // Convert class_roll_number to string if it's numeric
+        if ($this->has('class_roll_number') && is_numeric($this->class_roll_number)) {
+            $this->merge([
+                'class_roll_number' => (string) $this->class_roll_number
+            ]);
+        }
     }
 
     public function withValidator($validator)

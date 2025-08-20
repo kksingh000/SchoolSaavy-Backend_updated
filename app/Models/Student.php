@@ -14,7 +14,6 @@ class Student extends Model
         'school_id',
         'created_by',
         'admission_number',
-        'roll_number',
         'first_name',
         'last_name',
         'date_of_birth',

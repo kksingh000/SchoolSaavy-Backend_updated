@@ -24,7 +24,6 @@ class UpdateStudentRequest extends Request
 
         return [
             'admission_number' => 'sometimes|string|unique:students,admission_number,' . $this->route('student'),
-            'roll_number' => 'sometimes|string',
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
             'date_of_birth' => 'sometimes|date|before:today',
@@ -35,7 +34,7 @@ class UpdateStudentRequest extends Request
             'phone' => 'sometimes|nullable|string',
             'is_active' => 'sometimes|boolean',
             'class_id' => 'sometimes|nullable|exists:classes,id',
-            'class_roll_number' => 'sometimes|nullable|string',
+            'class_roll_number' => 'sometimes|nullable|numeric', // Changed to accept numeric values
             'profile_photo' => 'sometimes|nullable|string|max:500' // Expecting S3 path string from upload API
         ];
     }
@@ -66,5 +65,12 @@ class UpdateStudentRequest extends Request
             'contentType' => $this->header('Content-Type'),
             'raw' => $this->getContent()
         ]);
+
+        // Convert class_roll_number to string if it's numeric
+        if ($this->has('class_roll_number') && is_numeric($this->class_roll_number)) {
+            $this->merge([
+                'class_roll_number' => (string) $this->class_roll_number
+            ]);
+        }
     }
 }

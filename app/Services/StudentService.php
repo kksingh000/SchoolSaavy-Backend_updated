@@ -93,6 +93,14 @@ class StudentService
             }
 
             // school_id and created_by are already in $data from middleware
+
+            // Extract roll number and class assignment data before creating student
+            $rollNumber = $data['class_roll_number'] ?? null;
+            $classId = $data['class_id'] ?? null;
+
+            // Remove class-related fields from student data as they don't belong to students table directly
+            unset($data['class_roll_number'], $data['class_id'], $data['roll_number']);
+
             $student = Student::create($data);
 
             // Create parent-student relationship
@@ -104,8 +112,12 @@ class StudentService
             }
 
             // Assign student to class if class_id is provided
-            if (isset($data['class_id'])) {
-                $this->assignStudentToClass($student, $data['class_id'], $data);
+            if ($classId) {
+                $classData = [];
+                if ($rollNumber) {
+                    $classData['roll_number'] = $rollNumber;
+                }
+                $this->assignStudentToClass($student, $classId, $classData);
             }
 
             DB::commit();
@@ -352,7 +364,7 @@ class StudentService
         }
 
         // Determine roll number for the class
-        $rollNumber = $data['class_roll_number'] ?? $data['roll_number'] ?? null;
+        $rollNumber = $data['class_roll_number'] ?? null;
 
         // If no roll number provided, auto-generate based on existing students in class
         if (!$rollNumber) {
