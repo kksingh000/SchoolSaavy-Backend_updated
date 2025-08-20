@@ -64,7 +64,7 @@ class FileUploadController extends BaseController
 
         $validator = Validator::make($request->all(), [
             'file' => "required|file|max:{$maxFileSizeKB}", // Use config value
-            'type' => 'required|string|in:assignment,profile,communication,event,general,media',
+            'type' => 'required|string|in:assignment,profile,communication,event,general,media,bulk_import',
             'allowed_extensions' => 'sometimes|string', // Custom allowed extensions
         ]);
 
@@ -108,7 +108,7 @@ class FileUploadController extends BaseController
         $validator = Validator::make($request->all(), [
             'files' => "required|array|max:{$maxFiles}", // Use config value
             'files.*' => "file|max:{$maxFileSizeKB}", // Use config value
-            'type' => 'required|string|in:assignment,profile,communication,event,general',
+            'type' => 'required|string|in:assignment,profile,communication,event,general,bulk_import',
             'allowed_extensions' => 'sometimes|string',
         ]);
 
@@ -373,6 +373,7 @@ class FileUploadController extends BaseController
             'communication' => ['pdf', 'doc', 'docx', 'txt', 'jpg', 'jpeg', 'png', 'gif'],
             'event' => ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'],
             'general' => ['pdf', 'doc', 'docx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'gif', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rar'],
+            'bulk_import' => ['csv', 'xlsx', 'xls'],
             default => ['pdf', 'doc', 'docx', 'txt', 'jpg', 'jpeg', 'png']
         };
 

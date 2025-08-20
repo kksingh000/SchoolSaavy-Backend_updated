@@ -77,6 +77,11 @@ class StudentService
     {
         DB::beginTransaction();
         try {
+            // Generate admission number if not provided
+            if (!isset($data['admission_number']) || empty($data['admission_number'])) {
+                $data['admission_number'] = $this->generateAdmissionNumber($data['school_id']);
+            }
+
             // Handle profile photo path if present (expects S3 path string from upload API)
             if (isset($data['profile_photo']) && !empty($data['profile_photo'])) {
                 // Validate the path format (should start with uploads/)
@@ -96,6 +101,11 @@ class StudentService
                     'relationship' => $data['relationship'],
                     'is_primary' => $data['is_primary'] ?? true
                 ]);
+            }
+
+            // Assign student to class if class_id is provided
+            if (isset($data['class_id'])) {
+                $this->assignStudentToClass($student, $data['class_id'], $data);
             }
 
             DB::commit();
@@ -138,6 +148,11 @@ class StudentService
             }
 
             $student->update($data);
+
+            // Handle class assignment if class_id is provided
+            if (array_key_exists('class_id', $data)) {
+                $this->handleClassAssignment($student, $data);
+            }
 
             DB::commit();
 
@@ -313,5 +328,344 @@ class StudentService
                     ];
                 }),
         ];
+    }
+
+    /**
+     * Assign student to a class
+     */
+    private function assignStudentToClass(Student $student, int $classId, array $data): void
+    {
+        // Verify the class exists and belongs to the same school
+        $class = \App\Models\ClassRoom::where('id', $classId)
+            ->where('school_id', $student->school_id)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$class) {
+            throw new \Exception('Invalid class ID or class does not belong to your school');
+        }
+
+        // Check if student is already assigned to this class
+        $existingAssignment = $student->classes()->where('classes.id', $classId)->first();
+        if ($existingAssignment) {
+            throw new \Exception('Student is already assigned to this class');
+        }
+
+        // Determine roll number for the class
+        $rollNumber = $data['class_roll_number'] ?? $data['roll_number'] ?? null;
+
+        // If no roll number provided, auto-generate based on existing students in class
+        if (!$rollNumber) {
+            $rollNumber = $this->generateNextRollNumber($classId);
+        }
+
+        // Validate roll number availability
+        $this->validateRollNumber($classId, $rollNumber);
+
+        // Assign student to class
+        $student->classes()->attach($classId, [
+            'roll_number' => $rollNumber,
+            'enrolled_date' => now(),
+            'is_active' => true
+        ]);
+    }
+
+    /**
+     * Handle class assignment during student update
+     */
+    private function handleClassAssignment(Student $student, array $data): void
+    {
+        if ($data['class_id'] === null) {
+            // Remove student from current active class
+            $student->classes()->wherePivot('is_active', true)->updateExistingPivot($student->classes()->wherePivot('is_active', true)->pluck('classes.id'), [
+                'is_active' => false,
+                'left_date' => now()
+            ]);
+            return;
+        }
+
+        $classId = $data['class_id'];
+
+        // Verify the class exists and belongs to the same school
+        $class = \App\Models\ClassRoom::where('id', $classId)
+            ->where('school_id', $student->school_id)
+            ->where('is_active', true)
+            ->first();
+
+        if (!$class) {
+            throw new \Exception('Invalid class ID or class does not belong to your school');
+        }
+
+        // Check if student is already assigned to this class
+        $existingAssignment = $student->classes()->where('classes.id', $classId)->first();
+
+        if ($existingAssignment) {
+            // If already assigned and active, do nothing
+            if ($existingAssignment->pivot->is_active) {
+                return;
+            }
+
+            // If assigned but inactive, reactivate
+            $student->classes()->updateExistingPivot($classId, [
+                'is_active' => true,
+                'left_date' => null,
+                'enrolled_date' => now()
+            ]);
+            return;
+        }
+
+        // Deactivate current class assignment
+        $student->classes()->wherePivot('is_active', true)->updateExistingPivot($student->classes()->wherePivot('is_active', true)->pluck('classes.id'), [
+            'is_active' => false,
+            'left_date' => now()
+        ]);
+
+        // Determine roll number for the new class
+        $rollNumber = $data['class_roll_number'] ?? null;
+
+        // If no roll number provided, auto-generate
+        if (!$rollNumber) {
+            $rollNumber = $this->generateNextRollNumber($classId);
+        }
+
+        // Validate roll number availability
+        $this->validateRollNumber($classId, $rollNumber);
+
+        // Assign student to new class
+        $student->classes()->attach($classId, [
+            'roll_number' => $rollNumber,
+            'enrolled_date' => now(),
+            'is_active' => true
+        ]);
+    }
+
+    /**
+     * Generate admission number based on school settings
+     */
+    private function generateAdmissionNumber($schoolId): string
+    {
+        // Get admission number settings
+        $prefix = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_prefix', '');
+        $format = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_format', 'sequential');
+        $startFrom = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_start_from', 1);
+        $includeYear = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_include_year', false);
+        $yearFormat = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_year_format', 'YYYY');
+        $paddingLength = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_padding', 4);
+
+        $maxAttempts = 1000;
+        $attempts = 0;
+
+        do {
+            $number = '';
+
+            // Add prefix if provided
+            if ($prefix) {
+                $number .= $prefix;
+            }
+
+            // Add year if required
+            if ($includeYear) {
+                $year = now()->format($yearFormat === 'YY' ? 'y' : 'Y');
+                $number .= $year;
+            }
+
+            // Get next sequential number
+            $sequentialNumber = $this->getNextSequentialNumber($schoolId, $format, $startFrom) + $attempts;
+
+            // Pad the number
+            $paddedNumber = str_pad($sequentialNumber, $paddingLength, '0', STR_PAD_LEFT);
+            $number .= $paddedNumber;
+
+            // Check if this number already exists
+            $exists = Student::where('school_id', $schoolId)
+                ->where('admission_number', $number)
+                ->exists();
+
+            if (!$exists) {
+                return $number;
+            }
+
+            $attempts++;
+        } while ($attempts < $maxAttempts);
+
+        throw new \Exception("Could not generate a unique admission number after {$maxAttempts} attempts");
+    }
+
+    /**
+     * Get next sequential number based on existing students
+     */
+    private function getNextSequentialNumber($schoolId, $format, $startFrom): int
+    {
+        if ($format === 'year_sequential') {
+            // Reset sequence each year
+            $year = now()->year;
+            $prefix = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_prefix', '');
+            $includeYear = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_include_year', false);
+            $yearFormat = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_year_format', 'YYYY');
+            $paddingLength = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_padding', 4);
+
+            $yearString = '';
+            if ($includeYear) {
+                $yearString = now()->format($yearFormat === 'YY' ? 'y' : 'Y');
+            }
+
+            $students = Student::where('school_id', $schoolId)
+                ->whereYear('created_at', $year)
+                ->whereNotNull('admission_number')
+                ->pluck('admission_number');
+
+            $maxSequenceNumber = 0;
+            foreach ($students as $admissionNumber) {
+                $sequenceNumber = $this->extractSequenceNumber($admissionNumber, $prefix, $yearString, $paddingLength);
+                if ($sequenceNumber > $maxSequenceNumber) {
+                    $maxSequenceNumber = $sequenceNumber;
+                }
+            }
+
+            return max($maxSequenceNumber + 1, $startFrom);
+        } else {
+            // Continuous sequence
+            $prefix = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_prefix', '');
+            $paddingLength = \App\Models\SchoolSetting::getSetting($schoolId, 'admission_number_padding', 4);
+
+            $students = Student::where('school_id', $schoolId)
+                ->whereNotNull('admission_number')
+                ->pluck('admission_number');
+
+            $maxSequenceNumber = 0;
+            foreach ($students as $admissionNumber) {
+                $sequenceNumber = $this->extractSequenceNumber($admissionNumber, $prefix, '', $paddingLength);
+                if ($sequenceNumber > $maxSequenceNumber) {
+                    $maxSequenceNumber = $sequenceNumber;
+                }
+            }
+
+            return max($maxSequenceNumber + 1, $startFrom);
+        }
+    }
+
+    /**
+     * Extract sequence number from admission number
+     */
+    private function extractSequenceNumber($admissionNumber, $prefix, $yearString, $paddingLength): int
+    {
+        // Remove prefix
+        if ($prefix && str_starts_with($admissionNumber, $prefix)) {
+            $admissionNumber = substr($admissionNumber, strlen($prefix));
+        }
+
+        // Remove year if present
+        if ($yearString && str_starts_with($admissionNumber, $yearString)) {
+            $admissionNumber = substr($admissionNumber, strlen($yearString));
+        }
+
+        // The remaining should be the sequence number
+        if (is_numeric($admissionNumber)) {
+            return (int)$admissionNumber;
+        }
+
+        return 0;
+    }
+
+    /**
+     * Generate next available roll number for a class
+     */
+    private function generateNextRollNumber(int $classId): int
+    {
+        // Get the highest roll number currently assigned in this class
+        $lastRollNumber = DB::table('class_student')
+            ->where('class_id', $classId)
+            ->where('is_active', true)
+            ->max('roll_number');
+
+        // If no students in class, start from 1, otherwise increment
+        return $lastRollNumber ? $lastRollNumber + 1 : 1;
+    }
+
+    /**
+     * Validate if roll number is available in the class
+     */
+    private function validateRollNumber(int $classId, int $rollNumber): void
+    {
+        if ($rollNumber < 1) {
+            throw new \Exception('Roll number must be greater than 0');
+        }
+
+        // Check if roll number is already taken in this class
+        $existingRollNumber = DB::table('class_student')
+            ->where('class_id', $classId)
+            ->where('roll_number', $rollNumber)
+            ->where('is_active', true)
+            ->exists();
+
+        if ($existingRollNumber) {
+            throw new \Exception("Roll number {$rollNumber} is already taken in this class");
+        }
+    }
+
+    /**
+     * Get available roll numbers for a class (useful for frontend)
+     */
+    public function getAvailableRollNumbers(int $classId, int $limit = 10): array
+    {
+        // Get all assigned roll numbers for this class
+        $assignedRollNumbers = DB::table('class_student')
+            ->where('class_id', $classId)
+            ->where('is_active', true)
+            ->pluck('roll_number')
+            ->sort()
+            ->values()
+            ->toArray();
+
+        $availableNumbers = [];
+        $maxRoll = $assignedRollNumbers ? max($assignedRollNumbers) : 0;
+
+        // Find gaps in the sequence (1, 2, 3, 5, 7 -> gaps are 4, 6)
+        for ($i = 1; $i <= $maxRoll; $i++) {
+            if (!in_array($i, $assignedRollNumbers)) {
+                $availableNumbers[] = $i;
+                if (count($availableNumbers) >= $limit) break;
+            }
+        }
+
+        // If we need more numbers, add sequential numbers after the max
+        while (count($availableNumbers) < $limit) {
+            $availableNumbers[] = ++$maxRoll;
+        }
+
+        return $availableNumbers;
+    }
+
+    /**
+     * Get class roll number statistics
+     */
+    public function getClassRollNumberStats(int $classId): array
+    {
+        $assignedRollNumbers = DB::table('class_student')
+            ->where('class_id', $classId)
+            ->where('is_active', true)
+            ->pluck('roll_number')
+            ->sort()
+            ->values();
+
+        $stats = [
+            'total_students' => $assignedRollNumbers->count(),
+            'highest_roll_number' => $assignedRollNumbers->max() ?? 0,
+            'lowest_roll_number' => $assignedRollNumbers->min() ?? 0,
+            'next_available' => $this->generateNextRollNumber($classId),
+            'available_gaps' => []
+        ];
+
+        // Find gaps in roll number sequence
+        if ($assignedRollNumbers->count() > 0) {
+            $assignedArray = $assignedRollNumbers->toArray();
+            for ($i = 1; $i <= max($assignedArray); $i++) {
+                if (!in_array($i, $assignedArray)) {
+                    $stats['available_gaps'][] = $i;
+                }
+            }
+        }
+
+        return $stats;
     }
 }

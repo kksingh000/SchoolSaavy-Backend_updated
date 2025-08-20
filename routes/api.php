@@ -21,6 +21,9 @@ use App\Http\Controllers\GalleryController;
 use App\Http\Controllers\ContactController;
 use App\Http\Controllers\ParentController;
 use App\Http\Controllers\TeacherController;
+use App\Http\Controllers\SchoolSettingController;
+use App\Http\Controllers\AdmissionNumberController;
+use App\Http\Controllers\RollNumberController;
 
 /*
 |--------------------------------------------------------------------------
@@ -121,6 +124,17 @@ Route::middleware('json.response')->group(function () {
         Route::get('students/{id}/attendance', [StudentController::class, 'getAttendanceReport']);
         Route::get('students/{id}/fees', [StudentController::class, 'getFeeStatus']);
 
+        // Student Bulk Import Routes
+        Route::prefix('students/import')->group(function () {
+            Route::get('template', [StudentController::class, 'downloadTemplate']);
+            Route::post('/', [StudentController::class, 'import']);
+            Route::get('/', [StudentController::class, 'getImports']);
+            Route::get('{id}', [StudentController::class, 'getImport']);
+            Route::get('{id}/errors', [StudentController::class, 'getImportErrors']);
+            Route::post('{id}/cancel', [StudentController::class, 'cancelImport']);
+            Route::delete('{id}', [StudentController::class, 'deleteImport']);
+        });
+
         // Parent-Student Management Routes
         Route::prefix('students/{studentId}/parents')->group(function () {
             Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getStudentParents']);
@@ -149,6 +163,36 @@ Route::middleware('json.response')->group(function () {
             Route::get('{id}/classes', [TeacherController::class, 'getClasses']);
             Route::get('{id}/assignments', [TeacherController::class, 'getAssignments']);
             Route::get('{id}/dashboard-stats', [TeacherController::class, 'getDashboardStats']);
+        });
+
+        // School Settings Management Routes
+        Route::prefix('school-settings')->group(function () {
+            Route::get('/', [SchoolSettingController::class, 'index']);                    // GET all settings
+            Route::post('/', [SchoolSettingController::class, 'store']);                   // POST create new setting
+            Route::get('category/{category}', [SchoolSettingController::class, 'getByCategory']); // GET by category
+            Route::get('{key}', [SchoolSettingController::class, 'show']);                 // GET specific setting
+            Route::put('{key}', [SchoolSettingController::class, 'update']);               // PUT update specific setting
+            Route::delete('{key}', [SchoolSettingController::class, 'destroy']);           // DELETE setting
+            Route::post('bulk', [SchoolSettingController::class, 'updateBulk']);           // POST bulk update
+        });
+
+        // Admission Number Management Routes
+        Route::prefix('admission-number')->group(function () {
+            Route::get('generate', [AdmissionNumberController::class, 'generate']);
+            Route::post('generate-batch', [AdmissionNumberController::class, 'generateBatch']);
+            Route::get('check-availability', [AdmissionNumberController::class, 'checkAvailability']);
+            Route::get('settings', [AdmissionNumberController::class, 'getSettings']);
+            Route::put('settings', [AdmissionNumberController::class, 'updateSettings']);
+            Route::post('migrate-existing', [AdmissionNumberController::class, 'migrateExistingNumbers']);
+        });
+
+        // Roll Number Management Routes
+        Route::prefix('roll-number')->group(function () {
+            Route::get('next', [RollNumberController::class, 'getNext']); // ?class_id=1
+            Route::get('available', [RollNumberController::class, 'getAvailable']); // ?class_id=1&limit=10
+            Route::get('check-availability', [RollNumberController::class, 'checkAvailability']); // ?class_id=1&roll_number=5
+            Route::get('statistics', [RollNumberController::class, 'getStatistics']); // ?class_id=1
+            Route::post('generate-bulk', [RollNumberController::class, 'generateBulk']); // {class_id, count, fill_gaps}
         });
 
         // Class Management Routes

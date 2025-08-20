@@ -4,9 +4,13 @@ namespace App\Http\Controllers;
 
 use App\Models\Student;
 use App\Services\StudentService;
+use App\Services\StudentImportService;
 use App\Http\Resources\StudentResource;
+use App\Http\Resources\StudentImportResource;
+use App\Http\Resources\StudentImportErrorResource;
 use App\Http\Requests\Student\StoreStudentRequest;
 use App\Http\Requests\Student\UpdateStudentRequest;
+use App\Http\Requests\Student\ImportStudentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
@@ -15,10 +19,12 @@ use App\Http\Controllers\BaseController;
 class StudentController extends BaseController
 {
     protected $studentService;
+    protected $importService;
 
-    public function __construct(StudentService $studentService)
+    public function __construct(StudentService $studentService, StudentImportService $importService)
     {
         $this->studentService = $studentService;
+        $this->importService = $importService;
     }
 
     public function index(Request $request): JsonResponse
@@ -168,5 +174,165 @@ class StudentController extends BaseController
     {
         $feeStatus = $this->studentService->getFeeStatus($id);
         return response()->json(['data' => $feeStatus]);
+    }
+
+    // ========== BULK IMPORT METHODS ==========
+
+    /**
+     * Download CSV template for student import
+     */
+    public function downloadTemplate()
+    {
+        try {
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            return $this->importService->downloadTemplate();
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Import students from CSV file
+     * Note: File should be uploaded first using the FileUploadController
+     */
+    public function import(ImportStudentRequest $request): JsonResponse
+    {
+        try {
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $studentImport = $this->importService->initiateImport(
+                $request->input('file_path'),
+                $request->input('file_name')
+            );
+
+            return $this->successResponse(
+                new StudentImportResource($studentImport),
+                'Student import initiated successfully. Processing in background.'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get import history
+     */
+    public function getImports(Request $request): JsonResponse
+    {
+        try {
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $perPage = $request->get('per_page', 15);
+            $imports = $this->importService->getImportHistory($perPage);
+
+            return $this->successResponse([
+                'data' => StudentImportResource::collection($imports->items()),
+                'pagination' => [
+                    'current_page' => $imports->currentPage(),
+                    'last_page' => $imports->lastPage(),
+                    'per_page' => $imports->perPage(),
+                    'total' => $imports->total(),
+                    'from' => $imports->firstItem(),
+                    'to' => $imports->lastItem(),
+                    'has_more_pages' => $imports->hasMorePages(),
+                ]
+            ], 'Import history retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get specific import details
+     */
+    public function getImport($id): JsonResponse
+    {
+        try {
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $import = $this->importService->getImportById($id);
+
+            return $this->successResponse(
+                new StudentImportResource($import),
+                'Import details retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage(), null, 404);
+        }
+    }
+
+    /**
+     * Get import errors
+     */
+    public function getImportErrors(Request $request, $id): JsonResponse
+    {
+        try {
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $perPage = $request->get('per_page', 50);
+            $errors = $this->importService->getImportErrors($id, $perPage);
+
+            return $this->successResponse([
+                'data' => StudentImportErrorResource::collection($errors->items()),
+                'pagination' => [
+                    'current_page' => $errors->currentPage(),
+                    'last_page' => $errors->lastPage(),
+                    'per_page' => $errors->perPage(),
+                    'total' => $errors->total(),
+                    'from' => $errors->firstItem(),
+                    'to' => $errors->lastItem(),
+                    'has_more_pages' => $errors->hasMorePages(),
+                ]
+            ], 'Import errors retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Cancel pending/processing import
+     */
+    public function cancelImport($id): JsonResponse
+    {
+        try {
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $this->importService->cancelImport($id);
+
+            return $this->successResponse(null, 'Import cancelled successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Delete import and associated file
+     */
+    public function deleteImport($id): JsonResponse
+    {
+        try {
+            if (!$this->checkModuleAccess('student-management')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $this->importService->deleteImport($id);
+
+            return $this->successResponse(null, 'Import deleted successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
     }
 }
