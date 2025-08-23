@@ -30,6 +30,11 @@ class School extends Model
         return $this->hasOne(SchoolAdmin::class);
     }
 
+    public function schoolAdmin()
+    {
+        return $this->hasOne(SchoolAdmin::class);
+    }
+
     public function teachers()
     {
         return $this->hasMany(Teacher::class);
@@ -38,6 +43,12 @@ class School extends Model
     public function students()
     {
         return $this->hasMany(Student::class);
+    }
+
+    public function parents()
+    {
+        return $this->hasManyThrough(Parents::class, Student::class, 'school_id', 'id', 'id', 'id')
+            ->join('parent_student', 'parents.id', '=', 'parent_student.parent_id');
     }
 
     public function modules()

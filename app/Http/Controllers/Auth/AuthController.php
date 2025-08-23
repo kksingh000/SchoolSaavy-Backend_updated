@@ -37,6 +37,11 @@ class AuthController extends Controller
                 $response['students'] = $result['students'];
             }
 
+            // Add school context for non-super-admin users
+            if ($result['user']->user_type !== 'super_admin' && isset($result['school'])) {
+                $response['school'] = $result['school'];
+            }
+
             return response()->json($response);
         } catch (\Exception $e) {
             return response()->json([
@@ -65,12 +70,24 @@ class AuthController extends Controller
     public function me(Request $request): JsonResponse
     {
         try {
+            $user = $request->user();
+
+            // Load appropriate relationships based on user type
+            $relationships = match ($user->user_type) {
+                'super_admin' => ['superAdmin'],
+                'school_admin' => ['schoolAdmin.school'],
+                'teacher' => ['teacher.school'],
+                'parent' => ['parent.students'],
+                'student' => ['student.school'],
+                default => []
+            };
+
+            if (!empty($relationships)) {
+                $user->load($relationships);
+            }
+
             return response()->json([
-                'user' => new UserResource($request->user()->load([
-                    'schoolAdmin.school',
-                    'teacher.school',
-                    'parent.students'
-                ]))
+                'user' => new UserResource($user)
             ]);
         } catch (\Exception $e) {
             return response()->json([

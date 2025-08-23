@@ -33,6 +33,16 @@ class AuthService
             ]);
         }
 
+        // Check if user's school is active (except for super_admin)
+        if ($user->user_type !== 'super_admin') {
+            $school = $this->getUserSchool($user);
+            if ($school && !$school->is_active) {
+                throw ValidationException::withMessages([
+                    'school' => ['Your school has been deactivated. Please contact the administration for assistance.'],
+                ]);
+            }
+        }
+
         // For parent users, get detailed student information efficiently
         $additionalData = [];
         if ($user->user_type === 'parent') {
@@ -49,6 +59,20 @@ class AuthService
             }
         }
 
+        // Add school context for non-super-admin users
+        if ($user->user_type !== 'super_admin') {
+            $school = $this->getUserSchool($user);
+            if ($school) {
+                $additionalData['school'] = [
+                    'id' => $school->id,
+                    'name' => $school->name,
+                    'email' => $school->email,
+                    'subscription_plan' => $school->subscription_plan,
+                    'is_active' => $school->is_active
+                ];
+            }
+        }
+
         return [
             'user' => $user,
             'token' => $user->createToken('auth-token')->plainTextToken,
@@ -60,9 +84,24 @@ class AuthService
     protected function getUserRelation(string $userType)
     {
         return match ($userType) {
-            'admin', 'school_admin' => 'schoolAdmin.school',
+            'school_admin' => 'schoolAdmin.school',
+            'super_admin' => 'superAdmin',
             'teacher' => 'teacher.school',
             'parent' => 'parent', // Load only parent profile, not students (we'll add detailed students separately)
+            default => null,
+        };
+    }
+
+    /**
+     * Get the school associated with the user
+     */
+    protected function getUserSchool($user)
+    {
+        return match ($user->user_type) {
+            'school_admin' => $user->schoolAdmin?->school,
+            'teacher' => $user->teacher?->school,
+            'parent' => $user->parent?->students?->first()?->school,
+            'student' => $user->student?->school ?? null,
             default => null,
         };
     }
@@ -122,6 +161,16 @@ class AuthService
             throw ValidationException::withMessages([
                 'user' => ['Your account is inactive. Please contact the administrator.'],
             ]);
+        }
+
+        // Check if user's school is active (except for super_admin)
+        if ($user->user_type !== 'super_admin') {
+            $school = $this->getUserSchool($user);
+            if ($school && !$school->is_active) {
+                throw ValidationException::withMessages([
+                    'school' => ['Your school has been deactivated. Please contact the administration for assistance.'],
+                ]);
+            }
         }
 
         // Create a new token with expiration FIRST

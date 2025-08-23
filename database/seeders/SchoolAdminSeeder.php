@@ -16,13 +16,13 @@ class SchoolAdminSeeder extends Seeder
 
         // First check if admin exists
         $existingUser = User::where('email', 'admin@school.com')->first();
-        
+
         if (!$existingUser) {
             $user = User::create([
                 'name' => 'John Smith',
                 'email' => 'admin@school.com',
                 'password' => Hash::make('password123'),
-                'user_type' => 'admin',
+                'user_type' => 'school_admin',
                 'is_active' => true,
             ]);
 
@@ -39,4 +39,4 @@ class SchoolAdminSeeder extends Seeder
             ]);
         }
     }
-} 
+}

@@ -17,6 +17,8 @@ return Application::configure(basePath: dirname(__DIR__))
             'json.response' => \App\Http\Middleware\ForceJsonResponse::class,
             'refresh.token' => \App\Http\Middleware\RefreshTokenIfNeeded::class,
             'user.type' => \App\Http\Middleware\CheckUserType::class,
+            'super.admin' => \App\Http\Middleware\CheckSuperAdmin::class,
+            'school.status' => \App\Http\Middleware\CheckSchoolStatus::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

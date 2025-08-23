@@ -16,7 +16,7 @@ class LoginRequest extends FormRequest
         return [
             'email' => 'required|email',
             'password' => 'required|string',
-            'user_type' => 'required|in:admin,teacher,parent,school_admin'
+            'user_type' => 'required|in:super_admin,school_admin,teacher,parent,student'
         ];
     }
 }
