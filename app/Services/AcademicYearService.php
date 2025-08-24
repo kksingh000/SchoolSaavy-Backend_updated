@@ -21,11 +21,38 @@ class AcademicYearService extends BaseService
     }
 
     /**
+     * Get school ID from authenticated user
+     */
+    private function getSchoolId()
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            return null;
+        }
+
+        // Get school ID based on user type
+        switch ($user->user_type) {
+            case 'admin':
+            case 'school_admin':
+                return $user->schoolAdmin?->school_id;
+            case 'teacher':
+                return $user->teacher?->school_id;
+            case 'parent':
+                return $user->parent?->students?->first()?->school_id;
+            case 'student':
+                return $user->student?->school_id;
+            default:
+                return null;
+        }
+    }
+
+    /**
      * Create a new academic year
      */
     public function createAcademicYear(array $data)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         DB::beginTransaction();
         try {
@@ -70,7 +97,7 @@ class AcademicYearService extends BaseService
      */
     public function getCurrentAcademicYear()
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         return AcademicYear::forSchool($schoolId)
             ->current()
@@ -82,7 +109,7 @@ class AcademicYearService extends BaseService
      */
     public function setAsCurrentYear($academicYearId)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         DB::beginTransaction();
         try {
@@ -106,7 +133,7 @@ class AcademicYearService extends BaseService
      */
     public function startPromotionPeriod($academicYearId)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         $academicYear = AcademicYear::forSchool($schoolId)->findOrFail($academicYearId);
 
@@ -124,7 +151,7 @@ class AcademicYearService extends BaseService
      */
     public function completeAcademicYear($academicYearId)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         $academicYear = AcademicYear::forSchool($schoolId)->findOrFail($academicYearId);
 
@@ -138,17 +165,75 @@ class AcademicYearService extends BaseService
     }
 
     /**
-     * Get academic years with statistics
+     * Get academic years with statistics (with pagination and search filters)
      */
-    public function getAcademicYearsWithStats()
+    public function getAcademicYearsWithStats($perPage = 10, $filters = [])
     {
-        $schoolId = Auth::user()->getSchool()->id;
-        $academicYears = AcademicYear::forSchool($schoolId)
-            ->with(['promotionCriteria', 'studentPromotions'])
-            ->orderBy('start_date', 'desc')
-            ->get();
+        $schoolId = $this->getSchoolId();
 
-        return $academicYears->map(function ($year) {
+        $query = AcademicYear::forSchool($schoolId)
+            ->with(['promotionCriteria', 'studentPromotions']);
+
+        // Apply search filter
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->where('year_label', 'like', "%{$search}%")
+                    ->orWhere('display_name', 'like', "%{$search}%");
+            });
+        }
+
+        // Apply status filter
+        if (!empty($filters['status']) && $filters['status'] !== 'all') {
+            $query->where('status', $filters['status']);
+        }
+
+        // Apply current year filter
+        if (isset($filters['is_current']) && $filters['is_current'] !== '') {
+            $query->where('is_current', (bool)$filters['is_current']);
+        }
+
+        // Apply date range filter
+        if (!empty($filters['year_from'])) {
+            $query->whereYear('start_date', '>=', $filters['year_from']);
+        }
+
+        if (!empty($filters['year_to'])) {
+            $query->whereYear('end_date', '<=', $filters['year_to']);
+        }
+
+        // Apply promotion period filter
+        if (!empty($filters['promotion_status'])) {
+            switch ($filters['promotion_status']) {
+                case 'active':
+                    $query->where('status', 'promotion_period');
+                    break;
+                case 'upcoming':
+                    $query->where('status', 'active')
+                        ->whereDate('promotion_start_date', '>', now());
+                    break;
+                case 'completed':
+                    $query->where('status', 'completed');
+                    break;
+            }
+        }
+
+        // Apply sorting
+        $sortField = $filters['sort_by'] ?? 'start_date';
+        $sortDirection = $filters['sort_direction'] ?? 'desc';
+
+        $allowedSortFields = ['start_date', 'end_date', 'year_label', 'status', 'created_at'];
+        if (in_array($sortField, $allowedSortFields)) {
+            $query->orderBy($sortField, $sortDirection);
+        } else {
+            $query->orderBy('start_date', 'desc');
+        }
+
+        // Get paginated results
+        $paginatedYears = $query->paginate($perPage);
+
+        // Transform the data
+        $paginatedYears->getCollection()->transform(function ($year) {
             $stats = $year->getPromotionStatistics();
             return [
                 'id' => $year->id,
@@ -165,9 +250,13 @@ class AcademicYearService extends BaseService
                     'days_remaining' => $year->getPromotionDaysRemaining()
                 ],
                 'statistics' => $stats,
-                'criteria_count' => $year->promotionCriteria->count()
+                'criteria_count' => $year->promotionCriteria->count(),
+                'created_at' => $year->created_at,
+                'updated_at' => $year->updated_at
             ];
         });
+
+        return $paginatedYears;
     }
 
     /**
@@ -175,7 +264,7 @@ class AcademicYearService extends BaseService
      */
     public function generateNextAcademicYear($currentAcademicYearId)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         $currentYear = AcademicYear::forSchool($schoolId)->findOrFail($currentAcademicYearId);
         $nextYearLabel = $currentYear->getNextAcademicYearLabel();
@@ -214,7 +303,7 @@ class AcademicYearService extends BaseService
      */
     public function clonePromotionCriteria($fromAcademicYearId, $toAcademicYearId)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         DB::beginTransaction();
         try {

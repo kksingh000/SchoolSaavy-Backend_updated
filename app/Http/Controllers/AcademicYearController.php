@@ -13,9 +13,9 @@ class AcademicYearController extends BaseController
     ) {}
 
     /**
-     * Display a listing of academic years
+     * Display a listing of academic years with pagination and filters
      */
-    public function index()
+    public function index(Request $request)
     {
         try {
             // Check for either promotion-system or student-management module
@@ -23,7 +23,19 @@ class AcademicYearController extends BaseController
                 return $this->moduleAccessDenied();
             }
 
-            $academicYears = $this->academicYearService->getAcademicYearsWithStats();
+            $perPage = $request->get('per_page', 10);
+            $filters = [
+                'search' => $request->get('search'),
+                'status' => $request->get('status'),
+                'is_current' => $request->get('is_current'),
+                'year_from' => $request->get('year_from'),
+                'year_to' => $request->get('year_to'),
+                'promotion_status' => $request->get('promotion_status'),
+                'sort_by' => $request->get('sort_by'),
+                'sort_direction' => $request->get('sort_direction')
+            ];
+
+            $academicYears = $this->academicYearService->getAcademicYearsWithStats($perPage, $filters);
 
             return $this->successResponse($academicYears, 'Academic years retrieved successfully');
         } catch (\Exception $e) {
