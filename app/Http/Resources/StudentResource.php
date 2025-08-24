@@ -17,7 +17,7 @@ class StudentResource extends JsonResource
         return [
             'id' => $this->id,
             'admission_number' => $this->admission_number,
-            'roll_number' => $this->roll_number,
+            'roll_number' =>  $currentClass ? $currentClass->pivot->roll_number : null,
             'first_name' => $this->first_name,
             'last_name' => $this->last_name,
             'date_of_birth' => $this->date_of_birth,

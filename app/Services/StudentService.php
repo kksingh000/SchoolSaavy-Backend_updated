@@ -10,8 +10,13 @@ class StudentService
 {
     public function getAllStudents($filters = [], $perPage = 15)
     {
-        $query = Student::with(['school', 'parents', 'currentClass'])
-            ->where('school_id', request()->school_id);
+        $query = Student::with([
+            'school',
+            'parents',
+            'currentClass' => function ($query) {
+                $query->withPivot(['roll_number', 'enrolled_date', 'is_active']);
+            }
+        ])->where('school_id', request()->school_id);
 
         if (isset($filters['search'])) {
             $search = $filters['search'];
@@ -121,7 +126,13 @@ class StudentService
             }
 
             DB::commit();
-            return $student->load(['school', 'parents', 'currentClass']);
+            return $student->load([
+                'school',
+                'parents',
+                'currentClass' => function ($query) {
+                    $query->withPivot(['roll_number', 'enrolled_date', 'is_active']);
+                }
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
@@ -130,7 +141,13 @@ class StudentService
 
     public function getStudentById($id)
     {
-        return Student::with(['school', 'parents', 'currentClass'])
+        return Student::with([
+            'school',
+            'parents',
+            'currentClass' => function ($query) {
+                $query->withPivot(['roll_number', 'enrolled_date', 'is_active']);
+            }
+        ])
             ->where('school_id', request()->school_id)
             ->findOrFail($id);
     }
@@ -170,7 +187,13 @@ class StudentService
 
             Log::info('Student updated successfully:', ['id' => $student->id]);
 
-            return $student->fresh()->load(['school', 'parents', 'currentClass']);
+            return $student->fresh()->load([
+                'school',
+                'parents',
+                'currentClass' => function ($query) {
+                    $query->withPivot(['roll_number', 'enrolled_date', 'is_active']);
+                }
+            ]);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Student update failed:', [

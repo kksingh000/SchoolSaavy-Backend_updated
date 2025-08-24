@@ -31,11 +31,38 @@ class PromotionService extends BaseService
     }
 
     /**
+     * Get school ID from authenticated user
+     */
+    private function getSchoolId()
+    {
+        $user = Auth::user();
+
+        if (!$user) {
+            return null;
+        }
+
+        // Get school ID based on user type
+        switch ($user->user_type) {
+            case 'admin':
+            case 'school_admin':
+                return $user->schoolAdmin?->school_id;
+            case 'teacher':
+                return $user->teacher?->school_id;
+            case 'parent':
+                return $user->parent?->students?->first()?->school_id;
+            case 'student':
+                return $user->student?->school_id;
+            default:
+                return null;
+        }
+    }
+
+    /**
      * Create or update promotion criteria for a class
      */
     public function createPromotionCriteria(array $data)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         return PromotionCriteria::updateOrCreate(
             [
@@ -101,6 +128,76 @@ class PromotionService extends BaseService
                     'remedial_subjects' => $criteria->getRemedialSubjects()
                 ];
             });
+    }
+
+    /**
+     * Get paginated promotion criteria with filters
+     */
+    public function getCriteriaPaginated($academicYearId, $perPage = 15, $filters = [])
+    {
+        $schoolId = Auth::user()->getSchool()->id;
+
+        $query = PromotionCriteria::forSchool($schoolId)
+            ->forAcademicYear($academicYearId)
+            ->with(['fromClass', 'toClass'])
+            ->orderBy('created_at', 'desc');
+
+        // Apply filters
+        if (!empty($filters['from_class_id'])) {
+            $query->where('from_class_id', $filters['from_class_id']);
+        }
+
+        if (!empty($filters['to_class_id'])) {
+            $query->where('to_class_id', $filters['to_class_id']);
+        }
+
+        if (!empty($filters['status'])) {
+            if ($filters['status'] === 'active') {
+                $query->where('is_active', true);
+            } elseif ($filters['status'] === 'inactive') {
+                $query->where('is_active', false);
+            }
+            // 'all' means no filter
+        }
+
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($q) use ($search) {
+                $q->whereHas('fromClass', function ($subQuery) use ($search) {
+                    $subQuery->where('name', 'like', "%{$search}%");
+                })->orWhereHas('toClass', function ($subQuery) use ($search) {
+                    $subQuery->where('name', 'like', "%{$search}%");
+                });
+            });
+        }
+
+        return $query->paginate($perPage)->through(function ($criteria) {
+            return [
+                'id' => $criteria->id,
+                'from_class' => [
+                    'id' => $criteria->fromClass->id,
+                    'name' => $criteria->fromClass->name,
+                    'grade_level' => $criteria->fromClass->grade_level
+                ],
+                'to_class' => $criteria->to_class_id ? [
+                    'id' => $criteria->toClass->id,
+                    'name' => $criteria->toClass->name,
+                    'grade_level' => $criteria->toClass->grade_level
+                ] : null,
+                'minimum_attendance_percentage' => $criteria->minimum_attendance_percentage,
+                'minimum_assignment_average' => $criteria->minimum_assignment_average,
+                'minimum_assessment_average' => $criteria->minimum_assessment_average,
+                'minimum_overall_percentage' => $criteria->minimum_overall_percentage,
+                'promotion_weightages' => $criteria->getDefaultWeightages(),
+                'grace_marks_allowed' => $criteria->grace_marks_allowed,
+                'allow_conditional_promotion' => $criteria->allow_conditional_promotion,
+                'has_remedial_option' => $criteria->has_remedial_option,
+                'remedial_subjects' => $criteria->getRemedialSubjects(),
+                'is_active' => $criteria->is_active,
+                'created_at' => $criteria->created_at,
+                'updated_at' => $criteria->updated_at
+            ];
+        });
     }
 
     /**
@@ -183,132 +280,171 @@ class PromotionService extends BaseService
     }
 
     /**
-     * Bulk evaluate students for promotion
+     * Evaluate a single student for promotion (batch processing version)
+     * This method is optimized for queue processing without DB transactions
      */
-    public function bulkEvaluateStudents($academicYearId, $classIds = null, $userId = null)
+    public function evaluateStudentForBatch($studentId, $academicYearId, $userId = null, $targetClassIds = null)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
         $userId = $userId ?? Auth::id();
 
-        DB::beginTransaction();
         try {
-            // Create promotion batch
-            $batch = PromotionBatch::create([
-                'school_id' => $schoolId,
-                'academic_year_id' => $academicYearId,
-                'batch_name' => 'Bulk Evaluation - ' . now()->format('Y-m-d H:i'),
-                'description' => 'Automated bulk evaluation of students',
-                'class_filters' => $classIds,
-                'created_by' => $userId,
-                'status' => 'processing'
-            ]);
+            $student = Student::where('school_id', $schoolId)->findOrFail($studentId);
+            $currentClass = $student->getCurrentClassForYear($academicYearId);
 
-            $batch->markAsStarted($userId);
-
-            // Get students to evaluate
-            $studentsQuery = Student::forSchool($schoolId)->forAcademicYear($academicYearId);
-
-            if ($classIds) {
-                $studentsQuery->whereHas('classes', function ($query) use ($classIds, $academicYearId) {
-                    $query->whereIn('classes.id', $classIds)
-                        ->where('class_student.academic_year_id', $academicYearId)
-                        ->where('class_student.is_active', true);
-                });
+            if (!$currentClass) {
+                throw new \Exception('Student is not enrolled in any class for this academic year');
             }
 
-            $students = $studentsQuery->get();
-            $totalStudents = $students->count();
+            // Determine the target class
+            $targetClassId = null;
 
-            $batch->update(['total_students' => $totalStudents]);
-
-            $processed = 0;
-            $promoted = 0;
-            $failed = 0;
-            $pending = 0;
-
-            foreach ($students as $student) {
-                try {
-                    $promotion = $this->evaluateStudent($student->id, $academicYearId, $userId);
-
-                    $processed++;
-
-                    if ($promotion->isPromoted()) {
-                        $promoted++;
-                    } elseif ($promotion->isFailed()) {
-                        $failed++;
-                    } else {
-                        $pending++;
-                    }
-
-                    // Update batch progress every 10 students
-                    if ($processed % 10 === 0) {
-                        $batch->updateProgress($processed, $promoted, $failed, $pending);
-                        $batch->addToProcessingLog("Processed {$processed}/{$totalStudents} students");
-                    }
-                } catch (\Exception $e) {
-                    $batch->addError("Failed to evaluate student {$student->name}: " . $e->getMessage());
-                    $pending++;
-                    Log::error('Student evaluation failed in batch', [
-                        'student_id' => $student->id,
-                        'batch_id' => $batch->id,
-                        'error' => $e->getMessage()
-                    ]);
-                }
+            if ($targetClassIds && is_array($targetClassIds)) {
+                // Map current class to target class based on grade levels or sequence
+                $targetClass = $this->getTargetClassForStudent($currentClass, $targetClassIds, $schoolId);
+                $targetClassId = $targetClass ? $targetClass->id : null;
             }
 
-            // Final batch update
-            $batch->updateProgress($processed, $promoted, $failed, $pending);
-            $batch->markAsCompleted();
+            // First try to find criteria with specific target class
+            $criteria = PromotionCriteria::where('school_id', $schoolId)
+                ->where('academic_year_id', $academicYearId)
+                ->where('from_class_id', $currentClass->id)
+                ->where('is_active', true);
 
-            DB::commit();
-            return $batch->fresh();
+            if ($targetClassId) {
+                $criteria->where('to_class_id', $targetClassId);
+            }
+
+            $criteria = $criteria->first();
+
+            // If no specific criteria found, try without target class restriction
+            if (!$criteria) {
+                $criteria = PromotionCriteria::where('school_id', $schoolId)
+                    ->where('academic_year_id', $academicYearId)
+                    ->where('from_class_id', $currentClass->id)
+                    ->where('is_active', true)
+                    ->first();
+            }
+
+            if (!$criteria) {
+                throw new \Exception('No promotion criteria found for class ' . $currentClass->name);
+            }
+
+            // Use target class from bulk operation if available, otherwise use criteria default
+            $finalTargetClassId = $targetClassId ?: $criteria->to_class_id;
+
+            // Get student performance data
+            $performanceData = $this->getStudentPerformanceData($studentId, $academicYearId);
+
+            // Evaluate using criteria
+            $evaluation = $criteria->evaluateStudent($performanceData);
+
+            // Create or update promotion record
+            $promotion = StudentPromotion::updateOrCreate(
+                [
+                    'student_id' => $studentId,
+                    'academic_year_id' => $academicYearId
+                ],
+                [
+                    'school_id' => $schoolId,
+                    'from_class_id' => $currentClass->id,
+                    'to_class_id' => $finalTargetClassId,
+                    'attendance_percentage' => $performanceData['attendance_percentage'],
+                    'assignment_average' => $performanceData['assignment_average'],
+                    'assessment_average' => $performanceData['assessment_average'],
+                    'overall_score' => $evaluation['criteria_details']['weighted_score'],
+                    'final_percentage' => $evaluation['criteria_details']['weighted_score'],
+                    'criteria_details' => $evaluation['criteria_details'],
+                    'attendance_criteria_met' => $evaluation['criteria_details']['attendance_met'],
+                    'assignment_criteria_met' => $evaluation['criteria_details']['assignment_met'],
+                    'assessment_criteria_met' => $evaluation['criteria_details']['assessment_met'],
+                    'overall_criteria_met' => $evaluation['criteria_details']['overall_met'],
+                    'promotion_status' => $evaluation['eligible_for_promotion'] ? 'promoted' : 'failed',
+                    'promotion_reason' => $this->generatePromotionReason($evaluation),
+                    'requires_remedial' => $evaluation['remedial_available'] && !$evaluation['eligible_for_promotion'],
+                    'parent_meeting_required' => $evaluation['requires_parent_meeting'],
+                    'evaluated_by' => $userId,
+                    'evaluation_date' => now()
+                ]
+            );
+
+            // Handle conditional promotion
+            if (!$evaluation['eligible_for_promotion'] && $evaluation['can_have_conditional_promotion']) {
+                $promotion->update([
+                    'promotion_status' => 'conditionally_promoted',
+                    'promotion_reason' => 'Conditionally promoted - requires improvement'
+                ]);
+            }
+
+            return $promotion->fresh();
         } catch (\Exception $e) {
-            DB::rollBack();
-            if (isset($batch)) {
-                $batch->markAsFailed($e->getMessage());
-            }
+            Log::error('Student promotion evaluation failed in batch: ' . $e->getMessage(), [
+                'student_id' => $studentId,
+                'academic_year_id' => $academicYearId
+            ]);
             throw $e;
         }
     }
 
     /**
-     * Apply promotion decisions (move students to new classes)
+     * Bulk evaluate students for promotion (Queue-based)
+     */
+    public function bulkEvaluateStudents($academicYearId, $classIds = null, $userId = null, $targetClassIds = null)
+    {
+        $schoolId = $this->getSchoolId();
+        $userId = $userId ?? Auth::id();
+
+        // Create promotion batch record
+        $batch = PromotionBatch::create([
+            'school_id' => $schoolId,
+            'academic_year_id' => $academicYearId,
+            'batch_name' => 'Bulk Evaluation - ' . now()->format('Y-m-d H:i'),
+            'description' => 'Automated bulk evaluation of students',
+            'class_filters' => $classIds,
+            'target_class_ids' => $targetClassIds,
+            'created_by' => $userId,
+            'status' => 'queued' // Initially queued
+        ]);
+
+        // Dispatch the job to queue for background processing
+        \App\Jobs\ProcessBulkPromotionEvaluation::dispatch(
+            $batch->id,
+            $academicYearId,
+            $classIds,
+            $userId,
+            $schoolId,
+            $targetClassIds
+        )->onQueue('promotion-evaluation');
+
+        return $batch;
+    }
+
+    /**
+     * Apply promotion decisions (move students to new classes) - Queue-based
      */
     public function applyPromotions($academicYearId, $promotionIds = null)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
+        $userId = Auth::id();
 
-        DB::beginTransaction();
-        try {
-            $query = StudentPromotion::forSchool($schoolId)
-                ->forAcademicYear($academicYearId)
-                ->whereIn('promotion_status', ['promoted', 'conditionally_promoted']);
+        // Dispatch the job to queue for background processing
+        \App\Jobs\ProcessPromotionApplication::dispatch(
+            $academicYearId,
+            $promotionIds,
+            $schoolId,
+            $userId
+        )->onQueue('promotion-application');
 
-            if ($promotionIds) {
-                $query->whereIn('id', $promotionIds);
-            }
+        // Count how many promotions will be processed for immediate response
+        $query = StudentPromotion::where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->whereIn('promotion_status', ['promoted', 'conditionally_promoted']);
 
-            $promotions = $query->get();
-            $appliedCount = 0;
-
-            foreach ($promotions as $promotion) {
-                if ($promotion->to_class_id) {
-                    // Process the promotion (move student to new class)
-                    $promotion->applyPromotionDecision(
-                        $promotion->promotion_status,
-                        $promotion->promotion_reason,
-                        Auth::id()
-                    );
-                    $appliedCount++;
-                }
-            }
-
-            DB::commit();
-            return $appliedCount;
-        } catch (\Exception $e) {
-            DB::rollBack();
-            throw $e;
+        if ($promotionIds) {
+            $query->whereIn('id', $promotionIds);
         }
+
+        return $query->count();
     }
 
     /**
@@ -443,7 +579,7 @@ class PromotionService extends BaseService
      */
     public function getPromotionStatistics($academicYearId)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         $promotions = StudentPromotion::forSchool($schoolId)
             ->forAcademicYear($academicYearId)
@@ -468,11 +604,142 @@ class PromotionService extends BaseService
     }
 
     /**
+     * Get paginated student promotions with filters
+     */
+    public function getStudentPromotionsPaginated($academicYearId, $perPage = 15, $filters = [])
+    {
+        $schoolId = $this->getSchoolId();
+
+        $query = StudentPromotion::forSchool($schoolId)
+            ->forAcademicYear($academicYearId)
+            ->with([
+                'student' => function ($query) {
+                    $query->with(['classes' => function ($classQuery) {
+                        $classQuery->wherePivot('is_active', true);
+                    }]);
+                },
+                'fromClass',
+                'toClass',
+                'evaluatedBy'
+            ])
+            ->orderBy('updated_at', 'desc');
+
+        // Apply filters
+        if (!empty($filters['from_class_id'])) {
+            $query->where('from_class_id', $filters['from_class_id']);
+        }
+
+        if (!empty($filters['promotion_status'])) {
+            $query->where('promotion_status', $filters['promotion_status']);
+        }
+
+        if (!empty($filters['requires_remedial'])) {
+            $query->where('requires_remedial', $filters['requires_remedial'] === 'true');
+        }
+
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where(function ($mainQuery) use ($search) {
+                $mainQuery->whereHas('student', function ($q) use ($search) {
+                    $q->where('first_name', 'like', "%{$search}%")
+                        ->orWhere('last_name', 'like', "%{$search}%")
+                        ->orWhere('admission_number', 'like', "%{$search}%");
+                })->orWhereHas('student.classes', function ($classQuery) use ($search) {
+                    $classQuery->where('class_student.is_active', true)
+                        ->where('class_student.roll_number', 'like', "%{$search}%");
+                });
+            });
+        }
+
+        return $query->paginate($perPage)->through(function ($promotion) {
+            // Get the student's roll number from current class
+            $rollNumber = null;
+            if ($promotion->student && $promotion->student->classes->isNotEmpty()) {
+                $currentClass = $promotion->student->classes->first();
+                $rollNumber = $currentClass->pivot->roll_number ?? null;
+            }
+
+            return [
+                'id' => $promotion->id,
+                'student' => [
+                    'id' => $promotion->student->id,
+                    'name' => $promotion->student->name,
+                    'first_name' => $promotion->student->first_name,
+                    'last_name' => $promotion->student->last_name,
+                    'admission_number' => $promotion->student->admission_number,
+                    'roll_number' => $rollNumber,
+                ],
+                'from_class' => [
+                    'id' => $promotion->fromClass->id,
+                    'name' => $promotion->fromClass->name,
+                    'grade_level' => $promotion->fromClass->grade_level,
+                ],
+                'to_class' => $promotion->to_class_id ? [
+                    'id' => $promotion->toClass->id,
+                    'name' => $promotion->toClass->name,
+                    'grade_level' => $promotion->toClass->grade_level,
+                ] : null,
+                'promotion_status' => $promotion->promotion_status,
+                'attendance_percentage' => $promotion->attendance_percentage,
+                'assignment_average' => $promotion->assignment_average,
+                'assessment_average' => $promotion->assessment_average,
+                'overall_score' => $promotion->overall_score,
+                'final_percentage' => $promotion->final_percentage,
+                'promotion_reason' => $promotion->promotion_reason,
+                'requires_remedial' => $promotion->requires_remedial,
+                'parent_meeting_required' => $promotion->parent_meeting_required,
+                'evaluation_date' => $promotion->evaluation_date,
+                'evaluated_by' => $promotion->evaluatedBy ? [
+                    'id' => $promotion->evaluatedBy->id,
+                    'name' => $promotion->evaluatedBy->name,
+                ] : null,
+                'created_at' => $promotion->created_at,
+                'updated_at' => $promotion->updated_at,
+            ];
+        });
+    }
+
+    /**
+     * Get paginated promotion batches with filters
+     */
+    public function getBatchesPaginated($academicYearId, $perPage = 10, $filters = [])
+    {
+        $schoolId = $this->getSchoolId();
+
+        $query = PromotionBatch::where('school_id', $schoolId)
+            ->where('academic_year_id', $academicYearId)
+            ->with(['createdBy'])
+            ->withCount(['studentPromotions'])
+            ->orderBy('created_at', 'desc');
+
+        // Apply filters
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
+        }
+
+        if (!empty($filters['created_date_from'])) {
+            $query->whereDate('created_at', '>=', $filters['created_date_from']);
+        }
+
+        if (!empty($filters['created_date_to'])) {
+            $query->whereDate('created_at', '<=', $filters['created_date_to']);
+        }
+
+        if (!empty($filters['search'])) {
+            $search = $filters['search'];
+            $query->where('batch_name', 'like', "%{$search}%")
+                ->orWhere('description', 'like', "%{$search}%");
+        }
+
+        return $query->paginate($perPage);
+    }
+
+    /**
      * Override promotion decision manually
      */
     public function overridePromotionDecision($promotionId, $newStatus, $reason)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
         $userId = Auth::id();
 
         $promotion = StudentPromotion::forSchool($schoolId)->findOrFail($promotionId);
@@ -484,5 +751,75 @@ class PromotionService extends BaseService
         $promotion->overrideDecision($newStatus, $reason, $userId);
 
         return $promotion->fresh();
+    }
+
+    /**
+     * Get detailed batch progress with metrics
+     */
+    public function getBatchProgress($batchId)
+    {
+        $schoolId = $this->getSchoolId();
+
+        $batch = PromotionBatch::where('school_id', $schoolId)
+            ->with(['createdBy', 'processedBy', 'academicYear'])
+            ->findOrFail($batchId);
+
+        // Calculate estimated completion time if still processing
+        $estimatedCompletion = null;
+        if ($batch->isProcessing() && $batch->processed_students > 0) {
+            $processingStarted = $batch->processing_started_at;
+            $currentTime = now();
+            $timeElapsed = $processingStarted->diffInSeconds($currentTime);
+
+            $averageTimePerStudent = $timeElapsed / $batch->processed_students;
+            $remainingStudents = $batch->total_students - $batch->processed_students;
+            $estimatedSecondsLeft = $averageTimePerStudent * $remainingStudents;
+
+            $estimatedCompletion = $currentTime->addSeconds($estimatedSecondsLeft);
+        }
+
+        return [
+            'batch' => $batch,
+            'estimated_completion' => $estimatedCompletion,
+            'processing_rate' => $batch->processed_students > 0
+                ? round($batch->processed_students / max(1, $batch->processing_started_at?->diffInMinutes(now())), 2)
+                : 0 // students per minute
+        ];
+    }
+
+    /**
+     * Get the appropriate target class for a student based on current class and available target classes
+     */
+    private function getTargetClassForStudent($currentClass, $targetClassIds, $schoolId)
+    {
+        // If no specific target classes provided, check if class has a predefined promotion path
+        if (empty($targetClassIds)) {
+            if ($currentClass->promotes_to_class_id) {
+                return \App\Models\ClassRoom::find($currentClass->promotes_to_class_id);
+            }
+            return null;
+        }
+
+        // Get all available target classes
+        $targetClasses = \App\Models\ClassRoom::whereIn('id', $targetClassIds)
+            ->where('school_id', $schoolId)
+            ->orderBy('grade_level')
+            ->get();
+
+        if ($targetClasses->isEmpty()) {
+            return null;
+        }
+
+        // Simple logic: find the target class with the next grade level
+        $nextGradeLevel = $currentClass->grade_level + 1;
+
+        $targetClass = $targetClasses->where('grade_level', $nextGradeLevel)->first();
+
+        // If no exact next grade level found, return the first available target class
+        if (!$targetClass) {
+            $targetClass = $targetClasses->first();
+        }
+
+        return $targetClass;
     }
 }

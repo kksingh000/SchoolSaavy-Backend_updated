@@ -14,16 +14,25 @@ class PromotionController extends BaseController
     ) {}
 
     /**
-     * Get promotion criteria for academic year
+     * Get promotion criteria for academic year with pagination
      */
-    public function getCriteria($academicYearId)
+    public function getCriteria(Request $request, $academicYearId)
     {
         try {
             if (!$this->checkModuleAccess('promotion-system')) {
                 return $this->moduleAccessDenied();
             }
 
-            $criteria = $this->promotionService->getPromotionCriteria($academicYearId);
+            // Use paginated method
+            $perPage = $request->get('per_page', 15);
+            $filters = [
+                'from_class_id' => $request->get('from_class_id'),
+                'to_class_id' => $request->get('to_class_id'),
+                'status' => $request->get('status', 'all'),
+                'search' => $request->get('search')
+            ];
+
+            $criteria = $this->promotionService->getCriteriaPaginated($academicYearId, $perPage, $filters);
 
             return $this->successResponse($criteria, 'Promotion criteria retrieved successfully');
         } catch (\Exception $e) {
@@ -87,7 +96,9 @@ class PromotionController extends BaseController
 
             $batch = $this->promotionService->bulkEvaluateStudents(
                 $request->academic_year_id,
-                $request->class_ids
+                $request->class_ids,
+                null, // userId will be set in service
+                $request->target_class_ids
             );
 
             return $this->successResponse($batch, 'Bulk evaluation started successfully');
@@ -172,18 +183,32 @@ class PromotionController extends BaseController
     }
 
     /**
-     * Get student promotions for academic year
+     * Get student promotions for academic year with pagination
      */
-    public function getStudentPromotions($academicYearId)
+    public function getStudentPromotions(Request $request, $academicYearId)
     {
         try {
             if (!$this->checkModuleAccess('promotion-system')) {
                 return $this->moduleAccessDenied();
             }
 
-            $promotions = $this->promotionService->getAll([
-                'academic_year_id' => $academicYearId
-            ], ['student', 'fromClass', 'toClass', 'evaluatedBy']);
+            // Check if pagination is requested
+            if ($request->has('page') || $request->has('per_page')) {
+                // Use paginated method
+                $perPage = $request->get('per_page', 15);
+                $filters = [
+                    'class_id' => $request->get('class_id'),
+                    'promotion_status' => $request->get('promotion_status'),
+                    'search' => $request->get('search')
+                ];
+
+                $promotions = $this->promotionService->getStudentPromotionsPaginated($academicYearId, $perPage, $filters);
+            } else {
+                // Use original method for backward compatibility
+                $promotions = $this->promotionService->getAll([
+                    'academic_year_id' => $academicYearId
+                ], ['student', 'fromClass', 'toClass', 'evaluatedBy']);
+            }
 
             return $this->successResponse($promotions, 'Student promotions retrieved successfully');
         } catch (\Exception $e) {
@@ -192,23 +217,118 @@ class PromotionController extends BaseController
     }
 
     /**
-     * Get promotion batches for academic year
+     * Get promotion batches for academic year with pagination
      */
-    public function getBatches($academicYearId)
+    public function getBatches(Request $request, $academicYearId)
     {
         try {
             if (!$this->checkModuleAccess('promotion-system')) {
                 return $this->moduleAccessDenied();
             }
 
-            // This would be implemented in the service layer
-            $batches = \App\Models\PromotionBatch::forSchool(auth()->user()->getSchool()->id)
-                ->forAcademicYear($academicYearId)
-                ->with(['createdBy', 'processedBy'])
-                ->orderBy('created_at', 'desc')
-                ->get();
+            // Check if pagination is requested
+            if ($request->has('page') || $request->has('per_page')) {
+                // Use paginated method
+                $perPage = $request->get('per_page', 15);
+                $filters = [
+                    'status' => $request->get('status'),
+                    'search' => $request->get('search')
+                ];
+
+                $batches = $this->promotionService->getBatchesPaginated($academicYearId, $perPage, $filters);
+            } else {
+                // Use original method for backward compatibility
+                $schoolId = $this->getSchoolId($request);
+                $batches = \App\Models\PromotionBatch::where('school_id', $schoolId)
+                    ->forAcademicYear($academicYearId)
+                    ->with(['createdBy', 'processedBy'])
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+            }
 
             return $this->successResponse($batches, 'Promotion batches retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get detailed progress for a specific promotion batch
+     */
+    public function getBatchProgress(Request $request, $batchId)
+    {
+        try {
+            if (!$this->checkModuleAccess('promotion-system')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $schoolId = $this->getSchoolId($request);
+
+            $batch = \App\Models\PromotionBatch::where('school_id', $schoolId)
+                ->with(['createdBy', 'processedBy', 'academicYear'])
+                ->findOrFail($batchId);
+
+            // Get recent processing logs (last 20 entries)
+            $recentLogs = collect($batch->processing_log ?? [])->take(-20);
+
+            // Calculate additional metrics
+            $batchProgress = [
+                'id' => $batch->id,
+                'batch_name' => $batch->batch_name,
+                'description' => $batch->description,
+                'status' => $batch->status,
+                'status_display' => $batch->getStatusDisplay(),
+
+                // Progress metrics
+                'total_students' => $batch->total_students,
+                'processed_students' => $batch->processed_students,
+                'promoted_students' => $batch->promoted_students,
+                'failed_students' => $batch->failed_students,
+                'pending_students' => $batch->pending_students,
+
+                // Calculated percentages
+                'progress_percentage' => $batch->getProgressPercentage(),
+                'promotion_rate' => $batch->getPromotionRate(),
+                'failure_rate' => $batch->getFailureRate(),
+
+                // Timing information
+                'processing_time' => $batch->getProcessingTime(),
+                'processing_started_at' => $batch->processing_started_at,
+                'processing_completed_at' => $batch->processing_completed_at,
+
+                // Associated data
+                'academic_year' => [
+                    'id' => $batch->academicYear->id,
+                    'name' => $batch->academicYear->name,
+                    'year' => $batch->academicYear->year
+                ],
+                'created_by' => [
+                    'id' => $batch->createdBy->id,
+                    'name' => $batch->createdBy->name,
+                    'email' => $batch->createdBy->email
+                ],
+                'processed_by' => $batch->processedBy ? [
+                    'id' => $batch->processedBy->id,
+                    'name' => $batch->processedBy->name,
+                    'email' => $batch->processedBy->email
+                ] : null,
+
+                // Class filters applied
+                'class_filters' => $batch->class_filters,
+
+                // Recent processing logs
+                'recent_logs' => $recentLogs,
+
+                // Error information
+                'has_errors' => !empty($batch->error_log),
+                'error_summary' => $batch->error_log ? substr($batch->error_log, -500) : null, // Last 500 chars
+
+                // Timestamps
+                'created_at' => $batch->created_at,
+                'updated_at' => $batch->updated_at
+            ];
+
+            return $this->successResponse($batchProgress, 'Batch progress retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
         }

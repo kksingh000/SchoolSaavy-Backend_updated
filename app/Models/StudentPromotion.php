@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class StudentPromotion extends Model
@@ -262,14 +263,41 @@ class StudentPromotion extends Model
         if ($this->to_class_id) {
             // Move student to new class
             $this->student->classes()->detach(); // Remove from all current classes
+
+            // Generate next available roll number for the target class
+            $nextRollNumber = $this->generateNextRollNumber($this->to_class_id);
+
             $this->student->classes()->attach($this->to_class_id, [
                 'academic_year_id' => $this->academic_year_id,
+                'roll_number' => $nextRollNumber,
                 'enrolled_date' => now(),
                 'enrollment_type' => 'promoted',
                 'is_active' => true,
                 'enrollment_notes' => "Promoted from {$this->fromClass->name}"
             ]);
         }
+    }
+
+    /**
+     * Generate next available roll number for a class
+     */
+    private function generateNextRollNumber($classId)
+    {
+        // Get the highest current roll number for this class and academic year
+        $maxRollNumber = DB::table('class_student')
+            ->where('class_id', $classId)
+            ->where('academic_year_id', $this->academic_year_id)
+            ->where('is_active', true)
+            ->max('roll_number');
+
+        // If no roll numbers exist, start from 1, otherwise increment
+        if ($maxRollNumber === null) {
+            return '001';
+        }
+
+        // Convert to integer, increment, and format back to padded string
+        $nextNumber = intval($maxRollNumber) + 1;
+        return str_pad($nextNumber, 3, '0', STR_PAD_LEFT);
     }
 
     /**

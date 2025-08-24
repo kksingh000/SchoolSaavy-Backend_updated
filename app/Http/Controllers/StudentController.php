@@ -14,10 +14,14 @@ use App\Http\Requests\Student\ImportStudentRequest;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Http\Controllers\BaseController;
+use App\Traits\CacheInvalidation;
 
 class StudentController extends BaseController
 {
+    use CacheInvalidation;
+
     protected $studentService;
     protected $importService;
 
@@ -30,11 +34,12 @@ class StudentController extends BaseController
     public function index(Request $request): JsonResponse
     {
         try {
-            // Check if module access is required (uncomment if needed)
+            // Check if module access is required
             if (!$this->checkModuleAccess('student-management')) {
                 return $this->moduleAccessDenied();
             }
 
+            // Get filters from request
             $filters = $request->only([
                 'search',
                 'class_id',
@@ -46,7 +51,6 @@ class StudentController extends BaseController
 
             // Get pagination parameters
             $perPage = $request->get('per_page', 15); // Default 15 items per page
-            $page = $request->get('page', 1);
 
             // Validate per_page parameter
             $perPage = max(1, min(100, (int)$perPage)); // Between 1 and 100
@@ -68,7 +72,13 @@ class StudentController extends BaseController
                 ]
             ], 'Students retrieved successfully');
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            Log::error('Failed to retrieve students', [
+                'error' => $e->getMessage(),
+                'school_id' => request()->school_id,
+                'filters' => $filters ?? []
+            ]);
+
+            return $this->errorResponse('Failed to retrieve students: ' . $e->getMessage(), null, 500);
         }
     }
 
@@ -76,6 +86,9 @@ class StudentController extends BaseController
     {
         try {
             $student = $this->studentService->createStudent($request->validated());
+
+            // Invalidate related caches
+            $this->invalidateCache('create', 'students', $student->toArray());
 
             return response()->json([
                 'status' => 'success',
@@ -109,13 +122,8 @@ class StudentController extends BaseController
 
     public function update(UpdateStudentRequest $request, $id): JsonResponse
     {
+        $data = $request->validated();
         try {
-            // Get all request data
-            $data = $request->all();
-
-            // Remove middleware injected data if no other data present
-            unset($data['school_id'], $data['created_by']);
-
             if (empty($data)) {
                 return response()->json([
                     'status' => 'error',
@@ -123,7 +131,10 @@ class StudentController extends BaseController
                 ], 422);
             }
 
-            $student = $this->studentService->updateStudent($id, $request->validated());
+            $student = $this->studentService->updateStudent($id, $data);
+
+            // Invalidate related caches
+            $this->invalidateCache('update', 'students', $student->toArray());
 
             return response()->json([
                 'status' => 'success',
@@ -147,6 +158,9 @@ class StudentController extends BaseController
     {
         try {
             $this->studentService->deleteStudent($id);
+
+            // Invalidate related caches
+            $this->invalidateCache('delete', 'students', ['id' => $id]);
 
             return response()->json([
                 'status' => 'success',

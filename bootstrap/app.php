@@ -19,6 +19,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'user.type' => \App\Http\Middleware\CheckUserType::class,
             'super.admin' => \App\Http\Middleware\CheckSuperAdmin::class,
             'school.status' => \App\Http\Middleware\CheckSchoolStatus::class,
+            'api.cache' => \App\Http\Middleware\ApiCacheMiddleware::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

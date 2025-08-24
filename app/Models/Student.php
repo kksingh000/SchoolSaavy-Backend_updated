@@ -102,6 +102,18 @@ class Student extends Model
             ->orderBy('created_at', 'desc');
     }
 
+    // Scope to filter students by school (multi-tenant security)
+    public function scopeForSchool($query, $schoolId)
+    {
+        return $query->where('school_id', $schoolId);
+    }
+
+    // Scope to get only active students
+    public function scopeActive($query)
+    {
+        return $query->where('is_active', true);
+    }
+
     // Scope to get students for a specific academic year
     public function scopeForAcademicYear($query, $academicYearId)
     {

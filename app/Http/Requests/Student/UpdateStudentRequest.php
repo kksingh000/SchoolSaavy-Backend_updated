@@ -2,10 +2,10 @@
 
 namespace App\Http\Requests\Student;
 
-use Illuminate\Http\Request;
+use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Log;
 
-class UpdateStudentRequest extends Request
+class UpdateStudentRequest extends FormRequest
 {
     public function authorize()
     {
@@ -14,16 +14,8 @@ class UpdateStudentRequest extends Request
 
     public function rules()
     {
-        // Log the incoming request for debugging
-        Log::info('Update Request Content:', [
-            'all' => $this->all(),
-            'input' => $this->input(),
-            'json' => $this->json()->all(),
-            'isJson' => $this->isJson(),
-        ]);
-
         return [
-            'admission_number' => 'sometimes|string|unique:students,admission_number,' . $this->route('student'),
+            'admission_number' => 'sometimes|string|unique:students,admission_number,' . $this->route('id'),
             'first_name' => 'sometimes|string|max:255',
             'last_name' => 'sometimes|string|max:255',
             'date_of_birth' => 'sometimes|date|before:today',
@@ -59,13 +51,6 @@ class UpdateStudentRequest extends Request
 
     protected function prepareForValidation()
     {
-        // Log the request method and content type
-        Log::info('Request Method and Content:', [
-            'method' => $this->method(),
-            'contentType' => $this->header('Content-Type'),
-            'raw' => $this->getContent()
-        ]);
-
         // Convert class_roll_number to string if it's numeric
         if ($this->has('class_roll_number') && is_numeric($this->class_roll_number)) {
             $this->merge([

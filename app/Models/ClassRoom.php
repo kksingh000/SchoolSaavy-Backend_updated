@@ -21,6 +21,7 @@ class ClassRoom extends Model
         'class_teacher_id',
         'description',
         'is_active',
+        'promotes_to_class_id',
     ];
 
     protected $casts = [
@@ -79,5 +80,15 @@ class ClassRoom extends Model
     public function galleryAlbums()
     {
         return $this->hasMany(GalleryAlbum::class, 'class_id');
+    }
+
+    public function promotesTo()
+    {
+        return $this->belongsTo(ClassRoom::class, 'promotes_to_class_id');
+    }
+
+    public function promotesFrom()
+    {
+        return $this->hasMany(ClassRoom::class, 'promotes_to_class_id');
     }
 }

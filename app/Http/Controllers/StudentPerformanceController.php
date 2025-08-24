@@ -33,7 +33,7 @@ class StudentPerformanceController extends BaseController
             // Get performance data with optimized methods
             $attendanceData = $this->getAttendancePerformance($studentId, $month, $year);
             $assignmentData = $this->getAssignmentPerformance($studentId, $month, $year);
-            $overallGrade = $this->calculateOverallGrade($assignmentData);
+            $overallGrade = $this->calculateOverallGrade($attendanceData, $assignmentData);
             $trends = $this->getPerformanceTrendsOptimized($studentId, $year, $student->currentClass);
 
             $executionTime = round((microtime(true) - $startTime) * 1000, 2);
@@ -67,6 +67,7 @@ class StudentPerformanceController extends BaseController
                 'attendance_performance' => $attendanceData,
                 'assignment_performance' => $assignmentData,
                 'overall_grade' => $overallGrade,
+                'grade_calculation_info' => $this->getGradeCalculationInfo($attendanceData, $assignmentData),
                 'performance_trends' => $trends,
                 'recommendations' => $this->generateRecommendations($attendanceData, $assignmentData),
                 'execution_time_ms' => $executionTime, // Debug info
@@ -135,6 +136,25 @@ class StudentPerformanceController extends BaseController
             ->get();
 
         $totalAssignments = $assignments->count();
+
+        // If no assignments exist, return appropriate indicators immediately
+        if ($totalAssignments === 0) {
+            return [
+                'total_assignments' => 0,
+                'submitted_assignments' => 0,
+                'graded_assignments' => 0,
+                'pending_assignments' => 0,
+                'late_submissions' => 0,
+                'submission_rate' => 0,
+                'late_submission_rate' => 0,
+                'total_marks' => 0,
+                'obtained_marks' => 0,
+                'overall_percentage' => null, // null indicates no data available
+                'assignment_grade' => 'No Assignments',
+                'subject_performance' => [],
+            ];
+        }
+
         $submittedAssignments = 0;
         $gradedAssignments = 0;
         $lateSubmissions = 0;
@@ -300,6 +320,18 @@ class StudentPerformanceController extends BaseController
     private function calculateAssignmentFromAssignments($assignments)
     {
         $totalAssignments = $assignments->count();
+
+        // If no assignments exist, return null percentage to indicate no data
+        if ($totalAssignments === 0) {
+            return [
+                'total_assignments' => 0,
+                'submitted_assignments' => 0,
+                'graded_assignments' => 0,
+                'overall_percentage' => null, // null indicates no data available
+                'submission_rate' => 0,
+            ];
+        }
+
         $submittedAssignments = 0;
         $gradedAssignments = 0;
         $lateSubmissions = 0;
@@ -337,19 +369,102 @@ class StudentPerformanceController extends BaseController
     }
 
     /**
-     * Calculate overall grade
+     * Calculate overall grade based on available data
+     * - If both attendance and assignment data available: weighted average (30% attendance, 70% assignments)
+     * - If only attendance data available: based purely on attendance
+     * - If only assignment data available: based purely on assignments
+     * - If no meaningful data: indicate insufficient data
      */
-    private function calculateOverallGrade($assignmentData)
+    private function calculateOverallGrade($attendanceData, $assignmentData)
     {
+        $attendancePercentage = $attendanceData['attendance_percentage'] ?? 0;
         $assignmentPercentage = $assignmentData['overall_percentage'];
+        $hasAttendanceData = $attendanceData['total_school_days'] > 0;
+        $hasAssignmentData = $assignmentPercentage !== null && $assignmentData['total_assignments'] > 0;
 
-        if ($assignmentPercentage >= 90) return 'A+';
-        if ($assignmentPercentage >= 80) return 'A';
-        if ($assignmentPercentage >= 70) return 'B+';
-        if ($assignmentPercentage >= 60) return 'B';
-        if ($assignmentPercentage >= 50) return 'C+';
-        if ($assignmentPercentage >= 40) return 'C';
+        // Case 1: Both attendance and assignment data available
+        if ($hasAttendanceData && $hasAssignmentData) {
+            // Weighted average: 30% attendance + 70% assignments (assignments are more important academically)
+            $combinedPercentage = ($attendancePercentage * 0.3) + ($assignmentPercentage * 0.7);
+            return $this->getGradeFromPercentage($combinedPercentage) . ' (Combined)';
+        }
+
+        // Case 2: Only attendance data available
+        if ($hasAttendanceData && !$hasAssignmentData) {
+            return $this->getGradeFromPercentage($attendancePercentage) . ' (Attendance Only)';
+        }
+
+        // Case 3: Only assignment data available
+        if (!$hasAttendanceData && $hasAssignmentData) {
+            return $this->getGradeFromPercentage($assignmentPercentage) . ' (Assignments Only)';
+        }
+
+        // Case 4: No meaningful data available
+        return 'Insufficient Data';
+    }
+
+    /**
+     * Convert percentage to grade letter
+     */
+    private function getGradeFromPercentage($percentage)
+    {
+        if ($percentage >= 90) return 'A+';
+        if ($percentage >= 80) return 'A';
+        if ($percentage >= 70) return 'B+';
+        if ($percentage >= 60) return 'B';
+        if ($percentage >= 50) return 'C+';
+        if ($percentage >= 40) return 'C';
         return 'F';
+    }
+
+    /**
+     * Get information about how the overall grade was calculated
+     */
+    private function getGradeCalculationInfo($attendanceData, $assignmentData)
+    {
+        $attendancePercentage = $attendanceData['attendance_percentage'] ?? 0;
+        $assignmentPercentage = $assignmentData['overall_percentage'];
+        $hasAttendanceData = $attendanceData['total_school_days'] > 0;
+        $hasAssignmentData = $assignmentPercentage !== null && $assignmentData['total_assignments'] > 0;
+
+        if ($hasAttendanceData && $hasAssignmentData) {
+            $combinedPercentage = ($attendancePercentage * 0.3) + ($assignmentPercentage * 0.7);
+            return [
+                'calculation_method' => 'combined',
+                'description' => 'Based on both attendance and assignment performance',
+                'weightings' => [
+                    'attendance' => '30%',
+                    'assignments' => '70%'
+                ],
+                'components' => [
+                    'attendance_percentage' => $attendancePercentage,
+                    'assignment_percentage' => $assignmentPercentage,
+                    'combined_percentage' => round($combinedPercentage, 2)
+                ]
+            ];
+        } elseif ($hasAttendanceData && !$hasAssignmentData) {
+            return [
+                'calculation_method' => 'attendance_only',
+                'description' => 'Based on attendance only (no assignments available)',
+                'components' => [
+                    'attendance_percentage' => $attendancePercentage
+                ]
+            ];
+        } elseif (!$hasAttendanceData && $hasAssignmentData) {
+            return [
+                'calculation_method' => 'assignments_only',
+                'description' => 'Based on assignments only (no attendance data available)',
+                'components' => [
+                    'assignment_percentage' => $assignmentPercentage
+                ]
+            ];
+        } else {
+            return [
+                'calculation_method' => 'insufficient_data',
+                'description' => 'Insufficient data for grade calculation',
+                'components' => []
+            ];
+        }
     }
 
     /**
@@ -369,6 +484,11 @@ class StudentPerformanceController extends BaseController
      */
     private function getAssignmentGrade($percentage)
     {
+        // Handle case when percentage is null (no assignments)
+        if ($percentage === null) {
+            return 'No Assignments';
+        }
+
         if ($percentage >= 90) return 'Outstanding';
         if ($percentage >= 80) return 'Excellent';
         if ($percentage >= 70) return 'Good';
@@ -399,37 +519,54 @@ class StudentPerformanceController extends BaseController
             ];
         }
 
-        // Assignment recommendations
-        if ($assignmentData['submission_rate'] < 70) {
+        // Assignment recommendations (only if assignments exist)
+        if ($assignmentData['overall_percentage'] !== null && $assignmentData['total_assignments'] > 0) {
+            if ($assignmentData['submission_rate'] < 70) {
+                $recommendations[] = [
+                    'type' => 'assignment',
+                    'priority' => 'high',
+                    'message' => 'Many assignments are not being submitted. Please catch up on pending work.',
+                ];
+            }
+
+            if ($assignmentData['late_submission_rate'] > 30) {
+                $recommendations[] = [
+                    'type' => 'assignment',
+                    'priority' => 'medium',
+                    'message' => 'Try to submit assignments on time to avoid late submission penalties.',
+                ];
+            }
+
+            if ($assignmentData['overall_percentage'] < 60) {
+                $recommendations[] = [
+                    'type' => 'academic',
+                    'priority' => 'high',
+                    'message' => 'Academic performance needs improvement. Consider additional study time or tutoring.',
+                ];
+            }
+        } elseif ($assignmentData['total_assignments'] === 0) {
+            // Informational message when no assignments exist
             $recommendations[] = [
-                'type' => 'assignment',
-                'priority' => 'high',
-                'message' => 'Many assignments are not being submitted. Please catch up on pending work.',
+                'type' => 'info',
+                'priority' => 'low',
+                'message' => 'No assignments have been given this month. Stay prepared for upcoming assignments.',
             ];
         }
 
-        if ($assignmentData['late_submission_rate'] > 30) {
-            $recommendations[] = [
-                'type' => 'assignment',
-                'priority' => 'medium',
-                'message' => 'Try to submit assignments on time to avoid late submission penalties.',
-            ];
-        }
-
-        if ($assignmentData['overall_percentage'] < 60) {
-            $recommendations[] = [
-                'type' => 'academic',
-                'priority' => 'high',
-                'message' => 'Academic performance needs improvement. Consider additional study time or tutoring.',
-            ];
-        }
-
-        // Positive reinforcement
-        if ($attendanceData['attendance_percentage'] >= 95 && $assignmentData['overall_percentage'] >= 80) {
+        // Positive reinforcement (only check attendance if no assignments available)
+        if ($assignmentData['overall_percentage'] !== null) {
+            if ($attendanceData['attendance_percentage'] >= 95 && $assignmentData['overall_percentage'] >= 80) {
+                $recommendations[] = [
+                    'type' => 'positive',
+                    'priority' => 'low',
+                    'message' => 'Excellent performance! Keep up the great work.',
+                ];
+            }
+        } elseif ($attendanceData['attendance_percentage'] >= 95) {
             $recommendations[] = [
                 'type' => 'positive',
                 'priority' => 'low',
-                'message' => 'Excellent performance! Keep up the great work.',
+                'message' => 'Excellent attendance! Keep up the great work.',
             ];
         }
 
@@ -451,8 +588,8 @@ class StudentPerformanceController extends BaseController
             'late_submission_rate' => 0,
             'total_marks' => 0,
             'obtained_marks' => 0,
-            'overall_percentage' => 0,
-            'assignment_grade' => 'No Data',
+            'overall_percentage' => null, // null indicates no data available
+            'assignment_grade' => 'No Assignments',
             'subject_performance' => [],
         ];
     }
@@ -613,7 +750,7 @@ class StudentPerformanceController extends BaseController
                     'attendance_percentage' => $attendancePerformance['attendance_percentage'],
                     'assignment_percentage' => $assignmentPerformance['overall_percentage'],
                     'submission_rate' => $assignmentPerformance['submission_rate'],
-                    'overall_grade' => $this->calculateOverallGrade($assignmentPerformance),
+                    'overall_grade' => $this->calculateOverallGrade($attendancePerformance, $assignmentPerformance),
                 ];
 
                 $totalAttendancePercentage += $attendancePerformance['attendance_percentage'];
@@ -964,6 +1101,25 @@ class StudentPerformanceController extends BaseController
     private function calculateAssignmentFromSubmissions($assignments, $studentSubmissions)
     {
         $totalAssignments = $assignments->count();
+
+        // If no assignments exist, return null percentage to indicate no data
+        if ($totalAssignments === 0) {
+            return [
+                'total_assignments' => 0,
+                'submitted_assignments' => 0,
+                'graded_assignments' => 0,
+                'pending_assignments' => 0,
+                'late_submissions' => 0,
+                'submission_rate' => 0,
+                'late_submission_rate' => 0,
+                'total_marks' => 0,
+                'obtained_marks' => 0,
+                'overall_percentage' => null, // null indicates no data available
+                'assignment_grade' => 'No Assignments',
+                'subject_performance' => [],
+            ];
+        }
+
         $submittedAssignments = 0;
         $gradedAssignments = 0;
         $lateSubmissions = 0;

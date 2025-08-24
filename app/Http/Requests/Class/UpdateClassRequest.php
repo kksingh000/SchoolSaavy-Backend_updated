@@ -15,11 +15,13 @@ class UpdateClassRequest extends FormRequest
     {
         return [
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:50|unique:classes,code,' . $this->route('class'),
-            'capacity' => 'nullable|integer|min:1',
+            'grade_level' => 'required|integer|min:1|max:12',
+            'section' => 'nullable|string|max:10',
+            'capacity' => 'required|integer|min:1',
+            'class_teacher_id' => 'nullable|exists:teachers,id',
             'description' => 'nullable|string',
-            'subjects' => 'array',
-            'subjects.*' => 'exists:subjects,id',
+            'is_active' => 'sometimes|boolean',
+            'promotes_to_class_id' => 'nullable|exists:classes,id',
         ];
     }
 
@@ -27,9 +29,45 @@ class UpdateClassRequest extends FormRequest
     {
         return [
             'name.required' => 'The class name is required.',
-            'code.required' => 'The class code is required.',
-            'code.unique' => 'The class code must be unique.',
-            'capacity.integer' => 'The capacity must be an integer.',
+            'grade_level.required' => 'The grade level is required.',
+            'grade_level.min' => 'Grade level must be at least 1.',
+            'grade_level.max' => 'Grade level cannot exceed 12.',
+            'capacity.required' => 'The class capacity is required.',
+            'capacity.min' => 'Capacity must be at least 1.',
+            'class_teacher_id.exists' => 'The selected class teacher does not exist.',
+            'promotes_to_class_id.exists' => 'The selected promotion target class does not exist.',
         ];
+    }
+
+    /**
+     * Configure the validator instance.
+     */
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            $promotesToClassId = $this->promotes_to_class_id;
+            $gradeLevel = $this->grade_level;
+            $classId = $this->route('class'); // Current class being updated
+
+            // If promotion target is set, validate it's not the same class and has higher grade level
+            if ($promotesToClassId) {
+                // Cannot promote to itself
+                if ($promotesToClassId == $classId) {
+                    $validator->errors()->add(
+                        'promotes_to_class_id',
+                        'A class cannot promote to itself.'
+                    );
+                    return;
+                }
+
+                $targetClass = \App\Models\ClassRoom::find($promotesToClassId);
+                if ($targetClass && $targetClass->grade_level <= $gradeLevel) {
+                    $validator->errors()->add(
+                        'promotes_to_class_id',
+                        'The promotion target class must have a higher grade level than the current class.'
+                    );
+                }
+            }
+        });
     }
 }

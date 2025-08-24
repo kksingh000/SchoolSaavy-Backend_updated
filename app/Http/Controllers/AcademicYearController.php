@@ -210,4 +210,22 @@ class AcademicYearController extends BaseController
             return $this->errorResponse($e->getMessage());
         }
     }
+
+    /**
+     * Get the current academic year
+     */
+    public function getCurrent()
+    {
+        try {
+            if (!$this->checkModuleAccess('promotion-system')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $currentYear = $this->academicYearService->getCurrentAcademicYear();
+
+            return $this->successResponse($currentYear, 'Current academic year retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 }

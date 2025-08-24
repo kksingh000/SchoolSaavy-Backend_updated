@@ -11,9 +11,12 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use App\Traits\CacheInvalidation;
 
 class ClassController extends BaseController
 {
+    use CacheInvalidation;
+
     protected $classService;
 
     public function __construct(ClassService $classService)
@@ -176,6 +179,9 @@ class ClassController extends BaseController
         try {
             $class = $this->classService->createClass($request->validated());
 
+            // Invalidate related caches
+            $this->invalidateCache('create', 'classes', $class->toArray());
+
             return $this->successResponse(
                 new ClassResource($class->load(['classTeacher.user', 'students'])),
                 'Class created successfully',
@@ -213,6 +219,9 @@ class ClassController extends BaseController
         try {
             $class = $this->classService->update($id, $request->validated());
 
+            // Invalidate related caches
+            $this->invalidateCache('update', 'classes', $class->toArray());
+
             return $this->successResponse(
                 new ClassResource($class->load(['classTeacher.user', 'students'])),
                 'Class updated successfully'
@@ -230,6 +239,9 @@ class ClassController extends BaseController
 
         try {
             $this->classService->delete($id);
+
+            // Invalidate related caches
+            $this->invalidateCache('delete', 'classes', ['id' => $id]);
 
             return $this->successResponse(
                 null,
@@ -421,6 +433,87 @@ class ClassController extends BaseController
             ], 'Teacher classes retrieved successfully');
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Set promotion mapping for a class
+     */
+    public function setPromotionMapping(Request $request, $id): JsonResponse
+    {
+        if (!$this->checkModuleAccess('class-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'promotes_to_class_id' => 'nullable|exists:classes,id'
+            ]);
+
+            $class = ClassRoom::where('school_id', $request->school_id)
+                ->findOrFail($id);
+
+            $promotesToClassId = $request->promotes_to_class_id;
+
+            // Validate promotion target
+            if ($promotesToClassId) {
+                if ($promotesToClassId == $id) {
+                    return $this->errorResponse('A class cannot promote to itself');
+                }
+
+                $targetClass = ClassRoom::where('school_id', $request->school_id)
+                    ->findOrFail($promotesToClassId);
+
+                if ($targetClass->grade_level <= $class->grade_level) {
+                    return $this->errorResponse('Target class must have a higher grade level');
+                }
+            }
+
+            $class->promotes_to_class_id = $promotesToClassId;
+            $class->save();
+
+            // Clear related caches
+            $this->invalidateResourceCache('classes', $request->school_id);
+
+            return $this->successResponse(
+                new ClassResource($class->load('promotesTo')),
+                'Class promotion mapping updated successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to update promotion mapping: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get classes with their promotion mappings
+     */
+    public function getWithPromotionMappings(Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('class-management')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $classes = ClassRoom::where('school_id', $request->school_id)
+                ->where('is_active', true)
+                ->with(['promotesTo', 'promotesFrom'])
+                ->orderBy('grade_level')
+                ->orderBy('name')
+                ->get();
+
+            $groupedClasses = $classes->groupBy('grade_level')->map(function ($gradeClasses, $gradeLevel) {
+                return [
+                    'grade_level' => $gradeLevel,
+                    'classes' => ClassResource::collection($gradeClasses)
+                ];
+            })->values();
+
+            return $this->successResponse([
+                'classes_by_grade' => $groupedClasses,
+                'total_classes' => $classes->count()
+            ], 'Classes with promotion mappings retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to retrieve classes: ' . $e->getMessage());
         }
     }
 }

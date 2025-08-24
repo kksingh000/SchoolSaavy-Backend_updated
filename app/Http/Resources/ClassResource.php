@@ -16,6 +16,9 @@ class ClassResource extends JsonResource
             'class_teacher' => new TeacherResource($this->whenLoaded('classTeacher')),
             'capacity' => $this->capacity,
             'description' => $this->description,
+            'is_active' => $this->is_active,
+            'promotes_to_class_id' => $this->promotes_to_class_id,
+            'promotes_to' => new self($this->whenLoaded('promotesTo')),
             'students_count' => $this->whenLoaded('students', function () {
                 return $this->students->count();
             }, $this->students_count ?? 0),

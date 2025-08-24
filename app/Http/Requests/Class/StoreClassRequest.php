@@ -21,6 +21,43 @@ class StoreClassRequest extends FormRequest
             'teacher_id' => 'nullable|exists:teachers,id',
             'room_number' => 'nullable|string|max:50',
             'description' => 'nullable|string',
+            'promotes_to_class_id' => 'nullable|exists:classes,id',
         ];
+    }
+
+    public function messages()
+    {
+        return [
+            'name.required' => 'The class name is required.',
+            'grade_level.required' => 'The grade level is required.',
+            'grade_level.min' => 'Grade level must be at least 1.',
+            'grade_level.max' => 'Grade level cannot exceed 12.',
+            'capacity.required' => 'The class capacity is required.',
+            'capacity.min' => 'Capacity must be at least 1.',
+            'teacher_id.exists' => 'The selected teacher does not exist.',
+            'promotes_to_class_id.exists' => 'The selected promotion target class does not exist.',
+        ];
+    }
+
+    /**
+     * Configure the validator instance.
+     */
+    public function withValidator($validator)
+    {
+        $validator->after(function ($validator) {
+            $promotesToClassId = $this->promotes_to_class_id;
+            $gradeLevel = $this->grade_level;
+
+            // If promotion target is set, validate it has higher grade level
+            if ($promotesToClassId) {
+                $targetClass = \App\Models\ClassRoom::find($promotesToClassId);
+                if ($targetClass && $targetClass->grade_level <= $gradeLevel) {
+                    $validator->errors()->add(
+                        'promotes_to_class_id',
+                        'The promotion target class must have a higher grade level than the current class.'
+                    );
+                }
+            }
+        });
     }
 }

@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Models\Module;
 use App\Models\AcademicYear;
+use App\Traits\CacheInvalidation;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Http\Request;
 
 class BaseController extends Controller
 {
+    use CacheInvalidation;
     protected function checkModuleAccess(string $moduleSlug): bool
     {
         $user = Auth::user();

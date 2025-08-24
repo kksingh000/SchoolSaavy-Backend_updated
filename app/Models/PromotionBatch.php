@@ -22,6 +22,7 @@ class PromotionBatch extends Model
         'failed_students',
         'pending_students',
         'class_filters',
+        'target_class_ids',
         'processing_log',
         'error_log',
         'created_by',
@@ -32,6 +33,7 @@ class PromotionBatch extends Model
 
     protected $casts = [
         'class_filters' => 'array',
+        'target_class_ids' => 'array',
         'processing_log' => 'array',
         'processing_started_at' => 'datetime',
         'processing_completed_at' => 'datetime'
@@ -86,6 +88,11 @@ class PromotionBatch extends Model
     public function scopeProcessing($query)
     {
         return $query->where('status', 'processing');
+    }
+
+    public function scopeQueued($query)
+    {
+        return $query->where('status', 'queued');
     }
 
     /**
@@ -194,6 +201,7 @@ class PromotionBatch extends Model
     {
         $statusMap = [
             'created' => 'Created',
+            'queued' => 'Queued',
             'processing' => 'Processing',
             'completed' => 'Completed',
             'failed' => 'Failed'
