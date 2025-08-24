@@ -11,6 +11,7 @@ use App\Models\AcademicYear;
 use App\Models\Attendance;
 use App\Models\AssignmentSubmission;
 use App\Models\AssessmentResult;
+use App\Services\PromotionValidationService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
@@ -18,11 +19,13 @@ use Illuminate\Support\Facades\Log;
 class PromotionService extends BaseService
 {
     protected $studentPerformanceController;
+    protected $validationService;
 
     public function __construct()
     {
         parent::__construct();
         $this->studentPerformanceController = new \App\Http\Controllers\StudentPerformanceController();
+        $this->validationService = new PromotionValidationService();
     }
 
     protected function initializeModel()
@@ -98,7 +101,7 @@ class PromotionService extends BaseService
      */
     public function getPromotionCriteria($academicYearId)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         return PromotionCriteria::forSchool($schoolId)
             ->forAcademicYear($academicYearId)
@@ -135,7 +138,7 @@ class PromotionService extends BaseService
      */
     public function getCriteriaPaginated($academicYearId, $perPage = 15, $filters = [])
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        $schoolId = $this->getSchoolId();
 
         $query = PromotionCriteria::forSchool($schoolId)
             ->forAcademicYear($academicYearId)
@@ -205,7 +208,10 @@ class PromotionService extends BaseService
      */
     public function evaluateStudent($studentId, $academicYearId, $userId = null)
     {
-        $schoolId = Auth::user()->getSchool()->id;
+        // STRICT VALIDATION - Prevent promotion errors
+        $this->validatePromotionOperation($academicYearId, 'evaluate');
+
+        $schoolId = $this->getSchoolId();
         $userId = $userId ?? Auth::id();
 
         DB::beginTransaction();
@@ -391,6 +397,30 @@ class PromotionService extends BaseService
      */
     public function bulkEvaluateStudents($academicYearId, $classIds = null, $userId = null, $targetClassIds = null)
     {
+        // STRICT VALIDATION - Comprehensive readiness check
+        $validation = $this->getPromotionReadiness($academicYearId);
+
+        if (!$validation['is_ready']) {
+            $errorMessage = 'Promotion system not ready: ' . implode(', ', $validation['errors']);
+
+            // Log validation failure with detailed information
+            Log::warning('Bulk evaluation blocked by validation', [
+                'academic_year_id' => $academicYearId,
+                'validation_result' => $validation,
+                'user_id' => Auth::id()
+            ]);
+
+            throw new \Exception($errorMessage);
+        }
+
+        // Log any warnings but allow to continue
+        if (!empty($validation['warnings'])) {
+            Log::info('Bulk evaluation proceeding with warnings', [
+                'academic_year_id' => $academicYearId,
+                'warnings' => $validation['warnings']
+            ]);
+        }
+
         $schoolId = $this->getSchoolId();
         $userId = $userId ?? Auth::id();
 
@@ -424,6 +454,23 @@ class PromotionService extends BaseService
      */
     public function applyPromotions($academicYearId, $promotionIds = null)
     {
+        // CRITICAL VALIDATION - Prevent data corruption
+        $this->validatePromotionOperation($academicYearId, 'apply');
+
+        // Additional consistency check for existing data
+        $consistency = $this->checkDataConsistency($academicYearId);
+
+        if (!empty($consistency['same_year_promotions'])) {
+            $count = count($consistency['same_year_promotions']);
+            Log::error('Data consistency issue detected before applying promotions', [
+                'academic_year_id' => $academicYearId,
+                'same_year_promotions_count' => $count,
+                'details' => $consistency['same_year_promotions']
+            ]);
+
+            throw new \Exception("Data consistency error: {$count} students were promoted within the same academic year. Fix data integrity before proceeding.");
+        }
+
         $schoolId = $this->getSchoolId();
         $userId = Auth::id();
 
@@ -821,5 +868,29 @@ class PromotionService extends BaseService
         }
 
         return $targetClass;
+    }
+
+    /**
+     * Get comprehensive promotion readiness validation
+     */
+    public function getPromotionReadiness($academicYearId)
+    {
+        return $this->validationService->validatePromotionReadiness($academicYearId);
+    }
+
+    /**
+     * Validate promotion operation before execution
+     */
+    public function validatePromotionOperation($academicYearId, $operation = 'evaluate')
+    {
+        return $this->validationService->quickValidation($academicYearId, $operation);
+    }
+
+    /**
+     * Check and validate data consistency
+     */
+    public function checkDataConsistency($academicYearId)
+    {
+        return $this->validationService->validateDataConsistency($academicYearId);
     }
 }

@@ -375,6 +375,10 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
     });
 
     Route::prefix('promotions')->group(function () {
+        // Promotion Readiness & Validation
+        Route::get('readiness/{academicYearId}', [\App\Http\Controllers\PromotionController::class, 'checkPromotionReadiness']);
+        Route::get('consistency/{academicYearId}', [\App\Http\Controllers\PromotionController::class, 'validateDataConsistency']);
+
         // Promotion Criteria Management - with caching for read operations
         Route::middleware('api.cache:ttl:300,vary_by_school:true')->group(function () {
             Route::get('criteria/{academicYearId}', [\App\Http\Controllers\PromotionController::class, 'getCriteria']); // Supports pagination via ?page=1&per_page=15

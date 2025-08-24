@@ -333,4 +333,40 @@ class PromotionController extends BaseController
             return $this->errorResponse($e->getMessage());
         }
     }
+
+    /**
+     * Check promotion readiness with comprehensive validation
+     */
+    public function checkPromotionReadiness(Request $request, $academicYearId)
+    {
+        try {
+            if (!$this->checkModuleAccess('promotion-system')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $readiness = $this->promotionService->getPromotionReadiness($academicYearId);
+
+            return $this->successResponse($readiness, 'Promotion readiness check completed');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Validate data consistency 
+     */
+    public function validateDataConsistency(Request $request, $academicYearId)
+    {
+        try {
+            if (!$this->checkModuleAccess('promotion-system')) {
+                return $this->moduleAccessDenied();
+            }
+
+            $consistency = $this->promotionService->checkDataConsistency($academicYearId);
+
+            return $this->successResponse($consistency, 'Data consistency check completed');
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 }
