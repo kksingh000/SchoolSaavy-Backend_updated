@@ -12,8 +12,8 @@ services:
         php artisan config:clear &&
         php artisan cache:clear &&
         php artisan route:clear &&
-        echo '🚀 Starting Octane with RoadRunner...' &&
-        php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4 --verbose
+        echo '🚀 Starting Octane with Swoole (Memory Optimized)...' &&
+        php artisan octane:start --max-requests=100 --server=swoole --host=0.0.0.0 --port=8080 --workers=4 --task-workers=6 --verbose
       "
     ports:
       - "8080:8080"

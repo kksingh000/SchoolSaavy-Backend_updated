@@ -38,7 +38,7 @@ return [
     |
     */
 
-    'server' => env('OCTANE_SERVER', 'roadrunner'),
+    'server' => env('OCTANE_SERVER', 'swoole'),
 
     /*
     |--------------------------------------------------------------------------
@@ -81,7 +81,8 @@ return [
         ],
 
         RequestTerminated::class => [
-            // FlushUploadedFiles::class,
+            FlushUploadedFiles::class,
+            CollectGarbage::class,
         ],
 
         TaskReceived::class => [
@@ -105,8 +106,8 @@ return [
         OperationTerminated::class => [
             FlushOnce::class,
             FlushTemporaryContainerInstances::class,
-            // DisconnectFromDatabases::class,
-            // CollectGarbage::class,
+            DisconnectFromDatabases::class,
+            CollectGarbage::class,
         ],
 
         WorkerErrorOccurred::class => [
@@ -168,8 +169,8 @@ return [
     */
 
     'cache' => [
-        'rows' => 1000,
-        'bytes' => 10000,
+        'rows' => 10000,  // Increased for better performance
+        'bytes' => 50000, // Increased for larger cache entries
     ],
 
     /*
@@ -206,7 +207,7 @@ return [
     |
     */
 
-    'garbage' => 50,
+    'garbage' => 20,
 
     /*
     |--------------------------------------------------------------------------
@@ -220,5 +221,23 @@ return [
     */
 
     'max_execution_time' => 30,
-
+    'swoole' => [
+        'options' => [
+            'log_file' => storage_path('logs/swoole_http.log'),
+            'package_max_length' => 10 * 1024 * 1024,
+            // Performance optimizations (memory conscious)
+            'worker_num' => env('SWOOLE_WORKERS', 4),
+            'task_worker_num' => env('SWOOLE_TASK_WORKERS', 6),
+            'max_request' => env('SWOOLE_MAX_REQUESTS', 100),
+            'max_wait_time' => 60,
+            'reload_async' => true,
+            'enable_reuse_port' => true,
+            'enable_coroutine' => true,
+            // Memory optimizations (reduced sizes)
+            'buffer_output_size' => 8 * 1024 * 1024,  // Reduced from 32MB
+            'socket_buffer_size' => 32 * 1024 * 1024, // Reduced from 128MB
+            // Connection optimizations
+            'backlog' => 1024,
+        ],
+    ],
 ];
