@@ -51,6 +51,20 @@ services:
     networks:
       - schoolsavvy_network
 
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: schoolsavvy_phpmyadmin
+    restart: unless-stopped
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      PMA_USER: schoolsaavy
+      PMA_PASSWORD: schoolsaavy_secure_password_2024
+    ports:
+      - "8081:80"
+    networks:
+      - schoolsavvy_network
+
   # Redis Cache & Session Store
   redis:
     image: redis:7-alpine
