@@ -34,36 +34,36 @@ services:
       - schoolsavvy_network
 
   # MySQL Database
-  db:
-    image: mysql:8.0
-    container_name: schoolsavvy_db
-    restart: unless-stopped
-    environment:
-      MYSQL_ROOT_PASSWORD: schoolsaavy_secure_password_2024
-      MYSQL_DATABASE: schoolsaavy
-      MYSQL_USER: schoolsaavy
-      MYSQL_PASSWORD: schoolsaavy_secure_password_2024
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro
-    ports:
-      - "3306:3306"
-    networks:
-      - schoolsavvy_network
+  # db:
+  #   image: mysql:8.0
+  #   container_name: schoolsavvy_db
+  #   restart: unless-stopped
+  #   environment:
+  #     MYSQL_ROOT_PASSWORD: schoolsaavy_secure_password_2024
+  #     MYSQL_DATABASE: schoolsaavy
+  #     MYSQL_USER: schoolsaavy
+  #     MYSQL_PASSWORD: schoolsaavy_secure_password_2024
+  #   volumes:
+  #     - mysql_data:/var/lib/mysql
+  #     - ./docker/mysql/my.cnf:/etc/mysql/conf.d/my.cnf:ro
+  #   ports:
+  #     - "3306:3306"
+  #   networks:
+  #     - schoolsavvy_network
 
-  phpmyadmin:
-    image: phpmyadmin/phpmyadmin
-    container_name: schoolsavvy_phpmyadmin
-    restart: unless-stopped
-    environment:
-      PMA_HOST: db
-      PMA_PORT: 3306
-      PMA_USER: schoolsaavy
-      PMA_PASSWORD: schoolsaavy_secure_password_2024
-    ports:
-      - "8081:80"
-    networks:
-      - schoolsavvy_network
+  # phpmyadmin:
+  #   image: phpmyadmin/phpmyadmin
+  #   container_name: schoolsavvy_phpmyadmin
+  #   restart: unless-stopped
+  #   environment:
+  #     PMA_HOST: db
+  #     PMA_PORT: 3306
+  #     PMA_USER: schoolsaavy
+  #     PMA_PASSWORD: schoolsaavy_secure_password_2024
+  #   ports:
+  #     - "8081:80"
+  #   networks:
+  #     - schoolsavvy_network
 
   # Redis Cache & Session Store
   redis:
