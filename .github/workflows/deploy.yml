@@ -69,6 +69,12 @@ jobs:
           echo "🔍 Checking docker directory contents in GitHub runner:"
           ls -la docker/ || echo "❌ docker directory not found"
           ls -la docker/nginx/ || echo "❌ docker/nginx directory not found"
+          ls -la docker/mysql/ || echo "❌ docker/mysql directory not found"
+          ls -la docker/redis/ || echo "❌ docker/redis directory not found"
+          echo "🔍 Checking specific config files:"
+          [ -f "docker/nginx/nginx.conf" ] && echo "✅ nginx.conf found" || echo "❌ nginx.conf not found"
+          [ -f "docker/mysql/my.cnf" ] && echo "✅ my.cnf found" || echo "❌ my.cnf not found"
+          [ -f "docker/redis/redis.conf" ] && echo "✅ redis.conf found" || echo "❌ redis.conf not found"
           
           # Copy only Docker configuration and persistent data directories
           rsync --exclude='.env' \
@@ -80,16 +86,26 @@ jobs:
             public/ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
           
-          # Force copy nginx.conf as file (not inside directory)
+          # Force copy nginx.conf, mysql config, and redis config as files (not inside directory)
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'CLEANUP'
             cd /var/www/schoolsaavy
-            # Remove any nginx.conf directory
+            # Remove any config directories that should be files
             if [ -d "docker/nginx/nginx.conf" ]; then
               echo "🧹 Removing nginx.conf directory..."
               rm -rf docker/nginx/nginx.conf
             fi
-            # Ensure nginx directory exists
+            if [ -d "docker/mysql/my.cnf" ]; then
+              echo "🧹 Removing my.cnf directory..."
+              rm -rf docker/mysql/my.cnf
+            fi
+            if [ -d "docker/redis/redis.conf" ]; then
+              echo "🧹 Removing redis.conf directory..."
+              rm -rf docker/redis/redis.conf
+            fi
+            # Ensure directories exist
             mkdir -p docker/nginx
+            mkdir -p docker/mysql
+            mkdir -p docker/redis
           CLEANUP
           
           # Copy nginx.conf from repository (must exist)
@@ -102,20 +118,50 @@ jobs:
             echo "❌ Please ensure docker/nginx/nginx.conf is committed to the repository"
             exit 1
           fi
+          
+          # Copy my.cnf from repository (must exist)  
+          if [ -f "docker/mysql/my.cnf" ]; then
+            echo "📁 Copying my.cnf from repository..."
+            scp docker/mysql/my.cnf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/mysql/my.cnf
+            echo "✅ my.cnf copied successfully"
+          else
+            echo "❌ ERROR: my.cnf not found in repository!"
+            echo "❌ Please ensure docker/mysql/my.cnf is committed to the repository"
+            exit 1
+          fi
+          
+          # Copy redis.conf from repository (must exist)
+          if [ -f "docker/redis/redis.conf" ]; then
+            echo "📁 Copying redis.conf from repository..."
+            scp docker/redis/redis.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/redis/redis.conf
+            echo "✅ redis.conf copied successfully"
+          else
+            echo "❌ ERROR: redis.conf not found in repository!"
+            echo "❌ Please ensure docker/redis/redis.conf is committed to the repository"
+            exit 1
+          fi
 
       - name: Deploy with Docker Compose
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd /var/www/schoolsaavy
             
-            # Clean up any incorrect nginx.conf directory
+            # Clean up any incorrect config directories
             if [ -d "docker/nginx/nginx.conf" ]; then
               echo "Removing incorrect nginx.conf directory..."
               rm -rf docker/nginx/nginx.conf
             fi
+            if [ -d "docker/mysql/my.cnf" ]; then
+              echo "Removing incorrect my.cnf directory..."
+              rm -rf docker/mysql/my.cnf
+            fi
+            if [ -d "docker/redis/redis.conf" ]; then
+              echo "Removing incorrect redis.conf directory..."
+              rm -rf docker/redis/redis.conf
+            fi
             
             # Ensure required directories exist with proper Laravel storage structure
-            mkdir -p docker/nginx public
+            mkdir -p docker/nginx docker/mysql docker/redis public
             mkdir -p storage/app/public
             mkdir -p storage/framework/cache/data
             mkdir -p storage/framework/sessions
@@ -125,13 +171,27 @@ jobs:
             # Set proper permissions for storage directories
             chmod -R 755 storage/
             
-            # Verify nginx.conf was copied and show diff if changed
-            echo "🔍 Checking nginx.conf..."
+            # Verify config files were copied and show status
+            echo "🔍 Checking config files..."
             if [ -f docker/nginx/nginx.conf ]; then
               echo "✅ nginx.conf exists"
               ls -la docker/nginx/nginx.conf
             else
               echo "❌ nginx.conf missing!"
+            fi
+            
+            if [ -f docker/mysql/my.cnf ]; then
+              echo "✅ my.cnf exists"
+              ls -la docker/mysql/my.cnf
+            else
+              echo "❌ my.cnf missing!"
+            fi
+            
+            if [ -f docker/redis/redis.conf ]; then
+              echo "✅ redis.conf exists"
+              ls -la docker/redis/redis.conf
+            else
+              echo "❌ redis.conf missing!"
             fi
             
             # Create .gitkeep files to ensure directories persist
@@ -178,9 +238,11 @@ jobs:
             echo "🔄 Restarting services..."
             docker compose restart app
             docker compose restart nginx
+            docker compose restart mysql
+            docker compose restart redis
             
             # Wait for services to be ready
-            sleep 10
+            sleep 20
             
             # Show running containers
             docker compose ps

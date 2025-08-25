@@ -21,6 +21,7 @@ Route::get('/health', function () {
     $status = 'ok';
     $redisStatus = 'not connected';
     $dbStatus = 'not connected';
+    $startTime = microtime(true);
 
     // Lightweight Redis check
     try {
@@ -29,6 +30,7 @@ Route::get('/health', function () {
     } catch (\Exception $e) {
         $status = 'error';
     }
+    $redisDuration = microtime(true) - $startTime;
 
     // Lightweight DB check
     try {
@@ -37,11 +39,7 @@ Route::get('/health', function () {
     } catch (\Exception $e) {
         $status = 'error';
     }
-
-    // Force garbage collection for memory optimization
-    if (function_exists('gc_collect_cycles')) {
-        gc_collect_cycles();
-    }
+    $dbDuration = microtime(true) - $startTime;
 
     return response()->json([
         'status' => $status,
@@ -51,6 +49,8 @@ Route::get('/health', function () {
         'timestamp' => now()->toISOString(),
         'version' => '1.0.0',
         'server' => 'OpenSwoole',
+        'redis_duration' => round($redisDuration * 1000, 2) . ' ms',
+        'db_duration' => round($dbDuration * 1000, 2) . ' ms',
         'memory' => round(memory_get_usage(true) / 1024 / 1024, 2) . ' MB'
     ]);
 });
