@@ -4,13 +4,16 @@ namespace App\Http\Controllers;
 
 use App\Models\Assignment;
 use App\Models\Event;
+use App\Traits\OctaneCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class DashboardController extends BaseController
 {
+    use OctaneCache;
     public function index(): JsonResponse
     {
         try {
@@ -24,7 +27,7 @@ class DashboardController extends BaseController
 
             // Get dashboard data based on user type
             switch ($user->user_type) {
-                case 'admin':
+                case 'school_admin':  // Fixed: was 'admin', should be 'school_admin'
                     $dashboardData = $this->getSchoolAdminDashboard($user);
                     break;
                 case 'teacher':
@@ -34,7 +37,7 @@ class DashboardController extends BaseController
                     $dashboardData = $this->getParentDashboard($user);
                     break;
                 default:
-                    return $this->errorResponse('Invalid user type', null, 400);
+                    return $this->errorResponse('Invalid user type: ' . $user->user_type, null, 400);
             }
 
             return $this->successResponse(
@@ -42,13 +45,20 @@ class DashboardController extends BaseController
                 'Dashboard data retrieved successfully'
             );
         } catch (\Exception $e) {
-            return $this->errorResponse($e->getMessage());
+            Log::error('Error retrieving dashboard data: ' . $e->getMessage() . ' | Line: ' . $e->getLine() . ' | File: ' . $e->getFile());
+            return $this->errorResponse('An error occurred while retrieving dashboard data: ' . $e->getMessage(), null, 500);
         }
     }
 
     private function getSchoolAdminDashboard($user): array
     {
+        // Add null checking for schoolAdmin relationship
+        if (!$user->schoolAdmin || !$user->schoolAdmin->school) {
+            throw new \Exception('School admin data not found or school not assigned');
+        }
+
         $school = $user->schoolAdmin->school;
+        $schoolId = $school->id;
 
         return [
             'school_info' => [
@@ -59,20 +69,31 @@ class DashboardController extends BaseController
                 'total_classes' => $school->classes()->count(),
             ],
             'quick_stats' => [
-                'present_today' => $this->getTodayAttendanceCount($school->id, 'present'),
-                'absent_today' => $this->getTodayAttendanceCount($school->id, 'absent'),
-                'pending_fees' => $this->getPendingFeesAmount($school->id),
+                'present_today' => $this->getTodayAttendanceCount($schoolId, 'present'),
+                'absent_today' => $this->getTodayAttendanceCount($schoolId, 'absent'),
+                'pending_fees' => $this->getPendingFeesAmount($schoolId),
                 'active_modules' => $school->modules()->wherePivot('status', 'active')->count(),
             ],
-            'recent_activities' => $this->getRecentActivities($school->id),
-            'upcoming_events' => $this->getUpcomingEvents($school->id),
+            'recent_activities' => $this->getRecentActivities($schoolId),
+            'upcoming_events' => $this->getUpcomingEvents($schoolId),
         ];
     }
 
     private function getTeacherDashboard($user): array
     {
+        // Add null checking for teacher relationship
+        if (!$user->teacher) {
+            throw new \Exception('Teacher data not found');
+        }
+
         $teacher = $user->teacher;
-        $schoolId = $user->getSchool()->id;
+        $school = $user->getSchool();
+
+        if (!$school) {
+            throw new \Exception('Teacher school not found');
+        }
+
+        $schoolId = $school->id;
 
         // Get the 4 key metrics
         $dashboardMetrics = $this->getTeacherDashboardMetrics($teacher->id, $schoolId);
@@ -137,25 +158,45 @@ class DashboardController extends BaseController
 
     private function getParentDashboard($user): array
     {
+        // Add null checking for parent relationship
+        if (!$user->parent) {
+            throw new \Exception('Parent data not found');
+        }
+
         $parent = $user->parent;
         $children = $parent->students;
+
+        // Get school_id from the first child (assuming all children are from the same school)
+        $schoolId = $children->first()?->school_id;
+
+        // Get current academic year if available from request
+        $currentAcademicYearId = request('academic_year_id');
 
         return [
             'parent_info' => [
                 'name' => $user->name,
                 'children_count' => $children->count(),
             ],
-            'children' => $children->map(function ($child) {
+            'children' => $children->map(function ($child) use ($currentAcademicYearId) {
+                // Get current class using the proper method
+                $currentClass = null;
+                if ($currentAcademicYearId) {
+                    $currentClass = $child->getCurrentClassForYear($currentAcademicYearId);
+                } else {
+                    // Fallback: get the first active class
+                    $currentClass = $child->currentClass()->first();
+                }
+
                 return [
                     'id' => $child->id,
                     'name' => $child->first_name . ' ' . $child->last_name,
-                    'class' => $child->currentClass->name ?? 'Not Assigned',
+                    'class' => $currentClass?->name ?? 'Not Assigned',
                     'today_attendance' => $this->getStudentTodayAttendance($child->id),
                     'pending_fees' => $this->getStudentPendingFees($child->id),
                 ];
             }),
             'recent_notifications' => $this->getParentNotifications($parent->id),
-            'upcoming_events' => $this->getUpcomingEvents($parent->school_id),
+            'upcoming_events' => $schoolId ? $this->getUpcomingEvents($schoolId) : [],
         ];
     }
 
@@ -229,5 +270,103 @@ class DashboardController extends BaseController
     {
         // Implement parent notifications logic
         return [];
+    }
+
+    /**
+     * Get attendance graph data for last 5 days (Admin only)
+     * Cached with Octane for better performance
+     */
+    public function getAttendanceGraphData(): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+
+            // Check if user is school admin
+            if ($user->user_type !== 'school_admin') {
+                return $this->errorResponse('Access denied. Only school admins can access this data.', null, 403);
+            }
+
+            // Get school ID
+            $schoolId = $user->schoolAdmin?->school_id;
+
+            if (!$schoolId) {
+                return $this->errorResponse('School not found for this admin', null, 404);
+            }
+
+            // Use the OctaneCache trait for better caching
+            $attendanceData = $this->cacheSchoolQuery(
+                'attendance_graph_' . now()->format('Y-m-d'),
+                function () use ($schoolId) {
+                    return $this->calculateAttendanceGraphData($schoolId);
+                },
+                $this->getCacheTTL('attendance') // 15 minutes
+            );
+
+            return $this->successResponse(
+                $attendanceData,
+                'Attendance graph data retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            Log::error('Error retrieving attendance graph data: ' . $e->getMessage());
+            return $this->errorResponse('An error occurred while retrieving attendance data', null, 500);
+        }
+    }
+
+    /**
+     * Calculate attendance data for last 5 days
+     */
+    private function calculateAttendanceGraphData($schoolId): array
+    {
+        $dates = [];
+        $presentData = [];
+        $absentData = [];
+
+        // Get last 5 days (excluding weekends if needed)
+        for ($i = 4; $i >= 0; $i--) {
+            $date = Carbon::now()->subDays($i);
+            $dateString = $date->format('Y-m-d');
+            $dates[] = $date->format('M d'); // Format: "Aug 25"
+
+            // Get attendance counts for this date
+            $attendanceStats = DB::table('attendances')
+                ->select('status', DB::raw('COUNT(*) as count'))
+                ->where('school_id', $schoolId)
+                ->whereDate('date', $dateString)
+                ->groupBy('status')
+                ->pluck('count', 'status')
+                ->toArray();
+
+            $presentData[] = $attendanceStats['present'] ?? 0;
+            $absentData[] = $attendanceStats['absent'] ?? 0;
+        }
+
+        // Calculate additional metrics
+        $totalPresent = array_sum($presentData);
+        $totalAbsent = array_sum($absentData);
+        $totalRecords = $totalPresent + $totalAbsent;
+        $averageAttendanceRate = $totalRecords > 0 ? round(($totalPresent / $totalRecords) * 100, 1) : 0;
+
+        return [
+            'chart_data' => [
+                'dates' => $dates,
+                'present' => $presentData,
+                'absent' => $absentData,
+            ],
+            'summary' => [
+                'total_present_5_days' => $totalPresent,
+                'total_absent_5_days' => $totalAbsent,
+                'average_attendance_rate' => $averageAttendanceRate . '%',
+                'best_day' => [
+                    'date' => $dates[array_search(max($presentData), $presentData)] ?? 'N/A',
+                    'present_count' => max($presentData)
+                ],
+                'worst_day' => [
+                    'date' => $dates[array_search(max($absentData), $absentData)] ?? 'N/A',
+                    'absent_count' => max($absentData)
+                ]
+            ],
+            'cached_at' => now()->toISOString(),
+            'cache_expires_in_minutes' => 30
+        ];
     }
 }

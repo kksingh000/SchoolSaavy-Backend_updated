@@ -22,9 +22,9 @@ class InjectSchoolData
 
             // Get school_id based on user type
             $schoolId = match ($user->user_type) {
-                'admin', 'school_admin' => $user->schoolAdmin->school_id ?? null,
-                'teacher' => $user->teacher->school_id ?? null,
-                'parent' => $user->parent->students->first()->school_id ?? null,
+                'school_admin' => $user->schoolAdmin?->school_id ?? null,  // Fixed: removed 'admin'
+                'teacher' => $user->teacher?->school_id ?? null,
+                'parent' => $user->parent?->students?->first()?->school_id ?? null,
                 default => null
             };
 

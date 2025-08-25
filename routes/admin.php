@@ -39,6 +39,11 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
         Route::get('dashboard', [DashboardController::class, 'index']);
     });
 
+    // Dashboard Analytics Routes (with longer cache for expensive queries)
+    Route::prefix('dashboard')->group(function () {
+        Route::get('attendance-graph', [DashboardController::class, 'getAttendanceGraphData']);
+    });
+
     Route::get("test", function (\Illuminate\Http\Request $request) {
         return response()->json(['message' => 'Test route accessed successfully']);
     });
