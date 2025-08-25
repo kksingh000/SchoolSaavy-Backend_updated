@@ -16,36 +16,42 @@ use App\Http\Controllers\ContactController;
 |--------------------------------------------------------------------------
 */
 
-// Health check endpoint
+// Health check endpoint (Memory Optimized)
 Route::get('/health', function () {
-    $isRedisWorking = false;
-    $isDatabaseWorking = false;
-    // check redis working or not 
+    $status = 'ok';
+    $redisStatus = 'not connected';
+    $dbStatus = 'not connected';
+
+    // Lightweight Redis check
     try {
-        \Illuminate\Support\Facades\Redis::ping();
-        $isRedisWorking = true;
-        $isDatabaseWorking = \Illuminate\Support\Facades\DB::connection()->getPdo() !== null;
+        \Illuminate\Support\Facades\Redis::connection()->ping();
+        $redisStatus = 'connected';
     } catch (\Exception $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Redis connection failed: ' . $e->getMessage(),
-            'code' => 'REDIS_CONNECTION_FAILED'
-        ], 500);
-    } catch (\Throwable $e) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Unexpected error occurred: ' . $e->getMessage(),
-            'code' => 'UNEXPECTED_ERROR'
-        ], 500);
+        $status = 'error';
     }
+
+    // Lightweight DB check
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $dbStatus = 'connected';
+    } catch (\Exception $e) {
+        $status = 'error';
+    }
+
+    // Force garbage collection for memory optimization
+    if (function_exists('gc_collect_cycles')) {
+        gc_collect_cycles();
+    }
+
     return response()->json([
-        'status' => 'ok',
+        'status' => $status,
         'message' => 'API is running',
-        'redis' => $isRedisWorking ? 'connected' : 'not connected',
-        'database' => $isDatabaseWorking ? 'connected' : 'not connected',
+        'redis' => $redisStatus,
+        'database' => $dbStatus,
         'timestamp' => now()->toISOString(),
-        'version' => config('app.version', '1.0.0'),
-        'server' => 'RoadRunner'
+        'version' => '1.0.0',
+        'server' => 'OpenSwoole',
+        'memory' => round(memory_get_usage(true) / 1024 / 1024, 2) . ' MB'
     ]);
 });
 

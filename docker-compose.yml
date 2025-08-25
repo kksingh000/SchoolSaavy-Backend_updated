@@ -17,8 +17,8 @@ services:
       chown -R www-data:www-data /var/www/html/storage
       chmod -R 755 /var/www/html/storage
       
-      # Start Laravel Octane
-      php artisan octane:start --server=roadrunner --host=0.0.0.0 --port=8080 --workers=4
+      echo '🚀 Starting Octane with Swoole ...' &&
+      php artisan octane:start --max-requests=100 --server=swoole --host=0.0.0.0 --port=8080 --workers=4 --task-workers=6
       "
     ports:
       - "8080:8080"

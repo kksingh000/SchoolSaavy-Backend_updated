@@ -1,10 +1,4 @@
-FROM ghcr.io/roadrunner-server/roadrunner:2025.1.2 AS roadrunner
-
-# Quick Build Dockerfile for SchoolSavvy with RoadRunner
 FROM php:8.3-fpm-alpine
-
-# Copy RoadRunner binary from official image
-COPY --from=roadrunner /usr/bin/rr /usr/local/bin/rr
 
 # Install system dependencies and PHP extensions
 RUN apk add --no-cache \
@@ -25,6 +19,8 @@ RUN apk add --no-cache \
     g++ \
     make \
     netcat-openbsd \
+    && pecl install openswoole \
+    && docker-php-ext-enable openswoole \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install \
         pdo \
@@ -73,6 +69,3 @@ EXPOSE 8080
 
 # Use the simple entrypoint
 ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
-
-# Default command (can be overridden by docker-compose)
-CMD ["php", "artisan", "octane:start", "--server=roadrunner", "--host=0.0.0.0", "--port=8080", "--workers=4"]

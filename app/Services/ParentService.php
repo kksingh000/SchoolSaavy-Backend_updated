@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use App\Traits\GeneratesFileUrls;
+use App\Http\Resources\ParentStudentResource;
 
 class ParentService
 {
@@ -306,44 +307,52 @@ class ParentService
      */
     public function getParentChildren($parentId): array
     {
-        $parent = Parents::with(['students.currentClass', 'students.school'])
-            ->findOrFail($parentId);
-
-        return $parent->students->map(function ($student) {
-            $currentClass = $student->currentClass()->first();
-
-            return [
+        // Use JOIN query for better performance instead of Octane concurrency
+        // Since this is simple data mapping, a single optimized query is more efficient
+        $students = DB::table('parent_student')
+            ->join('students', 'parent_student.student_id', '=', 'students.id')
+            ->join('schools', 'students.school_id', '=', 'schools.id')
+            ->leftJoin('class_student', function ($join) {
+                $join->on('students.id', '=', 'class_student.student_id')
+                    ->where('class_student.is_active', true);
+            })
+            ->leftJoin('classes', 'class_student.class_id', '=', 'classes.id')
+            ->where('parent_student.parent_id', $parentId)
+            ->where('students.is_active', true)
+            ->select([
                 // Basic student information
-                'id' => $student->id,
-                'admission_number' => $student->admission_number,
-                'roll_number' => $student->roll_number,
-                'first_name' => $student->first_name,
-                'last_name' => $student->last_name,
-                'date_of_birth' => $student->date_of_birth,
-                'gender' => $student->gender,
-                'admission_date' => $student->admission_date,
-                'blood_group' => $student->blood_group,
-                'profile_photo' => $student->profile_photo,
-                'address' => $student->address,
-                'phone' => $student->phone,
-                'is_active' => $student->is_active,
-                'created_at' => $student->created_at,
-                'updated_at' => $student->updated_at,
+                'students.id',
+                'students.admission_number',
+                'class_student.roll_number',
+                'students.first_name',
+                'students.last_name',
+                'students.date_of_birth',
+                'students.gender',
+                'students.admission_date',
+                'students.blood_group',
+                'students.profile_photo',
+                'students.address',
+                'students.phone',
+                'students.is_active',
+                'students.created_at',
+                'students.updated_at',
 
                 // Class information
-                'class_id' => $currentClass?->id,
-                'class_name' => $currentClass?->name,
-                'class_section' => $currentClass?->section,
-                'class_title' => $currentClass ? $currentClass->name . ' - ' . $currentClass->section : 'Not Assigned',
+                'classes.id as class_id',
+                'classes.name as class_name',
+                'classes.section as class_section',
 
-                // School information
-                'school_id' => $student->school->id,
-                'school_name' => $student->school->name,
+                // School information  
+                'schools.id as school_id',
+                'schools.name as school_name',
 
-                // Computed fields
-                'full_name' => $student->name,
-            ];
-        })->toArray();
+                // Computed full name
+                DB::raw("CONCAT(students.first_name, ' ', students.last_name) as full_name")
+            ])
+            ->get();
+
+        // Use Laravel Resource to format the response
+        return ParentStudentResource::collection($students)->toArray(request());
     }
 
     /**
