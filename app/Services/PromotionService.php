@@ -672,8 +672,8 @@ class PromotionService extends BaseService
             ->orderBy('updated_at', 'desc');
 
         // Apply filters
-        if (!empty($filters['from_class_id'])) {
-            $query->where('from_class_id', $filters['from_class_id']);
+        if (!empty($filters['class_id'])) {
+            $query->where('from_class_id', $filters['class_id']);
         }
 
         if (!empty($filters['promotion_status'])) {
