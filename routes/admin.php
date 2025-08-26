@@ -21,6 +21,7 @@ use App\Http\Controllers\TeacherController;
 use App\Http\Controllers\SchoolSettingController;
 use App\Http\Controllers\AdmissionNumberController;
 use App\Http\Controllers\RollNumberController;
+use App\Http\Controllers\FeeStructureController;
 
 /*
 |--------------------------------------------------------------------------
@@ -407,5 +408,24 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
 
         // Manual Overrides (no caching for write operations)
         Route::post('{promotionId}/override', [\App\Http\Controllers\PromotionController::class, 'overrideDecision']);
+    });
+
+    // Fee Structure Management Routes
+    Route::prefix('fee-structures')->group(function () {
+        // Cached read operations
+        Route::middleware('api.cache:ttl:300,vary_by_school:true')->group(function () {
+            Route::get('/', [\App\Http\Controllers\FeeStructureController::class, 'index']); // Supports pagination and filtering
+            Route::get('{id}', [\App\Http\Controllers\FeeStructureController::class, 'show']);
+            Route::get('{id}/statistics', [\App\Http\Controllers\FeeStructureController::class, 'getStatistics']);
+            Route::get('class/{classId}', [\App\Http\Controllers\FeeStructureController::class, 'getByClass']);
+        });
+
+        // Write operations (no caching)
+        Route::post('/', [\App\Http\Controllers\FeeStructureController::class, 'store']);
+        Route::put('{id}', [\App\Http\Controllers\FeeStructureController::class, 'update']);
+        Route::delete('{id}', [\App\Http\Controllers\FeeStructureController::class, 'destroy']);
+        Route::patch('{id}/toggle-status', [\App\Http\Controllers\FeeStructureController::class, 'toggleStatus']);
+        Route::post('{id}/generate-student-fees', [\App\Http\Controllers\FeeStructureController::class, 'generateStudentFees']);
+        Route::post('{id}/clone', [\App\Http\Controllers\FeeStructureController::class, 'clone']);
     });
 });

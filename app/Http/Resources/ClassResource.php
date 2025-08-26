@@ -19,14 +19,18 @@ class ClassResource extends JsonResource
             'is_active' => $this->is_active,
             'promotes_to_class_id' => $this->promotes_to_class_id,
             'promotes_to' => new self($this->whenLoaded('promotesTo')),
-            'students_count' => $this->whenLoaded('students', function () {
+            'students_count' => $this->whenLoaded('activeStudents', function () {
+                return $this->activeStudents->count();
+            }, $this->whenLoaded('students', function () {
                 return $this->students->count();
-            }, $this->students_count ?? 0),
-            'students' => StudentResource::collection($this->whenLoaded('students')),
+            }, $this->students_count ?? 0)),
+            'students' => StudentResource::collection($this->whenLoaded('activeStudents') ?? $this->whenLoaded('students')),
             'todays_attendance' => $this->when($this->relationLoaded('todaysAttendance'), function () {
-                $totalStudents = $this->whenLoaded('students', function () {
+                $totalStudents = $this->whenLoaded('activeStudents', function () {
+                    return $this->activeStudents->count();
+                }, $this->whenLoaded('students', function () {
                     return $this->students->count();
-                }, 0);
+                }, 0));
 
                 // Use already loaded attendance data instead of querying again
                 $attendanceCollection = $this->todaysAttendance;

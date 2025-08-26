@@ -1,0 +1,691 @@
+{
+    "info": {
+        "name": "SchoolSavvy Fee Structure Management",
+        "description": "Complete API collection for Fee Structure management in SchoolSavvy SaaS platform",
+        "version": "1.0.0",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{auth_token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "variable": [
+        {
+            "key": "base_url",
+            "value": "http://localhost:8080/api",
+            "type": "string"
+        },
+        {
+            "key": "auth_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "fee_structure_id",
+            "value": "1",
+            "type": "string"
+        },
+        {
+            "key": "class_id",
+            "value": "1",
+            "type": "string"
+        }
+    ],
+    "item": [
+        {
+            "name": "Authentication",
+            "item": [
+                {
+                    "name": "Login",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "if (pm.response.code === 200) {",
+                                    "    const response = pm.response.json();",
+                                    "    if (response.data && response.data.token) {",
+                                    "        pm.collectionVariables.set('auth_token', response.data.token);",
+                                    "        console.log('Auth token updated:', response.data.token);",
+                                    "    }",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"admin@school1.com\",\n    \"password\": \"password123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/auth/login",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "login"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Fee Structure Management",
+            "item": [
+                {
+                    "name": "Get All Fee Structures",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Response has success status', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "});",
+                                    "",
+                                    "pm.test('Response contains data with pagination', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.data).to.have.property('current_page');",
+                                    "    pm.expect(jsonData.data).to.have.property('data');",
+                                    "    pm.expect(jsonData.data).to.have.property('total');",
+                                    "});",
+                                    "",
+                                    "// Store first fee structure ID for other tests",
+                                    "const response = pm.response.json();",
+                                    "if (response.data.data.length > 0) {",
+                                    "    pm.collectionVariables.set('fee_structure_id', response.data.data[0].id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures?page=1&per_page=15",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures"
+                            ],
+                            "query": [
+                                {
+                                    "key": "page",
+                                    "value": "1"
+                                },
+                                {
+                                    "key": "per_page",
+                                    "value": "15"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Fee Structures with Filters",
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures?class_id={{class_id}}&is_active=true&search=tuition",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures"
+                            ],
+                            "query": [
+                                {
+                                    "key": "class_id",
+                                    "value": "{{class_id}}"
+                                },
+                                {
+                                    "key": "is_active",
+                                    "value": "true"
+                                },
+                                {
+                                    "key": "search",
+                                    "value": "tuition"
+                                }
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Create Fee Structure",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "pm.test('Fee structure created successfully', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.message).to.include('created successfully');",
+                                    "});",
+                                    "",
+                                    "// Store created fee structure ID",
+                                    "const response = pm.response.json();",
+                                    "if (response.data && response.data.id) {",
+                                    "    pm.collectionVariables.set('created_fee_structure_id', response.data.id);",
+                                    "}"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Test Fee Structure - API Created\",\n    \"class_id\": {{class_id}},\n    \"fee_components\": [\n        {\n            \"type\": \"tuition\",\n            \"name\": \"Monthly Tuition Fee\",\n            \"amount\": 12000,\n            \"due_date\": \"2024-09-01\",\n            \"is_mandatory\": true,\n            \"description\": \"Regular monthly tuition fee for academic instruction\"\n        },\n        {\n            \"type\": \"development\",\n            \"name\": \"Development Fee\",\n            \"amount\": 2500,\n            \"due_date\": \"2024-08-30\",\n            \"is_mandatory\": true,\n            \"description\": \"Annual development and infrastructure fee\"\n        },\n        {\n            \"type\": \"activity\",\n            \"name\": \"Activity Fee\",\n            \"amount\": 1800,\n            \"due_date\": \"2024-09-15\",\n            \"is_mandatory\": false,\n            \"description\": \"Optional sports and extracurricular activities fee\"\n        }\n    ],\n    \"total_amount\": 16300,\n    \"is_active\": true,\n    \"description\": \"Test fee structure created via API for comprehensive testing\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Fee Structure by ID",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Response contains fee structure details', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.data).to.have.property('id');",
+                                    "    pm.expect(jsonData.data).to.have.property('name');",
+                                    "    pm.expect(jsonData.data).to.have.property('fee_components');",
+                                    "    pm.expect(jsonData.data.fee_components).to.be.an('array');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/{{fee_structure_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "{{fee_structure_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Update Fee Structure",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Fee structure updated successfully', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.message).to.include('updated successfully');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"Updated Test Fee Structure\",\n    \"description\": \"This fee structure has been updated via API\",\n    \"is_active\": true\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/{{fee_structure_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "{{fee_structure_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Toggle Fee Structure Status",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Status toggled successfully', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.message).to.include('status updated successfully');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/{{fee_structure_id}}/toggle-status",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "{{fee_structure_id}}",
+                                "toggle-status"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Generate Student Fees",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Student fees generated successfully', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.data).to.have.property('students_count');",
+                                    "    pm.expect(jsonData.data).to.have.property('fees_generated');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/{{fee_structure_id}}/generate-student-fees",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "{{fee_structure_id}}",
+                                "generate-student-fees"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Fee Structure Statistics",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Statistics retrieved successfully', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.data).to.have.property('total_students');",
+                                    "    pm.expect(jsonData.data).to.have.property('payment_statistics');",
+                                    "    pm.expect(jsonData.data).to.have.property('collection_rate');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/{{fee_structure_id}}/statistics",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "{{fee_structure_id}}",
+                                "statistics"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Fee Structures by Class",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Class fee structures retrieved', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.data).to.have.property('data');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/class/{{class_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "class",
+                                "{{class_id}}"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Clone Fee Structure",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 201', function () {",
+                                    "    pm.response.to.have.status(201);",
+                                    "});",
+                                    "",
+                                    "pm.test('Fee structure cloned successfully', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.message).to.include('cloned successfully');",
+                                    "    pm.expect(jsonData.data.name).to.include('(Test Clone)');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name_suffix\": \" (Test Clone)\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/{{fee_structure_id}}/clone",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "{{fee_structure_id}}",
+                                "clone"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Error Testing",
+            "item": [
+                {
+                    "name": "Create Fee Structure - Validation Error",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 422', function () {",
+                                    "    pm.response.to.have.status(422);",
+                                    "});",
+                                    "",
+                                    "pm.test('Validation errors returned', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('error');",
+                                    "    pm.expect(jsonData.errors).to.be.an('object');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json"
+                            },
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"name\": \"\",\n    \"fee_components\": [],\n    \"total_amount\": -100\n}"
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures"
+                            ]
+                        }
+                    }
+                },
+                {
+                    "name": "Get Non-existent Fee Structure",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 404', function () {",
+                                    "    pm.response.to.have.status(404);",
+                                    "});",
+                                    "",
+                                    "pm.test('Not found error returned', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('error');",
+                                    "    pm.expect(jsonData.message).to.include('not found');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/99999",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "99999"
+                            ]
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "Cleanup",
+            "item": [
+                {
+                    "name": "Delete Test Fee Structure",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "pm.test('Status code is 200', function () {",
+                                    "    pm.response.to.have.status(200);",
+                                    "});",
+                                    "",
+                                    "pm.test('Fee structure deleted successfully', function () {",
+                                    "    const jsonData = pm.response.json();",
+                                    "    pm.expect(jsonData.status).to.eql('success');",
+                                    "    pm.expect(jsonData.message).to.include('deleted successfully');",
+                                    "});"
+                                ]
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "DELETE",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/fee-structures/{{created_fee_structure_id}}",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "fee-structures",
+                                "{{created_fee_structure_id}}"
+                            ]
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

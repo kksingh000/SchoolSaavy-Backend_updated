@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use App\Traits\CacheInvalidation;
 
 class ClassController extends BaseController
@@ -41,10 +42,11 @@ class ClassController extends BaseController
             // Get filters including search
             $filters = $request->only(['search', 'grade_level', 'is_active', 'class_teacher_id']);
 
-            $classes = $this->classService->getAll($filters, ['classTeacher.user', 'students'], $perPage);
+            // Use the optimized getAll method
+            $classes = $this->classService->getAll($filters, [], $perPage);
 
             return $this->successResponse([
-                'data' => ClassResource::collection($classes->items()),
+                'data' => $classes->items(),
                 'pagination' => [
                     'current_page' => $classes->currentPage(),
                     'last_page' => $classes->lastPage(),
@@ -58,6 +60,7 @@ class ClassController extends BaseController
                 ]
             ], 'Classes retrieved successfully');
         } catch (\Exception $e) {
+            Log::error($e);
             return $this->errorResponse($e->getMessage());
         }
     }

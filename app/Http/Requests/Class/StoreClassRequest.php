@@ -19,7 +19,6 @@ class StoreClassRequest extends FormRequest
             'section' => 'nullable|string|max:10',
             'capacity' => 'required|integer|min:1',
             'teacher_id' => 'nullable|exists:teachers,id',
-            'room_number' => 'nullable|string|max:50',
             'description' => 'nullable|string',
             'promotes_to_class_id' => 'nullable|exists:classes,id',
         ];

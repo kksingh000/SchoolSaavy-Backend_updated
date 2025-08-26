@@ -12,12 +12,15 @@ class StudentFee extends Model
     protected $fillable = [
         'student_id',
         'fee_structure_id',
+        'component_type',
+        'component_name',
         'amount',
         'due_date',
         'status',
         'concession_amount',
         'fine_amount',
         'notes',
+        'is_mandatory',
     ];
 
     protected $casts = [
@@ -25,6 +28,7 @@ class StudentFee extends Model
         'amount' => 'decimal:2',
         'concession_amount' => 'decimal:2',
         'fine_amount' => 'decimal:2',
+        'is_mandatory' => 'boolean',
     ];
 
     public function student()

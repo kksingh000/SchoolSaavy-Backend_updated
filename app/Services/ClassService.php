@@ -15,6 +15,7 @@ class ClassService extends BaseService
 
     /**
      * Override getAll to add search functionality and school filtering
+     * Optimized to load only essential data for better performance
      */
     public function getAll($filters = [], $relations = [], $perPage = 15)
     {
@@ -23,25 +24,53 @@ class ClassService extends BaseService
         // Always filter by school_id for multi-tenant support
         $schoolId = request()->input('school_id');
         if ($schoolId) {
-            $query->where('school_id', $schoolId);
+            $query->where('classes.school_id', $schoolId);
         }
 
+        // Optimize select fields to only get what's needed
+        $query->select([
+            'id',
+            'name',
+            'section',
+            'grade_level',
+            'class_teacher_id',
+            'capacity',
+            'is_active',
+            'school_id',
+            'created_at'
+        ]);
+
+        // Always load class teacher with user details efficiently
+        $query->with([
+            'classTeacher:id,user_id',
+            'classTeacher.user:id,name,email'
+        ]);
+
+        // Add student count as a computed field instead of loading all students
+        $query->withCount([
+            'activeStudents as student_count'
+        ]);
+
+        // Handle custom relations if needed for specific cases
         if (!empty($relations)) {
-            $query->with($relations);
+            foreach ($relations as $relation) {
+                // Skip students relation as we're using student_count instead
+                if ($relation !== 'students') {
+                    $query->with($relation);
+                }
+            }
         }
 
         // Handle search functionality
         if (isset($filters['search']) && !empty($filters['search'])) {
             $search = $filters['search'];
             $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('section', 'like', "%{$search}%")
-                    ->orWhere('grade_level', 'like', "%{$search}%")
-                    ->orWhereHas('classTeacher', function ($teacherQuery) use ($search) {
-                        $teacherQuery->whereHas('user', function ($userQuery) use ($search) {
-                            $userQuery->where('name', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
-                        });
+                $q->where('classes.name', 'like', "%{$search}%")
+                    ->orWhere('classes.section', 'like', "%{$search}%")
+                    ->orWhere('classes.grade_level', 'like', "%{$search}%")
+                    ->orWhereHas('classTeacher.user', function ($userQuery) use ($search) {
+                        $userQuery->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
                     });
             });
             unset($filters['search']); // Remove search from regular filters
@@ -53,13 +82,13 @@ class ClassService extends BaseService
                 if (method_exists($this, 'filter' . ucfirst($field))) {
                     $this->{'filter' . ucfirst($field)}($query, $value);
                 } else {
-                    $query->where($field, $value);
+                    $query->where('classes.' . $field, $value);
                 }
             }
         }
 
         // Add consistent ordering
-        $query->orderBy('name')->orderBy('section')->orderBy('id');
+        $query->orderBy('classes.name')->orderBy('classes.section')->orderBy('classes.id');
 
         return $query->paginate($perPage);
     }
@@ -419,4 +448,6 @@ class ClassService extends BaseService
             throw $e;
         }
     }
+
+    // Method removed - optimization handled in getAll method
 }
