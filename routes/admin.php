@@ -228,6 +228,7 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
     // Subject Management Routes
     Route::apiResource('subjects', SubjectController::class);
     Route::get('subjects/class/{classId}', [SubjectController::class, 'getByClass']);
+    Route::get('subjects/teacher/{teacherId}', [SubjectController::class, 'getByTeacher']);
 
     // Assignment Management Routes
     Route::prefix('assignments')->group(function () {

@@ -17,14 +17,36 @@ class SubjectController extends BaseController
         $this->classService = $classService;
     }
 
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
-            $schoolId = Auth::user()->getSchoolId();
-            $subjects = Subject::where('school_id', $schoolId)
-                ->where('is_active', true)
-                ->orderBy('name')
-                ->get();
+            $schoolId = $request->school_id;
+            $perPage = $request->get('per_page', 15); // Default 15 items per page
+            $search = $request->get('search');
+            $status = $request->get('is_active'); // active, inactive, all
+
+            $query = Subject::where('school_id', $schoolId);
+
+            // Apply status filter
+            if ($status === 1 || $status === '1') {
+                $query->where('is_active', true);
+            } elseif ($status === 0 || $status === '0') {
+                $query->where('is_active', false);
+            }
+            // For 'all' status, no additional where clause needed
+
+            // Apply search filter
+            if ($search) {
+                $search = trim($search);
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'LIKE', "%{$search}%")
+                        ->orWhere('code', 'LIKE', "%{$search}%")
+                        ->orWhere('description', 'LIKE', "%{$search}%");
+                });
+            }
+
+            $subjects = $query->orderBy('name')
+                ->paginate($perPage);
 
             return $this->successResponse(
                 $subjects,
@@ -45,7 +67,7 @@ class SubjectController extends BaseController
                 'is_active' => 'boolean'
             ]);
 
-            $schoolId = Auth::user()->getSchoolId();
+            $schoolId = $request->school_id;
 
             $subject = Subject::create([
                 'school_id' => $schoolId,
@@ -65,10 +87,10 @@ class SubjectController extends BaseController
         }
     }
 
-    public function show($id): JsonResponse
+    public function show(Request $request, $id): JsonResponse
     {
         try {
-            $schoolId = Auth::user()->getSchoolId();
+            $schoolId = $request->school_id;
             $subject = Subject::where('school_id', $schoolId)
                 ->findOrFail($id);
 
@@ -91,7 +113,7 @@ class SubjectController extends BaseController
                 'is_active' => 'boolean'
             ]);
 
-            $schoolId = Auth::user()->getSchoolId();
+            $schoolId = $request->school_id;
             $subject = Subject::where('school_id', $schoolId)
                 ->findOrFail($id);
 
@@ -106,10 +128,10 @@ class SubjectController extends BaseController
         }
     }
 
-    public function destroy($id): JsonResponse
+    public function destroy(Request $request, $id): JsonResponse
     {
         try {
-            $schoolId = Auth::user()->getSchoolId();
+            $schoolId = $request->school_id;
             $subject = Subject::where('school_id', $schoolId)
                 ->findOrFail($id);
 
@@ -141,6 +163,64 @@ class SubjectController extends BaseController
             return $this->successResponse(
                 $subjects,
                 'Class subjects retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Get subjects by teacher ID
+     * Returns all subjects that a teacher teaches based on class schedules
+     */
+    public function getByTeacher(Request $request, $teacherId): JsonResponse
+    {
+        try {
+            $schoolId = $request->school_id;
+
+            // Get subjects that the teacher teaches through class schedules
+            $subjects = Subject::where('subjects.school_id', $schoolId)
+                ->join('class_schedules', 'subjects.id', '=', 'class_schedules.subject_id')
+                ->where('class_schedules.teacher_id', $teacherId)
+                ->where('class_schedules.is_active', true)
+                ->where('subjects.is_active', true)
+                ->select([
+                    'subjects.id',
+                    'subjects.name',
+                    'subjects.code',
+                    'subjects.description',
+                    'subjects.is_active',
+                    'subjects.created_at',
+                    'subjects.updated_at'
+                ])
+                ->distinct()
+                ->orderBy('subjects.name')
+                ->get();
+
+            // Add additional data about classes where teacher teaches each subject
+            $subjects->each(function ($subject) use ($teacherId, $schoolId) {
+                $classes = \App\Models\ClassRoom::join('class_schedules', 'classes.id', '=', 'class_schedules.class_id')
+                    ->where('class_schedules.teacher_id', $teacherId)
+                    ->where('class_schedules.subject_id', $subject->id)
+                    ->where('class_schedules.is_active', true)
+                    ->where('classes.school_id', $schoolId)
+                    ->where('classes.is_active', true)
+                    ->select([
+                        'classes.id',
+                        'classes.name',
+                        'classes.section',
+                        'classes.grade_level'
+                    ])
+                    ->distinct()
+                    ->get();
+
+                $subject->classes = $classes;
+                $subject->classes_count = $classes->count();
+            });
+
+            return $this->successResponse(
+                $subjects,
+                'Teacher subjects retrieved successfully'
             );
         } catch (\Exception $e) {
             return $this->errorResponse($e->getMessage());

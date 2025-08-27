@@ -33,7 +33,7 @@ class ClassController extends BaseController
 
         try {
             // Get pagination parameters
-            $perPage = $request->get('per_page', 15); // Default 15 items per page
+            $perPage = $request->get('per_page', 10); // Default 10 items per page
             $page = $request->get('page', 1);
 
             // Validate per_page parameter
@@ -160,8 +160,8 @@ class ClassController extends BaseController
 
         try {
             // Get pagination parameters
-            $perPage = $request->input('per_page', 15);
-            $perPage = is_numeric($perPage) && $perPage >= 1 && $perPage <= 100 ? (int)$perPage : 15;
+            $perPage = $request->input('per_page', 10);
+            $perPage = is_numeric($perPage) && $perPage >= 1 && $perPage <= 100 ? (int)$perPage : 10;
 
             $search = $request->input('search');
 
