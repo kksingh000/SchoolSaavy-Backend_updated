@@ -99,6 +99,15 @@ Route::middleware('json.response')->group(function () {
         });
     });
 
+    // Device Token Management for Push Notifications
+    Route::prefix('device')->group(function () {
+        // Register device token for push notifications
+        Route::post('register-token', [App\Http\Controllers\NotificationController::class, 'registerDeviceToken']);
+
+        // Deactivate device token
+        Route::post('deactivate-token', [App\Http\Controllers\NotificationController::class, 'deactivateDeviceToken']);
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Include Role-Specific Route Files

@@ -67,6 +67,38 @@ class User extends Authenticatable
     }
 
     /**
+     * Get user's device tokens
+     */
+    public function deviceTokens()
+    {
+        return $this->hasMany(UserDeviceToken::class);
+    }
+
+    /**
+     * Get user's active device tokens
+     */
+    public function activeDeviceTokens()
+    {
+        return $this->hasMany(UserDeviceToken::class)->where('is_active', true);
+    }
+
+    /**
+     * Get user's notification deliveries
+     */
+    public function notificationDeliveries()
+    {
+        return $this->hasMany(NotificationDelivery::class);
+    }
+
+    /**
+     * Get user's sent notifications (as sender)
+     */
+    public function sentNotifications()
+    {
+        return $this->hasMany(Notification::class, 'sender_id');
+    }
+
+    /**
      * Get the school ID for the authenticated user based on their type
      */
     public function getSchoolId()

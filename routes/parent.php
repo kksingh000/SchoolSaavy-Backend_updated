@@ -31,4 +31,31 @@ Route::prefix('parent')->middleware(['auth:sanctum', 'school.status', 'inject.sc
     // Student Gallery APIs
     Route::post('student/gallery/albums', [ParentController::class, 'getStudentGalleryAlbums']);
     Route::post('student/gallery/album/media', [ParentController::class, 'getStudentGalleryAlbumMedia']);
+
+    // Notification APIs for Parents
+    Route::prefix('notifications')->group(function () {
+        // Get user's notifications with filters
+        Route::get('/', [App\Http\Controllers\NotificationController::class, 'getUserNotifications']);
+
+        // Get unread notifications count
+        Route::get('unread-count', [App\Http\Controllers\NotificationController::class, 'getUnreadCount']);
+
+        // Mark notification as read
+        Route::patch('{notificationId}/read', [App\Http\Controllers\NotificationController::class, 'markAsRead']);
+
+        // Mark notification as acknowledged
+        Route::patch('{notificationId}/acknowledge', [App\Http\Controllers\NotificationController::class, 'markAsAcknowledged']);
+
+        // Mark all notifications as read
+        Route::patch('mark-all-read', [App\Http\Controllers\NotificationController::class, 'markAllAsRead']);
+    });
+
+    // Device Token Management for Push Notifications
+    Route::prefix('device')->group(function () {
+        // Register device token for push notifications
+        Route::post('register-token', [App\Http\Controllers\NotificationController::class, 'registerDeviceToken']);
+
+        // Deactivate device token
+        Route::post('deactivate-token', [App\Http\Controllers\NotificationController::class, 'deactivateDeviceToken']);
+    });
 });

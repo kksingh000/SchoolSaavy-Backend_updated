@@ -348,6 +348,35 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
         Route::delete('{albumId}/media/{mediaId}', [GalleryController::class, 'deleteMedia']);
     });
 
+    // Notification Management Routes
+    Route::prefix('notifications')->group(function () {
+        // Get all notifications with pagination and filters
+        Route::get('/', [App\Http\Controllers\NotificationController::class, 'index']);
+
+        // Get single notification details
+        Route::get('{id}', [App\Http\Controllers\NotificationController::class, 'show']);
+
+        // Send notification immediately
+        Route::post('send', [App\Http\Controllers\NotificationController::class, 'sendNotification']);
+
+        // Schedule notification for later
+        Route::post('schedule', [App\Http\Controllers\NotificationController::class, 'scheduleNotification']);
+
+        // Get notification statistics
+        Route::get('stats', [App\Http\Controllers\NotificationController::class, 'getStats']);
+
+        // Get notification types, target types, priorities
+        Route::get('config/types', [App\Http\Controllers\NotificationController::class, 'getTypes']);
+        Route::get('config/target-types', [App\Http\Controllers\NotificationController::class, 'getTargetTypes']);
+        Route::get('config/priorities', [App\Http\Controllers\NotificationController::class, 'getPriorities']);
+
+        // Retry failed notification
+        Route::post('{id}/retry', [App\Http\Controllers\NotificationController::class, 'retryFailedNotification']);
+
+        // Delete notification (admin only)
+        Route::delete('{id}', [App\Http\Controllers\NotificationController::class, 'destroy']);
+    });
+
     // Contact Form Management (Admin only)
     Route::prefix('admin/contact-submissions')->group(function () {
         Route::get('/', [ContactController::class, 'index']);
