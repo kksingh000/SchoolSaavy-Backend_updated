@@ -75,6 +75,8 @@ services:
     command: redis-server /usr/local/etc/redis/redis.conf
     networks:
       - schoolsavvy_network
+    ports:
+      - "6379"
 
   # Nginx Load Balancer (Optional)
   nginx:
