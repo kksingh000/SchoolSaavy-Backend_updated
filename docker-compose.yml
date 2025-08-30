@@ -20,8 +20,6 @@ services:
       echo '🚀 Starting Octane with Swoole ...' &&
       php artisan octane:start --max-requests=100 --server=swoole --host=0.0.0.0 --port=8080 --workers=4 --task-workers=6
       "
-    ports:
-      - "8080:8080"
     environment:
       - APP_ENV=production
     volumes:
