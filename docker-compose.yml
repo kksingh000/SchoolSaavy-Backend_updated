@@ -27,6 +27,8 @@ services:
       - ./.env:/var/www/html/.env
     depends_on:
       - redis
+    ports:
+      - "8080"
     networks:
       - schoolsavvy_network
 
