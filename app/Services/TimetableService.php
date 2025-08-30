@@ -293,4 +293,213 @@ class TimetableService extends BaseService
             throw new \Exception('Class schedule conflict detected for this time slot');
         }
     }
+
+    /**
+     * Create bulk timetable for a class
+     */
+    public function createBulkTimetable($classId, $schedules, $replaceExisting = false)
+    {
+        DB::beginTransaction();
+        try {
+            $schoolId = request()->school_id;
+            $created = [];
+            $errors = [];
+
+            // If replace existing, delete all existing schedules for this class
+            if ($replaceExisting) {
+                ClassSchedule::where('class_id', $classId)
+                    ->where('school_id', $schoolId)
+                    ->delete();
+            }
+
+            foreach ($schedules as $index => $scheduleData) {
+                try {
+                    $data = array_merge($scheduleData, [
+                        'school_id' => $schoolId,
+                        'class_id' => $classId,
+                        'is_active' => true
+                    ]);
+
+                    // Validate conflicts only if not replacing existing
+                    if (!$replaceExisting) {
+                        $this->validateScheduleConflicts($data);
+                    }
+
+                    $schedule = ClassSchedule::create($data);
+                    $created[] = $schedule->load(['class', 'subject', 'teacher.user']);
+                } catch (\Exception $e) {
+                    $errors[] = [
+                        'index' => $index,
+                        'schedule' => $scheduleData,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            if (!empty($errors) && empty($created)) {
+                // If all schedules failed, rollback
+                DB::rollBack();
+                throw new \Exception('All schedules failed to create. Check errors for details.');
+            }
+
+            DB::commit();
+
+            return [
+                'success_count' => count($created),
+                'error_count' => count($errors),
+                'created_schedules' => $created,
+                'errors' => $errors
+            ];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Update bulk timetable for a class
+     */
+    public function updateBulkTimetable($classId, $schedules)
+    {
+        DB::beginTransaction();
+        try {
+            $schoolId = request()->school_id;
+            $created = [];
+            $updated = [];
+            $deleted = [];
+            $errors = [];
+
+            foreach ($schedules as $index => $scheduleData) {
+                try {
+                    $action = $scheduleData['action'] ?? 'create';
+
+                    if ($action === 'delete' && isset($scheduleData['id'])) {
+                        // Delete existing schedule
+                        $schedule = ClassSchedule::where('id', $scheduleData['id'])
+                            ->where('class_id', $classId)
+                            ->where('school_id', $schoolId)
+                            ->first();
+
+                        if ($schedule) {
+                            $schedule->delete();
+                            $deleted[] = $scheduleData['id'];
+                        }
+                    } elseif ($action === 'update' && isset($scheduleData['id'])) {
+                        // Update existing schedule
+                        $schedule = ClassSchedule::where('id', $scheduleData['id'])
+                            ->where('class_id', $classId)
+                            ->where('school_id', $schoolId)
+                            ->first();
+
+                        if ($schedule) {
+                            $updateData = array_merge($scheduleData, [
+                                'school_id' => $schoolId,
+                                'class_id' => $classId
+                            ]);
+                            unset($updateData['id'], $updateData['action']);
+
+                            // Validate conflicts for updates
+                            $this->validateScheduleConflicts($updateData, $schedule->id);
+
+                            $schedule->update($updateData);
+                            $updated[] = $schedule->fresh(['class', 'subject', 'teacher.user']);
+                        }
+                    } else {
+                        // Create new schedule
+                        $data = array_merge($scheduleData, [
+                            'school_id' => $schoolId,
+                            'class_id' => $classId,
+                            'is_active' => $scheduleData['is_active'] ?? true
+                        ]);
+                        unset($data['id'], $data['action']);
+
+                        $this->validateScheduleConflicts($data);
+
+                        $schedule = ClassSchedule::create($data);
+                        $created[] = $schedule->load(['class', 'subject', 'teacher.user']);
+                    }
+                } catch (\Exception $e) {
+                    $errors[] = [
+                        'index' => $index,
+                        'schedule' => $scheduleData,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            DB::commit();
+
+            return [
+                'created_count' => count($created),
+                'updated_count' => count($updated),
+                'deleted_count' => count($deleted),
+                'error_count' => count($errors),
+                'created_schedules' => $created,
+                'updated_schedules' => $updated,
+                'deleted_schedule_ids' => $deleted,
+                'errors' => $errors
+            ];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
+
+    /**
+     * Replace entire timetable for a class
+     */
+    public function replaceTimetable($classId, $schedules)
+    {
+        DB::beginTransaction();
+        try {
+            $schoolId = request()->school_id;
+
+            // Delete all existing schedules for this class
+            ClassSchedule::where('class_id', $classId)
+                ->where('school_id', $schoolId)
+                ->delete();
+
+            $created = [];
+            $errors = [];
+
+            // Create new schedules
+            foreach ($schedules as $index => $scheduleData) {
+                try {
+                    $data = array_merge($scheduleData, [
+                        'school_id' => $schoolId,
+                        'class_id' => $classId,
+                        'is_active' => true
+                    ]);
+
+                    $schedule = ClassSchedule::create($data);
+                    $created[] = $schedule->load(['class', 'subject', 'teacher.user']);
+                } catch (\Exception $e) {
+                    $errors[] = [
+                        'index' => $index,
+                        'schedule' => $scheduleData,
+                        'error' => $e->getMessage()
+                    ];
+                }
+            }
+
+            if (!empty($errors) && empty($created)) {
+                // If all schedules failed, rollback
+                DB::rollBack();
+                throw new \Exception('All schedules failed to create. Check errors for details.');
+            }
+
+            DB::commit();
+
+            return [
+                'success_count' => count($created),
+                'error_count' => count($errors),
+                'created_schedules' => $created,
+                'errors' => $errors,
+                'message' => 'Timetable replaced successfully'
+            ];
+        } catch (\Exception $e) {
+            DB::rollBack();
+            throw $e;
+        }
+    }
 }

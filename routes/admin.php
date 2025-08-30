@@ -205,6 +205,11 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
         Route::get('teacher/{teacherId}', [TimetableController::class, 'getTeacherTimetable']);
         Route::get('weekly-overview', [TimetableController::class, 'getWeeklyOverview']);
         Route::get('filter-options', [TimetableController::class, 'getFilterOptions']);
+
+        // Bulk Timetable Operations
+        Route::post('bulk/create', [TimetableController::class, 'createBulkTimetable']);
+        Route::put('bulk/update', [TimetableController::class, 'updateBulkTimetable']);
+        Route::put('bulk/replace', [TimetableController::class, 'replaceTimetable']);
     });
 
     // Event Management Routes

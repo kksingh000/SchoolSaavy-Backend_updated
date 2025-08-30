@@ -216,4 +216,117 @@ class TimetableController extends BaseController
             return $this->errorResponse($e->getMessage());
         }
     }
+
+    /**
+     * Create bulk timetable for a class
+     */
+    public function createBulkTimetable(Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('timetable')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'class_id' => 'required|exists:classes,id',
+                'schedules' => 'required|array|min:1',
+                'schedules.*.subject_id' => 'required|exists:subjects,id',
+                'schedules.*.teacher_id' => 'required|exists:teachers,id',
+                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+                'schedules.*.start_time' => 'required|date_format:H:i',
+                'schedules.*.end_time' => 'required|date_format:H:i|after:schedules.*.start_time',
+                'schedules.*.room_number' => 'nullable|string|max:50',
+                'schedules.*.notes' => 'nullable|string|max:500',
+                'replace_existing' => 'sometimes|boolean'
+            ]);
+
+            $classId = $request->class_id;
+            $schedules = $request->schedules;
+            $replaceExisting = $request->get('replace_existing', false);
+
+            $result = $this->timetableService->createBulkTimetable($classId, $schedules, $replaceExisting);
+
+            return $this->successResponse(
+                $result,
+                'Bulk timetable created successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Update bulk timetable for a class
+     */
+    public function updateBulkTimetable(Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('timetable')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'class_id' => 'required|exists:classes,id',
+                'schedules' => 'required|array|min:1',
+                'schedules.*.id' => 'nullable|exists:class_schedules,id',
+                'schedules.*.subject_id' => 'required|exists:subjects,id',
+                'schedules.*.teacher_id' => 'required|exists:teachers,id',
+                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+                'schedules.*.start_time' => 'required|date_format:H:i',
+                'schedules.*.end_time' => 'required|date_format:H:i|after:schedules.*.start_time',
+                'schedules.*.room_number' => 'nullable|string|max:50',
+                'schedules.*.notes' => 'nullable|string|max:500',
+                'schedules.*.is_active' => 'sometimes|boolean',
+                'schedules.*.action' => 'sometimes|in:create,update,delete'
+            ]);
+
+            $classId = $request->class_id;
+            $schedules = $request->schedules;
+
+            $result = $this->timetableService->updateBulkTimetable($classId, $schedules);
+
+            return $this->successResponse(
+                $result,
+                'Bulk timetable updated successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
+
+    /**
+     * Replace entire timetable for a class
+     */
+    public function replaceTimetable(Request $request): JsonResponse
+    {
+        if (!$this->checkModuleAccess('timetable')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'class_id' => 'required|exists:classes,id',
+                'schedules' => 'required|array',
+                'schedules.*.subject_id' => 'required|exists:subjects,id',
+                'schedules.*.teacher_id' => 'required|exists:teachers,id',
+                'schedules.*.day_of_week' => 'required|in:monday,tuesday,wednesday,thursday,friday,saturday,sunday',
+                'schedules.*.start_time' => 'required|date_format:H:i',
+                'schedules.*.end_time' => 'required|date_format:H:i|after:schedules.*.start_time',
+                'schedules.*.room_number' => 'nullable|string|max:50',
+                'schedules.*.notes' => 'nullable|string|max:500'
+            ]);
+
+            $classId = $request->class_id;
+            $schedules = $request->schedules;
+
+            $result = $this->timetableService->replaceTimetable($classId, $schedules);
+
+            return $this->successResponse(
+                $result,
+                'Class timetable replaced successfully'
+            );
+        } catch (\Exception $e) {
+            return $this->errorResponse($e->getMessage());
+        }
+    }
 }
