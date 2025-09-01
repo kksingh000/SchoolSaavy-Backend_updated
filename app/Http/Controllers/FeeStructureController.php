@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\FeeStructureRequest;
+use App\Http\Resources\FeeStructureResource;
 use App\Services\FeeStructureService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -39,7 +40,10 @@ class FeeStructureController extends BaseController
             $relations = ['school', 'academicYear', 'class', 'studentFees'];
             $feeStructures = $this->feeStructureService->getAll($filters, $relations);
 
-            return $this->successResponse($feeStructures, 'Fee structures retrieved successfully');
+            return $this->successResponse(
+                FeeStructureResource::collection($feeStructures),
+                'Fee structures retrieved successfully'
+            );
         } catch (\Exception $e) {
             Log::error('Error retrieving fee structures: ' . $e->getMessage());
             return $this->errorResponse('Failed to retrieve fee structures', null, 500);
@@ -65,7 +69,10 @@ class FeeStructureController extends BaseController
                 return $this->errorResponse('Fee structure not found', null, 404);
             }
 
-            return $this->successResponse($feeStructure, 'Fee structure retrieved successfully');
+            return $this->successResponse(
+                new FeeStructureResource($feeStructure),
+                'Fee structure retrieved successfully'
+            );
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Fee structure not found', null, 404);
         } catch (\Exception $e) {
@@ -76,6 +83,7 @@ class FeeStructureController extends BaseController
 
     /**
      * Create a new fee structure
+     * Note: school_id and academic_year_id are automatically set from authenticated user context
      */
     public function store(FeeStructureRequest $request): JsonResponse
     {
@@ -91,7 +99,11 @@ class FeeStructureController extends BaseController
 
             $feeStructure = $this->feeStructureService->createFeeStructure($data);
 
-            return $this->successResponse($feeStructure, 'Fee structure created successfully', 201);
+            return $this->successResponse(
+                new FeeStructureResource($feeStructure),
+                'Fee structure created successfully',
+                201
+            );
         } catch (ValidationException $e) {
             return $this->errorResponse('Validation failed', $e->errors(), 422);
         } catch (\Exception $e) {
@@ -120,7 +132,10 @@ class FeeStructureController extends BaseController
             $data = $request->validated();
             $feeStructure = $this->feeStructureService->updateFeeStructure($id, $data);
 
-            return $this->successResponse($feeStructure, 'Fee structure updated successfully');
+            return $this->successResponse(
+                new FeeStructureResource($feeStructure),
+                'Fee structure updated successfully'
+            );
         } catch (ValidationException $e) {
             return $this->errorResponse('Validation failed', $e->errors(), 422);
         } catch (ModelNotFoundException $e) {
@@ -179,7 +194,7 @@ class FeeStructureController extends BaseController
             $updatedFeeStructure = $this->feeStructureService->toggleStatus($id);
 
             return $this->successResponse(
-                $updatedFeeStructure,
+                new FeeStructureResource($updatedFeeStructure),
                 'Fee structure status updated successfully'
             );
         } catch (ModelNotFoundException $e) {
@@ -270,7 +285,10 @@ class FeeStructureController extends BaseController
             $relations = ['academicYear', 'class'];
             $feeStructures = $this->feeStructureService->getAll($filters, $relations);
 
-            return $this->successResponse($feeStructures, 'Class fee structures retrieved successfully');
+            return $this->successResponse(
+                FeeStructureResource::collection($feeStructures),
+                'Class fee structures retrieved successfully'
+            );
         } catch (\Exception $e) {
             Log::error('Error retrieving class fee structures: ' . $e->getMessage());
             return $this->errorResponse('Failed to retrieve class fee structures', null, 500);
@@ -309,7 +327,7 @@ class FeeStructureController extends BaseController
             $clonedFeeStructure = $this->feeStructureService->cloneFeeStructure($id, $cloneData);
 
             return $this->successResponse(
-                $clonedFeeStructure,
+                new FeeStructureResource($clonedFeeStructure),
                 'Fee structure cloned successfully',
                 201
             );

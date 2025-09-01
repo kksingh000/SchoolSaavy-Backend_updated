@@ -14,7 +14,8 @@ class FeeStructureRequest extends FormRequest
 
     public function rules()
     {
-        $schoolId = $this->input('school_id') ?? request()->input('school_id');
+        // Get school_id from middleware payload, not from user input
+        $schoolId = request()->input('school_id');
         $feeStructureId = $this->route('id');
 
         $rules = [
@@ -114,7 +115,8 @@ class FeeStructureRequest extends FormRequest
 
             // Validate class belongs to the same school
             if ($this->has('class_id') && $this->class_id) {
-                $schoolId = $this->input('school_id') ?? request()->input('school_id');
+                // Get school_id from middleware payload, not from user input
+                $schoolId = request()->input('school_id');
                 $classExists = \App\Models\ClassRoom::where('id', $this->class_id)
                     ->where('school_id', $schoolId)
                     ->exists();
