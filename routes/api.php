@@ -100,7 +100,7 @@ Route::middleware('json.response')->group(function () {
     });
 
     // Device Token Management for Push Notifications
-    Route::prefix('device')->group(function () {
+    Route::prefix('device')->middleware('auth:sanctum')->group(function () {
         // Register device token for push notifications
         Route::post('register-token', [App\Http\Controllers\NotificationController::class, 'registerDeviceToken']);
 

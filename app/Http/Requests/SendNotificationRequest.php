@@ -30,6 +30,7 @@ class SendNotificationRequest extends FormRequest
             'target_ids.*' => 'integer|exists:users,id',
             'target_classes' => 'nullable|array|required_if:target_type,class_parents,class_teachers',
             'target_classes.*' => 'integer|exists:classes,id',
+            'scheduled_at' => 'nullable|date|after:now', // Made optional - if provided, will schedule; if not, sends immediately
             'data' => 'nullable|array',
             'data.*' => 'string|max:500'
         ];
@@ -54,6 +55,8 @@ class SendNotificationRequest extends FormRequest
             'target_ids.*.exists' => 'One or more selected users do not exist',
             'target_classes.required_if' => 'Target classes are required when targeting class members',
             'target_classes.*.exists' => 'One or more selected classes do not exist',
+            'scheduled_at.date' => 'Invalid schedule date format',
+            'scheduled_at.after' => 'Schedule date must be in the future',
             'data.*.max' => 'Additional data values cannot exceed 500 characters'
         ];
     }
@@ -80,6 +83,12 @@ class SendNotificationRequest extends FormRequest
                 if (empty($targetClasses)) {
                     $validator->errors()->add('target_classes', 'At least one class must be selected');
                 }
+            }
+
+            // Validate scheduled_at is not too far in future (max 1 year) when provided
+            $scheduledAt = $this->input('scheduled_at');
+            if ($scheduledAt && \Carbon\Carbon::parse($scheduledAt)->gt(\Carbon\Carbon::now()->addYear())) {
+                $validator->errors()->add('scheduled_at', 'Schedule date cannot be more than 1 year in the future');
             }
         });
     }

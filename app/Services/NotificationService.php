@@ -51,29 +51,49 @@ class NotificationService extends BaseService
             // Update total recipients count
             $notification->update(['total_recipients' => count($recipients)]);
 
-            // Send to recipients
-            $result = $this->sendToRecipients($notification, $recipients);
-
             DB::commit();
 
-            return [
+            // Send to recipients (this happens after DB commit)
+            // Delivery failures should not affect notification success status
+            $deliveryResult = $this->sendToRecipients($notification, $recipients);
+
+            // Always return success if notification was saved to database
+            // Delivery issues are tracked separately for super admin visibility
+            $response = [
                 'success' => true,
                 'notification_id' => $notification->id,
                 'total_recipients' => count($recipients),
-                'sent_count' => $result['success_count'],
-                'failed_count' => $result['failure_count'],
-                'message' => 'Notification sent successfully'
+                'sent_count' => $deliveryResult['success_count'],
+                'failed_count' => $deliveryResult['failure_count'],
+                'message' => 'Notification created successfully'
             ];
+
+            // Add delivery warnings for super admin, not regular school admin
+            if ($deliveryResult['failure_count'] > 0) {
+                $response['delivery_warning'] = 'Some deliveries failed - check Firebase logs for details';
+
+                // Log delivery issues for super admin monitoring
+                Log::warning('Notification delivery issues', [
+                    'notification_id' => $notification->id,
+                    'school_id' => $notification->school_id,
+                    'total_recipients' => count($recipients),
+                    'successful_deliveries' => $deliveryResult['success_count'],
+                    'failed_deliveries' => $deliveryResult['failure_count'],
+                    'delivery_errors' => $deliveryResult['delivery_errors'] ?? []
+                ]);
+            }
+
+            return $response;
         } catch (\Exception $e) {
             DB::rollBack();
-            Log::error('Failed to send notification', [
+            Log::error('Failed to create notification', [
                 'error' => $e->getMessage(),
                 'data' => $data
             ]);
 
             return [
                 'success' => false,
-                'message' => 'Failed to send notification: ' . $e->getMessage()
+                'message' => 'Failed to create notification: ' . $e->getMessage()
             ];
         }
     }
@@ -176,10 +196,12 @@ class NotificationService extends BaseService
 
         switch ($notification->target_type) {
             case Notification::TARGET_ALL_PARENTS:
+            case 'all_parents':
                 $recipients = $this->getAllParents($schoolId);
                 break;
 
             case Notification::TARGET_ALL_TEACHERS:
+            case 'all_teachers':
                 $recipients = $this->getAllTeachers($schoolId);
                 break;
 
@@ -188,11 +210,25 @@ class NotificationService extends BaseService
                 break;
 
             case Notification::TARGET_CLASS_PARENTS:
+            case 'class_parents':
                 $recipients = $this->getClassParents($schoolId, $notification->target_classes);
                 break;
 
             case Notification::TARGET_CLASS_TEACHERS:
+            case 'class_teachers':
                 $recipients = $this->getClassTeachers($schoolId, $notification->target_classes);
+                break;
+
+            case 'all_school_users':
+                $parents = $this->getAllParents($schoolId);
+                $teachers = $this->getAllTeachers($schoolId);
+                $recipients = array_merge($parents, $teachers);
+                break;
+
+            case 'class_all_users':
+                $parents = $this->getClassParents($schoolId, $notification->target_classes);
+                $teachers = $this->getClassTeachers($schoolId, $notification->target_classes);
+                $recipients = array_merge($parents, $teachers);
                 break;
         }
 
@@ -204,9 +240,11 @@ class NotificationService extends BaseService
      */
     private function getAllParents(int $schoolId): array
     {
-        return User::where('school_id', $schoolId)
-            ->where('user_type', 'parent')
+        return User::where('user_type', 'parent')
             ->where('is_active', true)
+            ->whereHas('parent.students', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
             ->with('activeDeviceTokens')
             ->get()
             ->toArray();
@@ -217,9 +255,11 @@ class NotificationService extends BaseService
      */
     private function getAllTeachers(int $schoolId): array
     {
-        return User::where('school_id', $schoolId)
-            ->where('user_type', 'teacher')
+        return User::where('user_type', 'teacher')
             ->where('is_active', true)
+            ->whereHas('teacher', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
             ->with('activeDeviceTokens')
             ->get()
             ->toArray();
@@ -242,10 +282,9 @@ class NotificationService extends BaseService
      */
     private function getClassParents(int $schoolId, array $classIds): array
     {
-        return User::where('school_id', $schoolId)
-            ->where('user_type', 'parent')
+        return User::where('user_type', 'parent')
             ->where('is_active', true)
-            ->whereHas('children.classes', function ($query) use ($classIds) {
+            ->whereHas('parent.students.classes', function ($query) use ($classIds) {
                 $query->whereIn('classes.id', $classIds);
             })
             ->with('activeDeviceTokens')
@@ -258,11 +297,13 @@ class NotificationService extends BaseService
      */
     private function getClassTeachers(int $schoolId, array $classIds): array
     {
-        return User::where('school_id', $schoolId)
-            ->where('user_type', 'teacher')
+        return User::where('user_type', 'teacher')
             ->where('is_active', true)
-            ->whereHas('teachingClasses', function ($query) use ($classIds) {
-                $query->whereIn('classes.id', $classIds);
+            ->whereHas('teacher', function ($query) use ($schoolId, $classIds) {
+                $query->where('school_id', $schoolId)
+                    ->whereHas('classes', function ($q) use ($classIds) {
+                        $q->whereIn('id', $classIds);
+                    });
             })
             ->with('activeDeviceTokens')
             ->get()
@@ -271,6 +312,7 @@ class NotificationService extends BaseService
 
     /**
      * Send notification to recipients
+     * Note: Delivery failures don't affect notification success status
      */
     private function sendToRecipients(Notification $notification, array $recipients): array
     {
@@ -279,6 +321,7 @@ class NotificationService extends BaseService
         $successCount = 0;
         $failureCount = 0;
         $deliveries = [];
+        $deliveryErrors = [];
 
         foreach ($recipients as $recipient) {
             $user = is_array($recipient) ? (object) $recipient : $recipient;
@@ -299,6 +342,10 @@ class NotificationService extends BaseService
             if (empty($deviceTokens)) {
                 $delivery->markAsFailed('No active device tokens found');
                 $failureCount++;
+                $deliveryErrors[] = [
+                    'user_id' => $user->id,
+                    'error' => 'No active device tokens found'
+                ];
                 continue;
             }
 
@@ -311,24 +358,43 @@ class NotificationService extends BaseService
             } else {
                 $delivery->markAsFailed($firebaseResult['error']);
                 $failureCount++;
+                $deliveryErrors[] = [
+                    'user_id' => $user->id,
+                    'error' => $firebaseResult['error']
+                ];
             }
 
             $deliveries[] = $delivery;
         }
 
-        // Update notification status
-        if ($failureCount === 0) {
-            $notification->markAsSent();
-        } elseif ($successCount === 0) {
-            $notification->markAsFailed();
+        // Update notification status based on delivery results
+        // But never mark as "failed" - notification creation was successful
+        if ($successCount > 0) {
+            if ($failureCount === 0) {
+                $notification->markAsSent();
+            } else {
+                // Partial delivery - some succeeded, some failed
+                $notification->markAsPartial();
+            }
         } else {
-            $notification->markAsPartial();
+            // All deliveries failed, but notification creation was successful
+            // Mark as "sent" with delivery issues for super admin monitoring
+            $notification->markAsSent();
+
+            // Log all delivery failures for super admin
+            Log::error('All notification deliveries failed', [
+                'notification_id' => $notification->id,
+                'school_id' => $notification->school_id,
+                'total_recipients' => count($recipients),
+                'delivery_errors' => $deliveryErrors
+            ]);
         }
 
         return [
             'success_count' => $successCount,
             'failure_count' => $failureCount,
-            'deliveries' => $deliveries
+            'deliveries' => $deliveries,
+            'delivery_errors' => $deliveryErrors
         ];
     }
 

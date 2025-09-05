@@ -4,8 +4,10 @@ namespace App\Services;
 
 use App\Models\Event;
 use App\Models\EventAcknowledgment;
+use App\Jobs\SendEventReminderJob;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
 
 class EventService extends BaseService
@@ -20,7 +22,7 @@ class EventService extends BaseService
         DB::beginTransaction();
         try {
             // Add school_id and creator
-            $data['school_id'] = Auth::user()->getSchoolId();
+            $data['school_id'] = Auth::user()->getSchool()->id;
             $data['created_by'] = Auth::id();
 
             // Set published_at if publishing immediately
@@ -36,6 +38,11 @@ class EventService extends BaseService
                 foreach ($recurringEvents as $recurringEventData) {
                     Event::create($recurringEventData);
                 }
+            }
+
+            // Schedule automatic reminders for published events
+            if ($event->is_published) {
+                $this->scheduleEventReminders($event);
             }
 
             DB::commit();
@@ -69,7 +76,7 @@ class EventService extends BaseService
 
     public function getUpcomingEvents($filters = [])
     {
-        $query = Event::where('school_id', Auth::user()->getSchoolId())
+        $query = Event::where('school_id', Auth::user()->getSchool()->id)
             ->published()
             ->upcoming()
             ->with(['creator'])
@@ -109,7 +116,7 @@ class EventService extends BaseService
      */
     public function paginateEvents(array $filters = [], int $perPage = 15)
     {
-        $schoolId = Auth::user()->getSchoolId();
+        $schoolId = Auth::user()->getSchool()->id;
         $query = Event::where('school_id', $schoolId)
             ->published()
             ->with(['creator', 'school']);
@@ -160,7 +167,7 @@ class EventService extends BaseService
 
     public function getTodaysEvents()
     {
-        return Event::where('school_id', Auth::user()->getSchoolId())
+        return Event::where('school_id', Auth::user()->getSchool()->id)
             ->published()
             ->today()
             ->with(['creator'])
@@ -175,7 +182,7 @@ class EventService extends BaseService
         $startDate = Carbon::create($year, $month, 1)->startOfMonth();
         $endDate = $startDate->copy()->endOfMonth();
 
-        $events = Event::where('school_id', Auth::user()->getSchoolId())
+        $events = Event::where('school_id', Auth::user()->getSchool()->id)
             ->published()
             ->whereBetween('event_date', [$startDate, $endDate])
             ->with(['creator'])
@@ -230,7 +237,7 @@ class EventService extends BaseService
             ->pluck('event_id')
             ->toArray();
 
-        return Event::where('school_id', Auth::user()->getSchoolId())
+        return Event::where('school_id', Auth::user()->getSchool()->id)
             ->published()
             ->where('requires_acknowledgment', true)
             ->whereNotIn('id', $acknowledgedEventIds)
@@ -241,7 +248,7 @@ class EventService extends BaseService
 
     public function getEventsByType($type)
     {
-        return Event::where('school_id', Auth::user()->getSchoolId())
+        return Event::where('school_id', Auth::user()->getSchool()->id)
             ->published()
             ->byType($type)
             ->with(['creator'])
@@ -251,7 +258,7 @@ class EventService extends BaseService
 
     public function getEventStatistics()
     {
-        $schoolId = Auth::user()->getSchoolId();
+        $schoolId = Auth::user()->getSchool()->id;
 
         return [
             'total_events' => Event::where('school_id', $schoolId)->published()->count(),
@@ -315,6 +322,67 @@ class EventService extends BaseService
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
+        }
+    }
+
+    /**
+     * Schedule automatic reminders for an event
+     */
+    private function scheduleEventReminders(Event $event): void
+    {
+        try {
+            // Don't schedule reminders for past events
+            if ($event->event_date->isPast()) {
+                return;
+            }
+
+            // Don't schedule reminders for low-priority or recurring events  
+            if ($event->priority === 'low' || $event->is_recurring) {
+                return;
+            }
+
+            $eventDateTime = $event->event_date;
+            if ($event->start_time) {
+                $eventDateTime = $event->event_date->setTimeFromTimeString($event->start_time);
+            }
+
+            $now = now();
+
+            // Schedule 1-day reminder (only if event is more than 1 day away)
+            $oneDayBefore = $eventDateTime->copy()->subDay();
+            if ($oneDayBefore->isFuture() && $oneDayBefore->diffInHours($now) >= 1) {
+                SendEventReminderJob::dispatch($event, '1_day')
+                    ->delay($oneDayBefore);
+            }
+
+            // Schedule 3-hour reminder for high/urgent priority events
+            if (in_array($event->priority, ['high', 'urgent'])) {
+                $threeHoursBefore = $eventDateTime->copy()->subHours(3);
+                if ($threeHoursBefore->isFuture() && $threeHoursBefore->diffInMinutes($now) >= 30) {
+                    SendEventReminderJob::dispatch($event, '3_hours')
+                        ->delay($threeHoursBefore);
+                }
+            }
+
+            // Schedule 1-hour reminder for urgent events only
+            if ($event->priority === 'urgent') {
+                $oneHourBefore = $eventDateTime->copy()->subHour();
+                if ($oneHourBefore->isFuture() && $oneHourBefore->diffInMinutes($now) >= 10) {
+                    SendEventReminderJob::dispatch($event, '1_hour')
+                        ->delay($oneHourBefore);
+                }
+            }
+
+            Log::info("Event reminders scheduled", [
+                'event_id' => $event->id,
+                'event_priority' => $event->priority,
+                'event_date' => $event->event_date->format('Y-m-d H:i:s')
+            ]);
+        } catch (\Exception $e) {
+            Log::error("Failed to schedule event reminders", [
+                'event_id' => $event->id,
+                'error' => $e->getMessage()
+            ]);
         }
     }
 }

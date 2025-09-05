@@ -353,14 +353,18 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
         // Get all notifications with pagination and filters
         Route::get('/', [App\Http\Controllers\NotificationController::class, 'index']);
 
+        // System health check for notifications
+        Route::get('health-check', [App\Http\Controllers\NotificationController::class, 'healthCheck']);
+
+        // Get school members for notification targeting (teachers, parents, students)
+        Route::get('school-members', [App\Http\Controllers\NotificationController::class, 'getSchoolMembers']);
+
         // Get single notification details
         Route::get('{id}', [App\Http\Controllers\NotificationController::class, 'show']);
 
-        // Send notification immediately
+        // Send notification immediately or schedule for later
+        // Include 'scheduled_at' field to schedule, omit to send immediately
         Route::post('send', [App\Http\Controllers\NotificationController::class, 'sendNotification']);
-
-        // Schedule notification for later
-        Route::post('schedule', [App\Http\Controllers\NotificationController::class, 'scheduleNotification']);
 
         // Get notification statistics
         Route::get('stats', [App\Http\Controllers\NotificationController::class, 'getStats']);

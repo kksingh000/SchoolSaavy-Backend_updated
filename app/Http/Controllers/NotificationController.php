@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\SendNotificationRequest;
-use App\Http\Requests\ScheduleNotificationRequest;
 use App\Http\Requests\RegisterDeviceTokenRequest;
 use App\Services\NotificationService;
 use App\Models\Notification;
 use App\Models\NotificationDelivery;
+use App\Models\UserDeviceToken;
 use Illuminate\Http\Request;
 
 class NotificationController extends BaseController
@@ -27,7 +27,25 @@ class NotificationController extends BaseController
         $school = auth()->user()->getSchool();
 
         $query = Notification::forSchool($school->id)
-            ->with(['sender:id,first_name,last_name', 'deliveries'])
+            ->select([
+                'id',
+                'title',
+                'message',
+                'type',
+                'priority',
+                'status',
+                'total_recipients',
+                'successful_sends',
+                'failed_sends',
+                'sender_id',
+                'scheduled_at',
+                'sent_at',
+                'is_urgent',
+                'requires_acknowledgment',
+                'created_at',
+                'updated_at'
+            ])
+            ->with(['sender:id,name'])
             ->orderBy('created_at', 'desc');
 
         // Apply filters
@@ -57,7 +75,8 @@ class NotificationController extends BaseController
     }
 
     /**
-     * Get single notification details
+     * Get single notification details with full delivery information
+     * This endpoint includes all delivery details including failed attempts
      */
     public function show(int $id)
     {
@@ -65,8 +84,8 @@ class NotificationController extends BaseController
 
         $notification = Notification::forSchool($school->id)
             ->with([
-                'sender:id,first_name,last_name',
-                'deliveries.user:id,first_name,last_name,email',
+                'sender:id,name',
+                'deliveries.user:id,name,email',
                 'deliveries' => function ($query) {
                     $query->orderBy('created_at', 'desc');
                 }
@@ -77,7 +96,9 @@ class NotificationController extends BaseController
     }
 
     /**
-     * Send notification immediately
+     * Send notification immediately or schedule for later
+     * If scheduled_at is provided, the notification will be scheduled
+     * Otherwise, it will be sent immediately
      */
     public function sendNotification(SendNotificationRequest $request)
     {
@@ -88,31 +109,19 @@ class NotificationController extends BaseController
             'sender_id' => auth()->id()
         ]);
 
-        $result = $this->notificationService->sendNotification($data);
+        // Determine if this is a scheduled notification
+        $isScheduled = !empty($data['scheduled_at']);
 
-        if ($result['success']) {
-            return $this->successResponse($result, 'Notification sent successfully');
+        if ($isScheduled) {
+            $result = $this->notificationService->scheduleNotification($data);
+            $successMessage = 'Notification scheduled successfully';
+        } else {
+            $result = $this->notificationService->sendNotification($data);
+            $successMessage = 'Notification sent successfully';
         }
 
-        return $this->errorResponse($result['message'], null, 400);
-    }
-
-    /**
-     * Schedule notification for later
-     */
-    public function scheduleNotification(ScheduleNotificationRequest $request)
-    {
-        $school = auth()->user()->getSchool();
-
-        $data = array_merge($request->validated(), [
-            'school_id' => $school->id,
-            'sender_id' => auth()->id()
-        ]);
-
-        $result = $this->notificationService->scheduleNotification($data);
-
         if ($result['success']) {
-            return $this->successResponse($result, 'Notification scheduled successfully');
+            return $this->successResponse($result, $successMessage);
         }
 
         return $this->errorResponse($result['message'], null, 400);
@@ -367,5 +376,493 @@ class NotificationController extends BaseController
             'retry_failure_count' => $failureCount,
             'notification_status' => $notification->status
         ], 'Notification retry completed');
+    }
+
+    /**
+     * Get all school members (teachers, parents, students) for notification targeting
+     * Simplified and optimized using separate queries with Laravel's built-in pagination
+     */
+    public function getSchoolMembers(Request $request)
+    {
+        $school = auth()->user()->getSchool();
+        $schoolId = $school->id;
+        $perPage = $request->per_page ?? 50;
+        $search = $request->search;
+        $roleFilter = $request->role;
+
+        $members = collect();
+        $summary = [];
+
+        // Get members based on role filter - much simpler approach
+        if (!$roleFilter || $roleFilter === 'teacher') {
+            $teachers = $this->getTeachers($schoolId, $search);
+            $members = $members->merge($teachers);
+        }
+
+        if (!$roleFilter || $roleFilter === 'parent') {
+            $parents = $this->getParents($schoolId, $search);
+            $members = $members->merge($parents);
+        }
+
+        if (!$roleFilter || $roleFilter === 'student') {
+            $students = $this->getStudents($schoolId, $search);
+            $members = $members->merge($students);
+        }
+
+        // Sort members by name
+        $members = $members->sortBy('name')->values();
+
+        // Create paginator manually for collection
+        $currentPage = request()->get('page', 1);
+        $offset = ($currentPage - 1) * $perPage;
+        $itemsForCurrentPage = $members->slice($offset, $perPage)->values();
+
+        $paginator = new \Illuminate\Pagination\LengthAwarePaginator(
+            $itemsForCurrentPage,
+            $members->count(),
+            $perPage,
+            $currentPage,
+            [
+                'path' => request()->url(),
+                'pageName' => 'page',
+                'query' => request()->query()
+            ]
+        );
+
+        // Get summary counts only if showing all roles
+        if (!$roleFilter) {
+            $summary = [
+                'total_teachers' => $members->where('role', 'teacher')->count(),
+                'total_parents' => $members->where('role', 'parent')->count(),
+                'total_students' => $members->where('role', 'student')->count(),
+                'total_members' => $members->count()
+            ];
+        }
+
+        $response = [
+            'members' => $paginator->items(),
+            'pagination' => [
+                'current_page' => $paginator->currentPage(),
+                'per_page' => $paginator->perPage(),
+                'total' => $paginator->total(),
+                'last_page' => $paginator->lastPage(),
+                'from' => $paginator->firstItem(),
+                'to' => $paginator->lastItem(),
+                'path' => $paginator->path(),
+                'next_page_url' => $paginator->nextPageUrl(),
+                'prev_page_url' => $paginator->previousPageUrl()
+            ]
+        ];
+
+        if (!empty($summary)) {
+            $response['summary'] = $summary;
+        }
+
+        return $this->successResponse($response, 'School members retrieved successfully');
+    }
+
+    /**
+     * Health check for notification system
+     * Validates Firebase config, device tokens, and recent delivery status
+     */
+    public function healthCheck()
+    {
+        $checks = [
+            'firebase_config' => $this->checkFirebaseConfig(),
+            'service_account' => $this->checkServiceAccount(),
+            'device_tokens' => $this->checkDeviceTokens(),
+            'recent_deliveries' => $this->checkRecentDeliveries()
+        ];
+
+        $overallStatus = collect($checks)->every(fn($check) => $check['status'] === 'ok') ? 'healthy' : 'issues_detected';
+
+        return response()->json([
+            'status' => $overallStatus,
+            'checks' => $checks,
+            'timestamp' => now(),
+            'recommendations' => $this->getHealthRecommendations($checks)
+        ]);
+    }
+
+    /**
+     * Check Firebase configuration
+     */
+    private function checkFirebaseConfig(): array
+    {
+        try {
+            $projectId = config('services.firebase.project_id');
+            $serviceAccountPath = config('services.firebase.service_account_path');
+
+            return [
+                'status' => ($projectId && $serviceAccountPath) ? 'ok' : 'error',
+                'details' => [
+                    'project_id_set' => !empty($projectId),
+                    'service_account_path_set' => !empty($serviceAccountPath),
+                    'project_id' => $projectId ? 'configured' : 'missing'
+                ]
+            ];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Check Firebase service account file
+     */
+    private function checkServiceAccount(): array
+    {
+        try {
+            $path = config('services.firebase.service_account_path');
+            $exists = $path && file_exists($path);
+
+            return [
+                'status' => $exists ? 'ok' : 'error',
+                'details' => [
+                    'file_exists' => $exists,
+                    'path' => $path,
+                    'readable' => $exists && is_readable($path),
+                    'size' => $exists ? filesize($path) : 0
+                ]
+            ];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Check device tokens status
+     */
+    private function checkDeviceTokens(): array
+    {
+        try {
+            $total = \App\Models\UserDeviceToken::count();
+            $active = \App\Models\UserDeviceToken::where('is_active', true)->count();
+            $recent = \App\Models\UserDeviceToken::where('last_used_at', '>', now()->subDays(7))->count();
+
+            return [
+                'status' => $active > 0 ? 'ok' : 'warning',
+                'details' => [
+                    'total_tokens' => $total,
+                    'active_tokens' => $active,
+                    'recently_used' => $recent,
+                    'inactive_tokens' => $total - $active
+                ]
+            ];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Check recent delivery performance
+     */
+    private function checkRecentDeliveries(): array
+    {
+        try {
+            $recent = NotificationDelivery::where('created_at', '>', now()->subHour())->count();
+            $failed = NotificationDelivery::where('created_at', '>', now()->subHour())
+                ->where('status', 'failed')->count();
+            $sent = NotificationDelivery::where('created_at', '>', now()->subHour())
+                ->where('status', 'sent')->count();
+
+            $failureRate = $recent > 0 ? ($failed / $recent) * 100 : 0;
+            $successRate = $recent > 0 ? ($sent / $recent) * 100 : 0;
+
+            return [
+                'status' => $failureRate < 50 ? 'ok' : 'warning',
+                'details' => [
+                    'recent_deliveries' => $recent,
+                    'failed_deliveries' => $failed,
+                    'sent_deliveries' => $sent,
+                    'failure_rate_percent' => round($failureRate, 2),
+                    'success_rate_percent' => round($successRate, 2)
+                ]
+            ];
+        } catch (\Exception $e) {
+            return ['status' => 'error', 'error' => $e->getMessage()];
+        }
+    }
+
+    /**
+     * Get health recommendations based on check results
+     */
+    private function getHealthRecommendations(array $checks): array
+    {
+        $recommendations = [];
+
+        if ($checks['firebase_config']['status'] === 'error') {
+            $recommendations[] = 'Configure Firebase settings in .env file (FIREBASE_PROJECT_ID, FIREBASE_SERVICE_ACCOUNT_PATH)';
+        }
+
+        if ($checks['service_account']['status'] === 'error') {
+            $recommendations[] = 'Upload Firebase service account JSON file to storage/app/firebase-service-account.json';
+        }
+
+        if ($checks['device_tokens']['status'] === 'warning') {
+            $recommendations[] = 'Users need to register device tokens for push notifications';
+        }
+
+        if ($checks['recent_deliveries']['status'] === 'warning') {
+            $recommendations[] = 'High failure rate detected - check Firebase configuration and device token validity';
+        }
+
+        if (empty($recommendations)) {
+            $recommendations[] = 'Notification system is healthy - no issues detected';
+        }
+
+        return $recommendations;
+    }
+
+    /**
+     * Get delivery issues for super admin monitoring
+     * Regular school admins don't see these Firebase delivery issues
+     */
+    public function getDeliveryIssues(Request $request)
+    {
+        // Only super admins can see delivery issues
+        if (auth()->user()->user_type !== 'super_admin') {
+            return $this->errorResponse('Access denied. This endpoint is for super admin monitoring only.', null, 403);
+        }
+
+        $query = NotificationDelivery::with([
+            'notification:id,title,school_id,created_at',
+            'user:id,name,email'
+        ])
+            ->where('status', NotificationDelivery::STATUS_FAILED);
+
+        // Apply filters
+        if ($request->has('school_id') && $request->school_id) {
+            $query->whereHas('notification', function ($q) use ($request) {
+                $q->where('school_id', $request->school_id);
+            });
+        }
+
+        if ($request->has('date_from') && $request->date_from) {
+            $query->whereDate('created_at', '>=', $request->date_from);
+        }
+
+        if ($request->has('date_to') && $request->date_to) {
+            $query->whereDate('created_at', '<=', $request->date_to);
+        }
+
+        if ($request->has('error_type') && $request->error_type) {
+            $query->where('failure_reason', 'like', '%' . $request->error_type . '%');
+        }
+
+        $deliveryIssues = $query->orderBy('created_at', 'desc')
+            ->paginate($request->per_page ?? 15);
+
+        // Group by error types for summary
+        $errorSummary = NotificationDelivery::where('status', NotificationDelivery::STATUS_FAILED)
+            ->when($request->school_id, function ($q, $schoolId) {
+                $q->whereHas('notification', fn($nq) => $nq->where('school_id', $schoolId));
+            })
+            ->when($request->date_from, function ($q, $date) {
+                $q->whereDate('created_at', '>=', $date);
+            })
+            ->when($request->date_to, function ($q, $date) {
+                $q->whereDate('created_at', '<=', $date);
+            })
+            ->selectRaw('failure_reason, COUNT(*) as count')
+            ->groupBy('failure_reason')
+            ->orderBy('count', 'desc')
+            ->get();
+
+        $response = [
+            'delivery_issues' => $deliveryIssues,
+            'error_summary' => $errorSummary,
+            'total_failed_deliveries' => $deliveryIssues->total()
+        ];
+
+        return $this->successResponse($response, 'Delivery issues retrieved successfully');
+    }
+
+    /**
+     * Get notification statistics with delivery health for super admin
+     */
+    public function getSuperAdminStats(Request $request)
+    {
+        // Only super admins can see detailed delivery stats
+        if (auth()->user()->user_type !== 'super_admin') {
+            return $this->errorResponse('Access denied. This endpoint is for super admin monitoring only.', null, 403);
+        }
+
+        $schoolId = $request->school_id;
+        $dateFrom = $request->date_from ?? now()->subDays(7)->toDateString();
+        $dateTo = $request->date_to ?? now()->toDateString();
+
+        $query = Notification::query();
+
+        if ($schoolId) {
+            $query->where('school_id', $schoolId);
+        }
+
+        $query->whereBetween('created_at', [$dateFrom, $dateTo]);
+        $notifications = $query->get();
+
+        $totalDeliveries = NotificationDelivery::whereHas('notification', function ($q) use ($schoolId, $dateFrom, $dateTo) {
+            if ($schoolId) {
+                $q->where('school_id', $schoolId);
+            }
+            $q->whereBetween('created_at', [$dateFrom, $dateTo]);
+        })
+            ->count();
+
+        $failedDeliveries = NotificationDelivery::where('status', NotificationDelivery::STATUS_FAILED)
+            ->whereHas('notification', function ($q) use ($schoolId, $dateFrom, $dateTo) {
+                if ($schoolId) {
+                    $q->where('school_id', $schoolId);
+                }
+                $q->whereBetween('created_at', [$dateFrom, $dateTo]);
+            })
+            ->count();
+
+        $deliverySuccessRate = $totalDeliveries > 0 ? (($totalDeliveries - $failedDeliveries) / $totalDeliveries) * 100 : 100;
+
+        // Get top failure reasons
+        $topFailureReasons = NotificationDelivery::where('status', NotificationDelivery::STATUS_FAILED)
+            ->whereHas('notification', function ($q) use ($schoolId, $dateFrom, $dateTo) {
+                if ($schoolId) {
+                    $q->where('school_id', $schoolId);
+                }
+                $q->whereBetween('created_at', [$dateFrom, $dateTo]);
+            })
+            ->selectRaw('failure_reason, COUNT(*) as count')
+            ->groupBy('failure_reason')
+            ->orderBy('count', 'desc')
+            ->limit(5)
+            ->get();
+
+        $stats = [
+            'notification_stats' => [
+                'total_notifications' => $notifications->count(),
+                'sent_notifications' => $notifications->where('status', Notification::STATUS_SENT)->count(),
+                'partial_notifications' => $notifications->where('status', Notification::STATUS_PARTIAL)->count(),
+                'scheduled_notifications' => $notifications->where('status', Notification::STATUS_SCHEDULED)->count(),
+            ],
+            'delivery_health' => [
+                'total_deliveries' => $totalDeliveries,
+                'failed_deliveries' => $failedDeliveries,
+                'delivery_success_rate' => round($deliverySuccessRate, 2),
+                'top_failure_reasons' => $topFailureReasons
+            ],
+            'system_health' => [
+                'active_device_tokens' => UserDeviceToken::where('is_active', true)->count(),
+                'recent_token_registrations' => UserDeviceToken::where('created_at', '>', now()->subDays(7))->count(),
+            ]
+        ];
+
+        return $this->successResponse($stats, 'Super admin notification statistics retrieved successfully');
+    }
+
+    /**
+     * Get teachers for the school
+     */
+    private function getTeachers($schoolId, $search = null)
+    {
+        $query = \App\Models\Teacher::where('school_id', $schoolId)
+            ->with('user:id,name,email')
+            ->whereHas('user');
+
+        if ($search) {
+            $searchTerm = '%' . $search . '%';
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('employee_id', 'like', $searchTerm)
+                    ->orWhereHas('user', function ($userQuery) use ($searchTerm) {
+                        $userQuery->where('name', 'like', $searchTerm)
+                            ->orWhere('email', 'like', $searchTerm);
+                    });
+            });
+        }
+
+        return $query->get()->map(function ($teacher) {
+            return [
+                'id' => $teacher->user->id,
+                'name' => $teacher->user->name,
+                'email' => $teacher->user->email,
+                'role' => 'teacher',
+                'profile_type' => 'Teacher',
+                'identifier' => $teacher->employee_id,
+                'children' => null,
+                'children_count' => 0
+            ];
+        });
+    }
+
+    /**
+     * Get parents for the school
+     */
+    private function getParents($schoolId, $search = null)
+    {
+        $query = \App\Models\Parents::whereHas('students', function ($q) use ($schoolId) {
+            $q->where('school_id', $schoolId);
+        })
+            ->with([
+                'user:id,name,email',
+                'students:id,first_name,last_name'
+            ])
+            ->whereHas('user');
+
+        if ($search) {
+            $searchTerm = '%' . $search . '%';
+            $query->where(function ($q) use ($searchTerm) {
+                $q->whereHas('user', function ($userQuery) use ($searchTerm) {
+                    $userQuery->where('name', 'like', $searchTerm)
+                        ->orWhere('email', 'like', $searchTerm);
+                })
+                    ->orWhereHas('students', function ($studentQuery) use ($searchTerm) {
+                        $studentQuery->where('first_name', 'like', $searchTerm)
+                            ->orWhere('last_name', 'like', $searchTerm);
+                    });
+            });
+        }
+
+        return $query->get()->map(function ($parent) {
+            $children = $parent->students->map(function ($student) {
+                return $student->first_name . ' ' . $student->last_name;
+            })->implode(', ');
+
+            return [
+                'id' => $parent->user->id,
+                'name' => $parent->user->name,
+                'email' => $parent->user->email,
+                'role' => 'parent',
+                'profile_type' => 'Parent',
+                'identifier' => null,
+                'children' => $children,
+                'children_count' => $parent->students->count()
+            ];
+        });
+    }
+
+    /**
+     * Get students for the school
+     */
+    private function getStudents($schoolId, $search = null)
+    {
+        $query = \App\Models\Student::where('school_id', $schoolId)
+            ->where('is_active', true);
+
+        if ($search) {
+            $searchTerm = '%' . $search . '%';
+            $query->where(function ($q) use ($searchTerm) {
+                $q->where('first_name', 'like', $searchTerm)
+                    ->orWhere('last_name', 'like', $searchTerm)
+                    ->orWhere('admission_number', 'like', $searchTerm);
+            });
+        }
+
+        return $query->get()->map(function ($student) {
+            return [
+                'id' => $student->id,
+                'name' => $student->first_name . ' ' . $student->last_name,
+                'email' => null,
+                'role' => 'student',
+                'profile_type' => 'Student',
+                'identifier' => $student->admission_number,
+                'children' => null,
+                'children_count' => 0
+            ];
+        });
     }
 }

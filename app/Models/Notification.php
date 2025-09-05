@@ -17,28 +17,42 @@ class Notification extends Model
         'type',
         'priority',
         'sender_id',
+        'sender_type',
         'target_type',
         'target_ids',
         'target_classes',
-        'total_recipients',
-        'sent_count',
-        'delivered_count',
-        'read_count',
-        'status',
-        'scheduled_at',
-        'data',
+        'target_grades',
         'firebase_tokens',
         'firebase_message_id',
-        'firebase_response'
+        'firebase_response',
+        'status',
+        'total_recipients',
+        'successful_sends',
+        'failed_sends',
+        'scheduled_at',
+        'sent_at',
+        'expires_at',
+        'is_urgent',
+        'requires_acknowledgment',
+        'is_broadcast',
+        'image_url',
+        'action_url',
+        'data'
     ];
 
     protected $casts = [
         'target_ids' => 'array',
         'target_classes' => 'array',
+        'target_grades' => 'array',
         'data' => 'array',
         'firebase_tokens' => 'array',
         'firebase_response' => 'array',
-        'scheduled_at' => 'datetime'
+        'scheduled_at' => 'datetime',
+        'sent_at' => 'datetime',
+        'expires_at' => 'datetime',
+        'is_urgent' => 'boolean',
+        'requires_acknowledgment' => 'boolean',
+        'is_broadcast' => 'boolean'
     ];
 
     /**
