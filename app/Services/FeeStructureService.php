@@ -358,6 +358,11 @@ class FeeStructureService extends BaseService
         try {
             $studentFee = StudentFee::findOrFail($data['student_fee_id']);
 
+            // Generate reference number if not provided
+            if (empty($data['reference_number'])) {
+                $data['reference_number'] = $this->generatePaymentReferenceNumber($studentFee);
+            }
+
             // Create payment record
             $payment = FeePayment::create([
                 'student_fee_id' => $studentFee->id,
@@ -365,7 +370,7 @@ class FeeStructureService extends BaseService
                 'payment_date' => $data['payment_date'],
                 'payment_method' => $data['payment_method'],
                 'transaction_id' => $data['transaction_id'] ?? null,
-                'reference_number' => $data['reference_number'] ?? null,
+                'reference_number' => $data['reference_number'],
                 'received_by' => \Illuminate\Support\Facades\Auth::id(),
                 'notes' => $data['notes'] ?? null,
                 'status' => $data['status'] ?? 'completed',
@@ -383,6 +388,63 @@ class FeeStructureService extends BaseService
             DB::rollBack();
             throw $e;
         }
+    }
+
+    /**
+     * Get student fees with payment status for a school
+     */
+    public function getStudentFeesWithPayments($filters = [])
+    {
+        $cacheKey = 'student_fees_payments_' . md5(serialize($filters));
+
+        return Cache::remember($cacheKey, 300, function () use ($filters) {
+            $query = StudentFee::with(['student', 'feeStructure', 'payments.receivedBy']);
+
+            // Apply school isolation
+            if (isset($filters['school_id'])) {
+                $query->whereHas('student', function ($q) use ($filters) {
+                    $q->where('school_id', $filters['school_id']);
+                });
+            }
+
+            // Filter by academic year
+            if (isset($filters['academic_year_id'])) {
+                $query->whereHas('feeStructure', function ($q) use ($filters) {
+                    $q->where('academic_year_id', $filters['academic_year_id']);
+                });
+            }
+
+            // Filter by class
+            if (isset($filters['class_id'])) {
+                $query->whereHas('student.classes', function ($q) use ($filters) {
+                    $q->where('class_id', $filters['class_id']);
+                });
+            }
+
+            // Filter by payment status
+            if (isset($filters['payment_status'])) {
+                $query->where('status', $filters['payment_status']);
+            }
+
+            // Filter by fee structure
+            if (isset($filters['fee_structure_id'])) {
+                $query->where('fee_structure_id', $filters['fee_structure_id']);
+            }
+
+            return $query->orderBy('due_date', 'asc')->paginate(15);
+        });
+    }
+
+    /**
+     * Generate payment reference number
+     */
+    private function generatePaymentReferenceNumber($studentFee)
+    {
+        $school = $studentFee->student->school;
+        $date = now()->format('Ymd');
+        $sequence = FeePayment::whereDate('created_at', today())->count() + 1;
+        
+        return strtoupper($school->code ?? 'SCH') . $date . str_pad($sequence, 4, '0', STR_PAD_LEFT);
     }
 
     /**

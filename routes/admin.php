@@ -22,6 +22,7 @@ use App\Http\Controllers\SchoolSettingController;
 use App\Http\Controllers\AdmissionNumberController;
 use App\Http\Controllers\RollNumberController;
 use App\Http\Controllers\FeeStructureController;
+use App\Http\Controllers\FeePaymentController;
 
 /*
 |--------------------------------------------------------------------------
@@ -466,5 +467,33 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
         Route::patch('{id}/toggle-status', [\App\Http\Controllers\FeeStructureController::class, 'toggleStatus']);
         Route::post('{id}/generate-student-fees', [\App\Http\Controllers\FeeStructureController::class, 'generateStudentFees']);
         Route::post('{id}/clone', [\App\Http\Controllers\FeeStructureController::class, 'clone']);
+    });
+
+    // Fee Payment Management Routes
+    Route::prefix('fee-payments')->group(function () {
+        // Cached read operations
+        Route::middleware('api.cache:ttl:300,vary_by_school:true')->group(function () {
+            Route::get('/', [\App\Http\Controllers\FeePaymentController::class, 'index']); // List all payments with filtering
+            Route::get('statistics', [\App\Http\Controllers\FeePaymentController::class, 'getPaymentStatistics']); // Payment analytics (moved before {id})
+            Route::get('{id}', [\App\Http\Controllers\FeePaymentController::class, 'show']); // Get specific payment
+        });
+
+        // Write operations (no caching)
+        Route::post('/', [\App\Http\Controllers\FeePaymentController::class, 'store']); // Record new payment
+        Route::put('{id}', [\App\Http\Controllers\FeePaymentController::class, 'update']); // Update payment
+        Route::delete('{id}', [\App\Http\Controllers\FeePaymentController::class, 'destroy']); // Delete payment
+        
+        // Bulk operations
+        Route::post('bulk-mark-paid', [\App\Http\Controllers\FeePaymentController::class, 'bulkMarkAsPaid']); // Bulk mark fees as paid
+        
+        // Receipt generation
+        Route::get('{id}/receipt', [\App\Http\Controllers\FeePaymentController::class, 'generateReceipt']); // Generate receipt
+    });
+
+    // Student Fee Management Routes (for better organization)
+    Route::prefix('student-fees')->group(function () {
+        // Get student fees with payment tracking
+        Route::get('/', [\App\Http\Controllers\FeePaymentController::class, 'getStudentFeesWithPayments'])
+            ->middleware('api.cache:ttl:300,vary_by_school:true');
     });
 });
