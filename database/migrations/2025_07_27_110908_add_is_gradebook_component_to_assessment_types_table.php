@@ -11,9 +11,12 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('assessment_types', function (Blueprint $table) {
-            $table->boolean('is_gradebook_component')->default(true)->after('is_active');
-        });
+        // Only add the column if it doesn't already exist
+        if (!Schema::hasColumn('assessment_types', 'is_gradebook_component')) {
+            Schema::table('assessment_types', function (Blueprint $table) {
+                $table->boolean('is_gradebook_component')->default(true)->after('is_active');
+            });
+        }
     }
 
     /**
@@ -21,8 +24,11 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::table('assessment_types', function (Blueprint $table) {
-            $table->dropColumn('is_gradebook_component');
-        });
+        // Only drop the column if it exists
+        if (Schema::hasColumn('assessment_types', 'is_gradebook_component')) {
+            Schema::table('assessment_types', function (Blueprint $table) {
+                $table->dropColumn('is_gradebook_component');
+            });
+        }
     }
 };

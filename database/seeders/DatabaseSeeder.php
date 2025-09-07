@@ -25,6 +25,7 @@ class DatabaseSeeder extends Seeder
             GallerySeeder::class, // Gallery dummy data with public URLs
             AcademicYearSeeder::class, // Academic years for promotion system
             PromotionCriteriaSeeder::class, // Default promotion criteria
+            FeeManagementModuleSeeder::class, // Fee Management module
         ]);
     }
 }

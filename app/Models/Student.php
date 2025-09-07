@@ -77,6 +77,23 @@ class Student extends Model
         return $this->hasMany(StudentFee::class);
     }
 
+    public function feePlans()
+    {
+        return $this->hasMany(StudentFeePlan::class);
+    }
+
+    public function payments()
+    {
+        return $this->hasMany(Payment::class);
+    }
+
+    public function activeFeePlan()
+    {
+        return $this->hasOne(StudentFeePlan::class)
+            ->where('is_active', true)
+            ->latest();
+    }
+
     public function createdBy()
     {
         return $this->belongsTo(User::class, 'created_by');

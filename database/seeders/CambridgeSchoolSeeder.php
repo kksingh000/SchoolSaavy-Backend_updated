@@ -16,7 +16,7 @@ use Carbon\Carbon;
 
 class CambridgeSchoolSeeder extends Seeder
 {
-    private $schoolId = 7; // Cambridge International School
+    private $schoolId; // Cambridge International School
     private $createdTeachers = [];
     private $createdStudents = [];
     private $createdClasses = [];
@@ -25,6 +25,15 @@ class CambridgeSchoolSeeder extends Seeder
 
     public function run()
     {
+        // Get the first school or skip if none
+        $school = \App\Models\School::first();
+        if (!$school) {
+            $this->command->info('No school found, skipping Cambridge International School data seeding');
+            return;
+        }
+        
+        $this->schoolId = $school->id;
+        
         DB::beginTransaction();
 
         try {
@@ -322,7 +331,6 @@ class CambridgeSchoolSeeder extends Seeder
                 $student = Student::create([
                     'school_id' => $this->schoolId,
                     'admission_number' => 'CIS' . $admissionNumber++,
-                    'roll_number' => str_pad($i, 2, '0', STR_PAD_LEFT),
                     'first_name' => $firstName,
                     'last_name' => $lastName,
                     'date_of_birth' => $this->generateDateOfBirth($class->grade_level),

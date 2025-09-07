@@ -46,11 +46,10 @@ class Handler extends ExceptionHandler
      */
     protected function unauthenticated($request, AuthenticationException $exception)
     {
-        return $request->expectsJson()
-            ? response()->json([
-                'message' => 'Unauthenticated.',
-                'status' => 401
-            ], 401)
-            : redirect()->guest($exception->redirectTo() ?? route('login'));
+        // Since this is an API-only application, always return a JSON response
+        return response()->json([
+            'status' => 'error',
+            'message' => 'Unauthenticated or token expired 5',
+        ], 401);
     }
 }

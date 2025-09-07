@@ -120,13 +120,22 @@ services:
       dockerfile: Dockerfile.quick
     container_name: schoolsavvy_queue_local
     restart: unless-stopped
-    command: php artisan queue:work redis --sleep=3 --tries=3 --max-time=3600 --timeout=300
+    command: >
+      sh -c "
+        echo 'Starting Laravel Queue Worker...' &&
+        php artisan queue:work --queue=fee-processing,default --sleep=3 --tries=3 --max-time=3600 --timeout=300
+      "
     environment:
-      - APP_ENV=production
+      - APP_ENV=local
+      - APP_NAME=Laravel
+      - APP_DEBUG=true
+      - LOG_LEVEL=debug
+      - LOG_CHANNEL=stderr
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=
       - REDIS_CLIENT=predis
+      - REDIS_PREFIX=laravel_database_
       - CACHE_DRIVER=redis
       - SESSION_DRIVER=redis
       - QUEUE_CONNECTION=redis
@@ -147,9 +156,18 @@ services:
     restart: unless-stopped
     command: php artisan schedule:work
     environment:
-      - APP_ENV=production
+      - APP_ENV=local
+      - APP_NAME=Laravel
+      - APP_DEBUG=true
+      - LOG_LEVEL=debug
+      - LOG_CHANNEL=stderr
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_CLIENT=predis
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
     volumes:
       - ./:/var/www/html
       - ./storage:/var/www/html/storage

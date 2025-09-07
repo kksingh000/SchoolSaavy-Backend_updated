@@ -45,7 +45,6 @@ class ParentStudentSeeder extends Seeder
                 $student = Student::create([
                     'school_id' => $school->id,
                     'admission_number' => 'ADM' . str_pad($parent->id . $j, 3, '0', STR_PAD_LEFT),
-                    'roll_number' => 'ROLL' . str_pad($parent->id . $j, 3, '0', STR_PAD_LEFT),
                     'first_name' => fake()->firstName,
                     'last_name' => fake()->lastName,
                     'date_of_birth' => fake()->date('Y-m-d', '-10 years'),

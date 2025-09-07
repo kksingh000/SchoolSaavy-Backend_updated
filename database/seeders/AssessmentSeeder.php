@@ -6,6 +6,11 @@ use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Assessment;
 use App\Models\AssessmentType;
+use App\Models\Subject;
+use App\Models\ClassRoom;
+use App\Models\Teacher;
+use App\Models\User;
+use App\Models\School;
 use Carbon\Carbon;
 
 class AssessmentSeeder extends Seeder
@@ -15,6 +20,63 @@ class AssessmentSeeder extends Seeder
      */
     public function run(): void
     {
+        // Get the first school or skip
+        $school = \App\Models\School::first();
+        if (!$school) {
+            $this->command->info('No school found, skipping assessment seeding');
+            return;
+        }
+        
+        $schoolId = $school->id;
+        
+        // Get or create subjects if they don't exist
+        $mathSubject = \App\Models\Subject::firstOrCreate(
+            ['name' => 'Mathematics', 'school_id' => $schoolId],
+            ['code' => 'MATH-01', 'description' => 'Mathematics subject', 'is_active' => true]
+        );
+        
+        $englishSubject = \App\Models\Subject::firstOrCreate(
+            ['name' => 'English', 'school_id' => $schoolId],
+            ['code' => 'ENG-01', 'description' => 'English subject', 'is_active' => true]
+        );
+        
+        // Get or create a class if none exists
+        $class = \App\Models\ClassRoom::first();
+        if (!$class) {
+            $class = \App\Models\ClassRoom::create([
+                'school_id' => $schoolId,
+                'name' => 'Demo Class',
+                'grade_level' => 5,
+                'section' => 'A',
+                'capacity' => 30,
+                'description' => 'Demo class for seeding purposes'
+            ]);
+        }
+        
+        // Get or create a teacher if none exists
+        $teacher = \App\Models\Teacher::first();
+        if (!$teacher) {
+            $user = \App\Models\User::create([
+                'name' => 'Demo Teacher',
+                'email' => 'demo.teacher@example.com',
+                'password' => bcrypt('password'),
+                'user_type' => 'teacher',
+                'is_active' => true
+            ]);
+            
+            $teacher = \App\Models\Teacher::create([
+                'school_id' => $schoolId,
+                'user_id' => $user->id,
+                'employee_id' => 'TEACH-001',
+                'phone' => '1234567890',
+                'gender' => 'male',
+                'qualification' => 'B.Ed',
+                'specializations' => ['Mathematics', 'Science'],
+                'joining_date' => now()->subYears(2),
+                'address' => '123 Demo Street'
+            ]);
+        }
+        
         $unitTestType = AssessmentType::where('name', 'UT')->first();
         $formativeType = AssessmentType::where('name', 'FA')->first();
         $summativeType = AssessmentType::where('name', 'SA')->first();
@@ -27,10 +89,10 @@ class AssessmentSeeder extends Seeder
                 'title' => 'UT-1 Algebra Basics',
                 'code' => 'UT1-MAT-2025',
                 'description' => 'First unit test covering basic algebraic equations and expressions',
-                'subject_id' => 1, // Mathematics
-                'class_id' => 1, // Class with students
-                'school_id' => 7,
-                'teacher_id' => 1, // Teacher
+                'subject_id' => $mathSubject->id,
+                'class_id' => $class->id,
+                'school_id' => $schoolId,
+                'teacher_id' => $teacher->id,
                 'assessment_date' => Carbon::now()->addDays(7)->format('Y-m-d'),
                 'start_time' => '09:00:00',
                 'end_time' => '10:30:00',
@@ -62,10 +124,10 @@ class AssessmentSeeder extends Seeder
                 'title' => 'UT-1 Grammar & Comprehension',
                 'code' => 'UT1-ENG-2025',
                 'description' => 'English grammar rules and reading comprehension test',
-                'subject_id' => 2, // English
-                'class_id' => 1, // Class with students
-                'school_id' => 7,
-                'teacher_id' => 2, // Teacher
+                'subject_id' => $englishSubject->id,
+                'class_id' => $class->id,
+                'school_id' => $schoolId,
+                'teacher_id' => $teacher->id,
                 'assessment_date' => Carbon::now()->addDays(10)->format('Y-m-d'),
                 'start_time' => '11:00:00',
                 'end_time' => '12:30:00',
@@ -97,10 +159,10 @@ class AssessmentSeeder extends Seeder
                 'title' => 'FA-1 Quick Math Check',
                 'code' => 'FA1-MAT-2025',
                 'description' => 'Weekly formative assessment on recent math topics',
-                'subject_id' => 1, // Mathematics
-                'class_id' => 1, // Class with students
-                'school_id' => 7,
-                'teacher_id' => 1,
+                'subject_id' => $mathSubject->id,
+                'class_id' => $class->id,
+                'school_id' => $schoolId,
+                'teacher_id' => $teacher->id,
                 'assessment_date' => Carbon::now()->addDays(3)->format('Y-m-d'),
                 'start_time' => '14:00:00',
                 'end_time' => '14:45:00',
@@ -128,10 +190,10 @@ class AssessmentSeeder extends Seeder
                 'title' => 'Math Quiz - Completed',
                 'code' => 'QUIZ1-MAT-2025',
                 'description' => 'Completed math quiz for demonstration',
-                'subject_id' => 1, // Mathematics
-                'class_id' => 1, // Class with students
-                'school_id' => 7,
-                'teacher_id' => 1,
+                'subject_id' => $mathSubject->id,
+                'class_id' => $class->id,
+                'school_id' => $schoolId,
+                'teacher_id' => $teacher->id,
                 'assessment_date' => Carbon::now()->subDays(5)->format('Y-m-d'),
                 'start_time' => '10:00:00',
                 'end_time' => '10:30:00',

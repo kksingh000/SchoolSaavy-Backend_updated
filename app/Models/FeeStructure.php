@@ -15,17 +15,7 @@ class FeeStructure extends Model
         'name',
         'class_id',
         'academic_year_id',
-        'academic_year', // Keep for backward compatibility
-        'fee_components',
-        'total_amount',
-        'is_active',
         'description',
-    ];
-
-    protected $casts = [
-        'fee_components' => 'json',
-        'total_amount' => 'decimal:2',
-        'is_active' => 'boolean',
     ];
 
     public function school()
@@ -43,9 +33,14 @@ class FeeStructure extends Model
         return $this->belongsTo(ClassRoom::class, 'class_id');
     }
 
-    public function studentFees()
+    public function components()
     {
-        return $this->hasMany(StudentFee::class);
+        return $this->hasMany(FeeStructureComponent::class);
+    }
+
+    public function studentFeePlans()
+    {
+        return $this->hasMany(StudentFeePlan::class);
     }
 
     public function scopeForAcademicYear($query, $academicYearId)
@@ -58,5 +53,10 @@ class FeeStructure extends Model
         return $query->whereHas('academicYear', function ($q) {
             $q->where('is_current', true);
         });
+    }
+
+    public function scopeForSchool($query, $schoolId)
+    {
+        return $query->where('school_id', $schoolId);
     }
 }

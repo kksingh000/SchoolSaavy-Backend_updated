@@ -56,7 +56,7 @@ Route::get('/health', function () {
 });
 
 // Apply JSON response middleware to all API routes
-Route::middleware('json.response')->group(function () {
+Route::middleware(['json.response'])->group(function () {
     // Authentication Routes
     Route::prefix('auth')->group(function () {
         Route::post('login', [AuthController::class, 'login']);
@@ -125,4 +125,7 @@ Route::middleware('json.response')->group(function () {
 
     // Include super admin routes
     require __DIR__ . '/superadmin.php';
+    
+    // Include fee management routes
+    require __DIR__ . '/fee-management.php';
 });

@@ -13,6 +13,16 @@ class AssessmentTypeSeeder extends Seeder
      */
     public function run(): void
     {
+        // Get the first available school or create one if none exists
+        $school = \App\Models\School::first();
+        
+        if (!$school) {
+            $this->command->info('No school found, skipping assessment type seeding');
+            return;
+        }
+        
+        $schoolId = $school->id;
+        
         $assessmentTypes = [
             [
                 'name' => 'UT',
@@ -29,7 +39,7 @@ class AssessmentTypeSeeder extends Seeder
                     'time_limit_minutes' => 90,
                     'negative_marking' => false
                 ]),
-                'school_id' => 7,
+                'school_id' => $schoolId,
             ],
             [
                 'name' => 'FA',
@@ -46,7 +56,7 @@ class AssessmentTypeSeeder extends Seeder
                     'time_limit_minutes' => 60,
                     'negative_marking' => false
                 ]),
-                'school_id' => 7,
+                'school_id' => $schoolId,
             ],
             [
                 'name' => 'SA',
@@ -63,7 +73,7 @@ class AssessmentTypeSeeder extends Seeder
                     'time_limit_minutes' => 180,
                     'negative_marking' => true
                 ]),
-                'school_id' => 7,
+                'school_id' => $schoolId,
             ],
             [
                 'name' => 'FINAL',
@@ -80,7 +90,7 @@ class AssessmentTypeSeeder extends Seeder
                     'time_limit_minutes' => 240,
                     'negative_marking' => true
                 ]),
-                'school_id' => 7,
+                'school_id' => $schoolId,
             ],
             [
                 'name' => 'QUIZ',
@@ -97,7 +107,7 @@ class AssessmentTypeSeeder extends Seeder
                     'time_limit_minutes' => 30,
                     'negative_marking' => false
                 ]),
-                'school_id' => 7,
+                'school_id' => $schoolId,
             ]
         ];
 

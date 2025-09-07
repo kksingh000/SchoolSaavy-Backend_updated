@@ -10,7 +10,7 @@ return new class extends Migration
     {
         Schema::create('unit_test_results', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('unit_test_id')->constrained()->onDelete('cascade');
+            $table->foreignId('unit_test_id')->references('id')->on('assessments')->onDelete('cascade');
             $table->foreignId('student_id')->constrained()->onDelete('cascade');
 
             $table->integer('marks_obtained');

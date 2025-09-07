@@ -86,6 +86,39 @@ class BaseController extends Controller
             'data' => $data
         ], $code);
     }
+    
+    /**
+     * Return a paginated success response with meta data
+     *
+     * @param \Illuminate\Pagination\LengthAwarePaginator $paginator
+     * @param mixed $resourceCollection
+     * @param string $message
+     * @param int $code
+     * @return \Illuminate\Http\JsonResponse
+     */
+    protected function paginatedSuccessResponse($paginator, $resourceCollection, string $message = 'Success', int $code = 200): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'message' => $message,
+            'data' => $resourceCollection->response()->getData()->data,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'from' => $paginator->firstItem(),
+                'last_page' => $paginator->lastPage(),
+                'path' => $paginator->path(),
+                'per_page' => $paginator->perPage(),
+                'to' => $paginator->lastItem(),
+                'total' => $paginator->total(),
+            ],
+            'links' => [
+                'first' => $paginator->url(1),
+                'last' => $paginator->url($paginator->lastPage()),
+                'prev' => $paginator->previousPageUrl(),
+                'next' => $paginator->nextPageUrl(),
+            ],
+        ], $code);
+    }
 
     protected function errorResponse(string $message = 'Error', $errors = null, int $code = 500): JsonResponse
     {
