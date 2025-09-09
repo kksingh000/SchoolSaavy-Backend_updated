@@ -92,6 +92,10 @@ class GenerateStudentFeeInstallments implements ShouldQueue
                         $this->generateYearlyInstallment($schoolId, $component, $startDate, $amount);
                         break;
                         
+                    case 'One-Time':
+                        $this->generateOneTimeInstallment($schoolId, $component, $startDate, $amount);
+                        break;
+                        
                     default:
                         Log::warning("Unknown frequency '{$component->frequency}' for component ID: {$component->id}");
                         break;
@@ -155,6 +159,21 @@ class GenerateStudentFeeInstallments implements ShouldQueue
      * Generate a single yearly installment for a component
      */
     private function generateYearlyInstallment($schoolId, $component, $startDate, $amount)
+    {
+        $this->createInstallment(
+            $schoolId,
+            $this->studentFeePlan->id,
+            $component->id,
+            1,
+            Carbon::parse($startDate),
+            $amount
+        );
+    }
+    
+    /**
+     * Generate a single one-time installment for a component
+     */
+    private function generateOneTimeInstallment($schoolId, $component, $startDate, $amount)
     {
         $this->createInstallment(
             $schoolId,

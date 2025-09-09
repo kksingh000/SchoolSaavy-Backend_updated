@@ -14,6 +14,12 @@ use App\Http\Controllers\FeeManagementController;
 
 // Fee Management Routes
 Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(function () {
+    // Master Fee Components (Global components that can be reused)
+    Route::prefix('fee-management/master-components')->group(function () {
+        Route::get('/', [FeeManagementController::class, 'getMasterFeeComponents']);
+        Route::get('{id}', [FeeManagementController::class, 'getMasterFeeComponent']);
+    });
+
     // Fee Structures
     Route::prefix('fee-management/structures')->group(function () {
         Route::get('/', [FeeManagementController::class, 'listFeeStructures']);

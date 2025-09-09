@@ -13,6 +13,7 @@ class DatabaseSeeder extends Seeder
     {
         $this->call([
             ModuleSeeder::class,
+            MasterFeeComponentSeeder::class, // Master fee components (must be first)
             SchoolSeeder::class,
             SchoolAdminSeeder::class,
             TeacherSeeder::class,

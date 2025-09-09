@@ -381,4 +381,33 @@ class FeeManagementController extends BaseController
             return $this->errorResponse('Failed to retrieve detailed student fee information: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Get all master fee components
+     */
+    public function getMasterFeeComponents(Request $request)
+    {
+        try {
+            $filters = $request->only(['category', 'is_required', 'search']);
+            $masterComponents = $this->feeManagementService->getMasterFeeComponents($filters);
+            
+            return $this->successResponse($masterComponents, 'Master fee components retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to retrieve master fee components: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get a specific master fee component
+     */
+    public function getMasterFeeComponent($id)
+    {
+        try {
+            $masterComponent = $this->feeManagementService->getMasterFeeComponent($id);
+            
+            return $this->successResponse($masterComponent, 'Master fee component retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to retrieve master fee component: ' . $e->getMessage());
+        }
+    }
 }

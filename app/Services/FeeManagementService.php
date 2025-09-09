@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\FeeInstallment;
 use App\Models\FeeStructure;
 use App\Models\FeeStructureComponent;
+use App\Models\MasterFeeComponent;
 use App\Models\Payment;
 use App\Models\PaymentAllocation;
 use App\Models\School;
@@ -13,6 +14,7 @@ use App\Models\StudentFeePlan;
 use App\Models\StudentFeePlanComponent;
 use App\Models\AcademicYear;
 use App\Jobs\GenerateStudentFeeInstallments;
+use App\Jobs\CreateDefaultStudentFeePlans;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -62,20 +64,54 @@ class FeeManagementService extends BaseService
                 'description' => $data['description'] ?? null,
             ]);
 
+            // Validate no duplicate master components
+            $masterComponentIds = collect($data['components'])
+                ->pluck('master_component_id')
+                ->filter()
+                ->toArray();
+            
+            if (count($masterComponentIds) !== count(array_unique($masterComponentIds))) {
+                throw new \Exception('Duplicate master components are not allowed in the same fee structure');
+            }
+
             // Create fee components
             foreach ($data['components'] as $component) {
-                FeeStructureComponent::create([
+                $componentData = [
                     'fee_structure_id' => $feeStructure->id,
-                    'component_name' => $component['name'],
                     'amount' => $component['amount'],
                     'frequency' => $component['frequency'],
-                ]);
+                ];
+
+                // Handle master component or custom component
+                if (isset($component['master_component_id'])) {
+                    $componentData['master_component_id'] = $component['master_component_id'];
+                    $componentData['custom_name'] = $component['custom_name'] ?? null;
+                    
+                    // Use API value if provided, otherwise use master component's default
+                    if (isset($component['required'])) {
+                        $componentData['is_required'] = $component['required'];
+                    } else {
+                        $masterComponent = MasterFeeComponent::find($component['master_component_id']);
+                        $componentData['is_required'] = $masterComponent ? $masterComponent->is_required : true;
+                    }
+                } else {
+                    // Legacy support for direct component name
+                    $componentData['component_name'] = $component['name'];
+                    $componentData['is_required'] = $component['required'] ?? true;
+                }
+
+                FeeStructureComponent::create($componentData);
             }
 
             // Clear cache
             $this->clearCache($schoolId);
 
             DB::commit();
+            
+            // Dispatch job to create default student fee plans with required components
+            CreateDefaultStudentFeePlans::dispatch($feeStructure->id)
+                ->onQueue('fee-processing')
+                ->delay(now()->addSeconds(5)); // Small delay to ensure transaction is committed
             
             // Load all relationships that might be needed by the resource
             return $feeStructure->fresh(['components', 'class', 'academicYear', 'school']);
@@ -94,7 +130,7 @@ class FeeManagementService extends BaseService
         $cacheKey = "fee_structures_{$schoolId}_" . md5(json_encode($filters));
         
         return Cache::remember($cacheKey, 300, function () use ($schoolId, $filters) {
-            $query = FeeStructure::with(['components', 'class', 'academicYear'])
+            $query = FeeStructure::with(['components.masterComponent', 'class', 'academicYear'])
                 ->forSchool($schoolId);
             
             // Apply filters
@@ -127,7 +163,7 @@ class FeeManagementService extends BaseService
         $cacheKey = "fee_structure_{$schoolId}_{$id}";
         
         return Cache::remember($cacheKey, 300, function () use ($schoolId, $id) {
-            return FeeStructure::with(['components', 'class', 'academicYear'])
+            return FeeStructure::with(['components.masterComponent', 'class', 'academicYear'])
                 ->forSchool($schoolId)
                 ->findOrFail($id);
         });
@@ -153,17 +189,46 @@ class FeeManagementService extends BaseService
             
             // Handle components if provided
             if (isset($data['components'])) {
+                // Validate no duplicate master components
+                $masterComponentIds = collect($data['components'])
+                    ->pluck('master_component_id')
+                    ->filter()
+                    ->toArray();
+                
+                if (count($masterComponentIds) !== count(array_unique($masterComponentIds))) {
+                    throw new \Exception('Duplicate master components are not allowed in the same fee structure');
+                }
+                
                 // Remove old components
                 FeeStructureComponent::where('fee_structure_id', $id)->delete();
                 
                 // Create new components
                 foreach ($data['components'] as $component) {
-                    FeeStructureComponent::create([
+                    $componentData = [
                         'fee_structure_id' => $id,
-                        'component_name' => $component['name'],
                         'amount' => $component['amount'],
                         'frequency' => $component['frequency'],
-                    ]);
+                    ];
+
+                    // Handle master component or custom component
+                    if (isset($component['master_component_id'])) {
+                        $componentData['master_component_id'] = $component['master_component_id'];
+                        $componentData['custom_name'] = $component['custom_name'] ?? null;
+                        
+                        // Use API value if provided, otherwise use master component's default
+                        if (isset($component['required'])) {
+                            $componentData['is_required'] = $component['required'];
+                        } else {
+                            $masterComponent = MasterFeeComponent::find($component['master_component_id']);
+                            $componentData['is_required'] = $masterComponent ? $masterComponent->is_required : true;
+                        }
+                    } else {
+                        // Legacy support for direct component name
+                        $componentData['component_name'] = $component['name'];
+                        $componentData['is_required'] = $component['required'] ?? true;
+                    }
+
+                    FeeStructureComponent::create($componentData);
                 }
             }
             
@@ -250,13 +315,29 @@ class FeeManagementService extends BaseService
             
             // Create student fee plan components
             if (isset($data['components'])) {
+                // First, add all required components automatically
+                foreach ($feeStructure->components as $component) {
+                    if ($component->is_required) {
+                        StudentFeePlanComponent::create([
+                            'student_fee_plan_id' => $feePlan->id,
+                            'component_id' => $component->id,
+                            'is_active' => true,
+                        ]);
+                    }
+                }
+                
+                // Then add optional components as specified
                 foreach ($data['components'] as $component) {
-                    StudentFeePlanComponent::create([
-                        'student_fee_plan_id' => $feePlan->id,
-                        'component_id' => $component['component_id'],
-                        'is_active' => $component['is_active'] ?? true,
-                        'custom_amount' => $component['custom_amount'] ?? null,
-                    ]);
+                    // Skip if it's a required component (already added above)
+                    $feeComponent = $feeStructure->components->find($component['component_id']);
+                    if ($feeComponent && !$feeComponent->is_required) {
+                        StudentFeePlanComponent::create([
+                            'student_fee_plan_id' => $feePlan->id,
+                            'component_id' => $component['component_id'],
+                            'is_active' => $component['is_active'] ?? true,
+                            'custom_amount' => $component['custom_amount'] ?? null,
+                        ]);
+                    }
                 }
             } else {
                 // If no components specified, use all components from fee structure
@@ -264,7 +345,7 @@ class FeeManagementService extends BaseService
                     StudentFeePlanComponent::create([
                         'student_fee_plan_id' => $feePlan->id,
                         'component_id' => $component->id,
-                        'is_active' => true,
+                        'is_active' => $component->is_required ? true : false,
                     ]);
                 }
             }
@@ -423,17 +504,35 @@ class FeeManagementService extends BaseService
             
             // Handle components if provided
             if (isset($data['components'])) {
+                // Get the fee structure to check required components
+                $feeStructure = $feePlan->feeStructure()->with('components')->first();
+                
                 // Remove old components
                 StudentFeePlanComponent::where('student_fee_plan_id', $id)->delete();
                 
-                // Create new components
+                // First, add all required components automatically
+                foreach ($feeStructure->components as $component) {
+                    if ($component->is_required) {
+                        StudentFeePlanComponent::create([
+                            'student_fee_plan_id' => $id,
+                            'component_id' => $component->id,
+                            'is_active' => true,
+                        ]);
+                    }
+                }
+                
+                // Then add optional components as specified
                 foreach ($data['components'] as $component) {
-                    StudentFeePlanComponent::create([
-                        'student_fee_plan_id' => $id,
-                        'component_id' => $component['component_id'],
-                        'is_active' => $component['is_active'] ?? true,
-                        'custom_amount' => $component['custom_amount'] ?? null,
-                    ]);
+                    // Skip if it's a required component (already added above)
+                    $feeComponent = $feeStructure->components->find($component['component_id']);
+                    if ($feeComponent && !$feeComponent->is_required) {
+                        StudentFeePlanComponent::create([
+                            'student_fee_plan_id' => $id,
+                            'component_id' => $component['component_id'],
+                            'is_active' => $component['is_active'] ?? true,
+                            'custom_amount' => $component['custom_amount'] ?? null,
+                        ]);
+                    }
                 }
                 
                 // Dispatch job to regenerate installments asynchronously
@@ -914,5 +1013,51 @@ class FeeManagementService extends BaseService
         foreach ($cachePatterns as $pattern) {
             Cache::forget($pattern);
         }
+    }
+
+    /**
+     * Get all master fee components
+     */
+    public function getMasterFeeComponents(array $filters = [])
+    {
+        $cacheKey = "master_fee_components_" . md5(json_encode($filters));
+        
+        return Cache::remember($cacheKey, 3600, function () use ($filters) {
+            $query = MasterFeeComponent::active();
+            
+            // Apply filters
+            if (isset($filters['category'])) {
+                $query->byCategory($filters['category']);
+            }
+            
+            if (isset($filters['is_required'])) {
+                if ($filters['is_required']) {
+                    $query->required();
+                } else {
+                    $query->optional();
+                }
+            }
+            
+            if (isset($filters['search'])) {
+                $query->where('name', 'like', '%' . $filters['search'] . '%');
+            }
+            
+            return $query->orderBy('category')
+                        ->orderBy('name')
+                        ->get()
+                        ->groupBy('category');
+        });
+    }
+
+    /**
+     * Get master fee component by ID
+     */
+    public function getMasterFeeComponent($id)
+    {
+        $cacheKey = "master_fee_component_{$id}";
+        
+        return Cache::remember($cacheKey, 3600, function () use ($id) {
+            return MasterFeeComponent::active()->findOrFail($id);
+        });
     }
 }
