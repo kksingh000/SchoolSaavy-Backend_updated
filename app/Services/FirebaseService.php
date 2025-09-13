@@ -18,6 +18,15 @@ class FirebaseService
         $this->client = new Client();
         $this->projectId = config('services.firebase.project_id');
         $this->serviceAccountPath = config('services.firebase.service_account_path');
+        
+        // Validate configuration
+        if (empty($this->projectId)) {
+            throw new \Exception('Firebase project ID is not configured. Please set FIREBASE_PROJECT_ID in your environment.');
+        }
+        
+        if (empty($this->serviceAccountPath)) {
+            throw new \Exception('Firebase service account path is not configured. Please set FIREBASE_SERVICE_ACCOUNT_PATH in your environment.');
+        }
     }
 
     /**
@@ -214,16 +223,21 @@ class FirebaseService
      */
     private function buildMessage(string $token, array $notification, array $data = []): array
     {
+        // Ensure all data values are strings and clean
+        $cleanData = $this->convertDataToStrings($data);
+        
         return [
             'token' => $token,
-            'notification' => $notification,
-            'data' => $this->convertDataToStrings($data),
+            'notification' => [
+                'title' => (string) ($notification['title'] ?? ''),
+                'body' => (string) ($notification['body'] ?? ''),
+            ],
+            'data' => $cleanData,
             'android' => [
                 'priority' => 'high',
                 'notification' => [
                     'channel_id' => 'default',
                     'sound' => 'default',
-                    'click_action' => 'FLUTTER_NOTIFICATION_CLICK'
                 ]
             ],
             'apns' => [
@@ -275,7 +289,7 @@ class FirebaseService
             }
 
             Log::error('Firebase send message failed', [
-                'error' => $errorMessage,
+                'error' => $e,
                 'message' => $message
             ]);
 
@@ -315,7 +329,23 @@ class FirebaseService
     {
         $stringData = [];
         foreach ($data as $key => $value) {
-            $stringData[$key] = is_array($value) ? json_encode($value) : (string) $value;
+            // Skip null values and empty arrays
+            if ($value === null || (is_array($value) && empty($value))) {
+                continue;
+            }
+            
+            // Convert to string, handling arrays and objects properly
+            if (is_array($value) || is_object($value)) {
+                $stringData[$key] = json_encode($value);
+            } else {
+                $stringData[$key] = (string) $value;
+            }
+            
+            // Validate key names (Firebase doesn't allow certain characters)
+            if (!preg_match('/^[a-zA-Z0-9_]+$/', $key)) {
+                Log::warning("Invalid Firebase data key: {$key}. Skipping.");
+                unset($stringData[$key]);
+            }
         }
         return $stringData;
     }

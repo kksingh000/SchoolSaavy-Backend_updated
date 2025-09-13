@@ -7,8 +7,10 @@ use App\Models\NotificationDelivery;
 use App\Models\User;
 use App\Models\UserDeviceToken;
 use App\Models\ClassRoom;
+use App\Jobs\ProcessNotificationDelivery;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
 
 class NotificationService extends BaseService
@@ -27,7 +29,7 @@ class NotificationService extends BaseService
     }
 
     /**
-     * Send notification immediately
+     * Send notification immediately (queued)
      */
     public function sendNotification(array $data): array
     {
@@ -53,35 +55,24 @@ class NotificationService extends BaseService
 
             DB::commit();
 
-            // Send to recipients (this happens after DB commit)
-            // Delivery failures should not affect notification success status
-            $deliveryResult = $this->sendToRecipients($notification, $recipients);
+            // Dispatch job to process notification delivery in background
+            ProcessNotificationDelivery::dispatch($notification, $recipients);
 
-            // Always return success if notification was saved to database
-            // Delivery issues are tracked separately for super admin visibility
+            // Return immediate success response
             $response = [
                 'success' => true,
                 'notification_id' => $notification->id,
                 'total_recipients' => count($recipients),
-                'sent_count' => $deliveryResult['success_count'],
-                'failed_count' => $deliveryResult['failure_count'],
-                'message' => 'Notification created successfully'
+                'status' => 'queued',
+                'message' => 'Notification queued for delivery successfully'
             ];
 
-            // Add delivery warnings for super admin, not regular school admin
-            if ($deliveryResult['failure_count'] > 0) {
-                $response['delivery_warning'] = 'Some deliveries failed - check Firebase logs for details';
-
-                // Log delivery issues for super admin monitoring
-                Log::warning('Notification delivery issues', [
-                    'notification_id' => $notification->id,
-                    'school_id' => $notification->school_id,
-                    'total_recipients' => count($recipients),
-                    'successful_deliveries' => $deliveryResult['success_count'],
-                    'failed_deliveries' => $deliveryResult['failure_count'],
-                    'delivery_errors' => $deliveryResult['delivery_errors'] ?? []
-                ]);
-            }
+            Log::info('Notification queued for delivery', [
+                'notification_id' => $notification->id,
+                'school_id' => $notification->school_id,
+                'total_recipients' => count($recipients),
+                'priority' => $notification->priority
+            ]);
 
             return $response;
         } catch (\Exception $e) {
@@ -142,14 +133,22 @@ class NotificationService extends BaseService
         foreach ($dueNotifications as $notification) {
             try {
                 $recipients = $this->getRecipients($notification);
-                $result = $this->sendToRecipients($notification, $recipients);
-
+                
+                // Dispatch job to process the scheduled notification
+                ProcessNotificationDelivery::dispatch($notification, $recipients);
+                
                 $processed[] = [
                     'notification_id' => $notification->id,
                     'success' => true,
-                    'sent_count' => $result['success_count'],
-                    'failed_count' => $result['failure_count']
+                    'status' => 'queued',
+                    'total_recipients' => count($recipients)
                 ];
+
+                Log::info('Scheduled notification queued for delivery', [
+                    'notification_id' => $notification->id,
+                    'total_recipients' => count($recipients)
+                ]);
+                
             } catch (\Exception $e) {
                 $notification->markAsFailed();
                 $processed[] = [
@@ -157,6 +156,11 @@ class NotificationService extends BaseService
                     'success' => false,
                     'error' => $e->getMessage()
                 ];
+                
+                Log::error('Failed to queue scheduled notification', [
+                    'notification_id' => $notification->id,
+                    'error' => $e->getMessage()
+                ]);
             }
         }
 
@@ -174,7 +178,7 @@ class NotificationService extends BaseService
             'message' => $data['message'],
             'type' => $data['type'] ?? Notification::TYPE_GENERAL,
             'priority' => $data['priority'] ?? Notification::PRIORITY_NORMAL,
-            'sender_id' => $data['sender_id'] ?? auth()->id(),
+            'sender_id' => $data['sender_id'] ?? (Auth::check() ? Auth::id() : null),
             'target_type' => $data['target_type'],
             'target_ids' => $data['target_ids'] ?? null,
             'target_classes' => $data['target_classes'] ?? null,
@@ -404,16 +408,24 @@ class NotificationService extends BaseService
     private function sendFirebaseNotification(array $tokens, Notification $notification): array
     {
         $firebaseNotification = [
-            'title' => $notification->title,
-            'body' => $notification->message
+            'title' => (string) $notification->title,
+            'body' => (string) $notification->message
         ];
 
-        $firebaseData = array_merge($notification->data ?? [], [
+        // Prepare data payload with proper string conversion
+        $firebaseData = [
             'notification_id' => (string) $notification->id,
-            'type' => $notification->type,
-            'priority' => $notification->priority,
+            'type' => (string) $notification->type,
+            'priority' => (string) $notification->priority,
             'click_action' => 'FLUTTER_NOTIFICATION_CLICK'
-        ]);
+        ];
+
+        // Add custom data if present, ensuring all values are strings
+        if (!empty($notification->data)) {
+            foreach ($notification->data as $key => $value) {
+                $firebaseData[$key] = is_array($value) ? json_encode($value) : (string) $value;
+            }
+        }
 
         if (count($tokens) === 1) {
             return $this->firebaseService->sendToToken($tokens[0], $firebaseNotification, $firebaseData);
@@ -613,6 +625,55 @@ class NotificationService extends BaseService
                 'message' => 'Failed to register device token: ' . $e->getMessage()
             ];
         }
+    }
+
+    /**
+     * Get notification delivery status with progress
+     */
+    public function getNotificationStatus(int $notificationId): array
+    {
+        $notification = Notification::with(['deliveries' => function($query) {
+            $query->select('notification_id', 'status', DB::raw('count(*) as count'))
+                  ->groupBy('notification_id', 'status');
+        }])->find($notificationId);
+
+        if (!$notification) {
+            return [
+                'success' => false,
+                'message' => 'Notification not found'
+            ];
+        }
+
+        $statusCounts = [];
+        foreach ($notification->deliveries as $delivery) {
+            $statusCounts[$delivery->status] = $delivery->count;
+        }
+
+        $totalRecipients = $notification->total_recipients;
+        $processedCount = array_sum($statusCounts);
+        $progressPercentage = $totalRecipients > 0 ? ($processedCount / $totalRecipients) * 100 : 0;
+
+        return [
+            'success' => true,
+            'data' => [
+                'notification_id' => $notification->id,
+                'status' => $notification->status,
+                'priority' => $notification->priority,
+                'total_recipients' => $totalRecipients,
+                'processed_count' => $processedCount,
+                'progress_percentage' => round($progressPercentage, 2),
+                'delivery_status' => [
+                    'pending' => $statusCounts['pending'] ?? 0,
+                    'sent' => $statusCounts['sent'] ?? 0,
+                    'delivered' => $statusCounts['delivered'] ?? 0,
+                    'read' => $statusCounts['read'] ?? 0,
+                    'acknowledged' => $statusCounts['acknowledged'] ?? 0,
+                    'failed' => $statusCounts['failed'] ?? 0
+                ],
+                'created_at' => $notification->created_at,
+                'updated_at' => $notification->updated_at
+            ]
+        ];
     }
 
     /**

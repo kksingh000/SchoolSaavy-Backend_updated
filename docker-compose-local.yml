@@ -123,7 +123,7 @@ services:
     command: >
       sh -c "
         echo 'Starting Laravel Queue Worker...' &&
-        php artisan queue:work --queue=fee-processing,default --sleep=3 --tries=3 --max-time=3600 --timeout=300
+        php artisan queue:work --queue=fee-processing,default,high --sleep=3 --tries=3 --max-time=3600 --timeout=300
       "
     environment:
       - APP_ENV=local

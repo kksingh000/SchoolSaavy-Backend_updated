@@ -40,6 +40,9 @@ class Notification extends Model
         'data'
     ];
 
+    // Virtual attributes for compatibility with new notification system
+    protected $appends = ['sent_count', 'delivered_count', 'read_count'];
+
     protected $casts = [
         'target_ids' => 'array',
         'target_classes' => 'array',
@@ -227,7 +230,7 @@ class Notification extends Model
             return 0;
         }
 
-        return ($this->sent_count / $this->total_recipients) * 100;
+        return ($this->getSentCountAttribute() / $this->total_recipients) * 100;
     }
 
     /**
@@ -235,11 +238,35 @@ class Notification extends Model
      */
     public function getReadRate(): float
     {
-        if ($this->sent_count == 0) {
+        if ($this->getSentCountAttribute() == 0) {
             return 0;
         }
 
-        return ($this->read_count / $this->sent_count) * 100;
+        return ($this->getReadCountAttribute() / $this->getSentCountAttribute()) * 100;
+    }
+
+    /**
+     * Virtual attribute: sent_count (maps to successful_sends)
+     */
+    public function getSentCountAttribute(): int
+    {
+        return $this->successful_sends ?? 0;
+    }
+
+    /**
+     * Virtual attribute: delivered_count (calculated from deliveries)
+     */
+    public function getDeliveredCountAttribute(): int
+    {
+        return $this->deliveries()->whereIn('status', ['delivered', 'read', 'acknowledged'])->count();
+    }
+
+    /**
+     * Virtual attribute: read_count (calculated from deliveries)
+     */
+    public function getReadCountAttribute(): int
+    {
+        return $this->deliveries()->whereIn('status', ['read', 'acknowledged'])->count();
     }
 
     /**
@@ -247,10 +274,14 @@ class Notification extends Model
      */
     public function updateCounts()
     {
-        $this->sent_count = $this->successfulDeliveries()->count();
-        $this->delivered_count = $this->deliveries()->whereIn('status', ['delivered', 'read', 'acknowledged'])->count();
-        $this->read_count = $this->deliveries()->whereIn('status', ['read', 'acknowledged'])->count();
+        // Update the existing database columns
+        $sentCount = $this->successfulDeliveries()->count();
+        $this->successful_sends = $sentCount;
+        $this->failed_sends = $this->deliveries()->where('status', 'failed')->count();
         $this->save();
+        
+        // Virtual attributes (sent_count, delivered_count, read_count) 
+        // will be calculated automatically via accessors
     }
 
     /**

@@ -168,6 +168,35 @@ jobs:
             mkdir -p storage/framework/views
             mkdir -p storage/logs
             
+            # Create Firebase service account file from GitHub secret
+            echo "🔥 Creating Firebase service account file..."
+            mkdir -p storage/app
+            if [ ! -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+              # Write the JSON content to the file
+              cat > storage/app/firebase-service-account.json << 'FIREBASE_EOF'
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_EOF
+              
+              # Verify the file was created and has content
+              if [ -s storage/app/firebase-service-account.json ]; then
+                echo "✅ Firebase service account file created successfully"
+                chmod 600 storage/app/firebase-service-account.json
+                ls -la storage/app/firebase-service-account.json
+                
+                # Validate JSON structure (basic check)
+                if python3 -m json.tool storage/app/firebase-service-account.json > /dev/null 2>&1; then
+                  echo "✅ Firebase service account JSON is valid"
+                else
+                  echo "⚠️  Firebase service account JSON may be invalid"
+                fi
+              else
+                echo "❌ Firebase service account file is empty or not created"
+              fi
+            else
+              echo "❌ WARNING: FIREBASE_SERVICE_ACCOUNT secret is not set!"
+              echo "   Notifications will not work without this configuration"
+            fi
+            
             # Set proper permissions for storage directories
             chmod -R 755 storage/
             
@@ -226,6 +255,21 @@ jobs:
             docker compose exec -T app php artisan --version || echo "❌ Laravel not working"
             docker compose exec -T app php artisan config:show database.default || echo "❌ Database config issue"
             
+            # Verify Firebase service account file is accessible from within container
+            echo "🔥 Verifying Firebase service account file in container..."
+            docker compose exec -T app ls -la /var/www/html/storage/app/firebase-service-account.json || echo "❌ Firebase service account file not found in container"
+            
+            # Copy supervisor configuration for queue workers
+            echo "👷 Setting up queue workers..."
+            if [ -f "docker/supervisor/schoolsaavy-queues.conf" ]; then
+              docker compose exec -T app cp /var/www/html/docker/supervisor/schoolsaavy-queues.conf /etc/supervisor/conf.d/schoolsaavy-queues.conf || echo "⚠️  Failed to copy supervisor config"
+              docker compose exec -T app supervisorctl reread || echo "⚠️  Failed to reread supervisor config"
+              docker compose exec -T app supervisorctl update || echo "⚠️  Failed to update supervisor config"
+              docker compose exec -T app supervisorctl status || echo "⚠️  Failed to get supervisor status"
+            else
+              echo "⚠️  Supervisor config file not found, queue workers may not be properly configured"
+            fi
+            
             # Run database migrations
             docker compose exec -T app php artisan migrate --force || true
             
@@ -257,6 +301,12 @@ jobs:
             if docker compose ps | grep -q "Up"; then
               echo "✅ Deployment successful! Containers are running."
               docker compose ps
+              
+              echo ""
+              echo "🔥 Checking Firebase configuration..."
+              # Check Firebase configuration using our custom command
+              docker compose exec -T app php artisan firebase:check || echo "❌ Firebase check failed"
+              
             else
               echo "❌ Deployment failed! Containers are not running."
               docker compose logs --tail=50

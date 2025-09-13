@@ -72,6 +72,43 @@ return [
             'after_commit' => false,
         ],
 
+        // Priority queues for notifications
+        'notifications' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'notifications_default',
+            'retry_after' => 90,
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        'urgent' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'notifications_urgent',
+            'retry_after' => 60,
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        'high' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'notifications_high',
+            'retry_after' => 90,
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
+        'low' => [
+            'driver' => 'redis',
+            'connection' => env('REDIS_QUEUE_CONNECTION', 'default'),
+            'queue' => 'notifications_low',
+            'retry_after' => 120,
+            'block_for' => null,
+            'after_commit' => false,
+        ],
+
     ],
 
     /*

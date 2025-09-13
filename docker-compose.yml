@@ -114,7 +114,7 @@ services:
     image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest
     container_name: schoolsavvy_queue
     restart: unless-stopped
-    command: php artisan queue:work redis --queue=fee-processing,default --sleep=3 --tries=3 --max-time=3600 --timeout=300
+    command: php artisan queue:work redis --queue=fee-processing,default,high --sleep=3 --tries=3 --max-time=3600 --timeout=300
     environment:
       - APP_ENV=production
       - REDIS_HOST=redis
