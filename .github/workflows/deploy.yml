@@ -142,6 +142,8 @@ jobs:
           fi
 
       - name: Deploy with Docker Compose
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd /var/www/schoolsaavy
@@ -172,14 +174,12 @@ jobs:
             echo "🔥 Creating Firebase service account file..."
             mkdir -p storage/app
             
-            # Check if the secret exists and create the file
-            # Using printf to check if the variable is empty
-            if [ ! -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+            # Check if the secret exists and create the file - FIXED VERSION
+            FIREBASE_SECRET='${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
+            if [ -n "${FIREBASE_SECRET}" ]; then
               echo "Found FIREBASE_SERVICE_ACCOUNT secret, creating file..."
-              # Create the file using heredoc to avoid shell interpretation issues
-              cat > storage/app/firebase-service-account.json << 'FIREBASE_EOF'
-${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-FIREBASE_EOF
+              # Create the file using printf to avoid interpretation issues
+              printf '%s\n' "${FIREBASE_SECRET}" > storage/app/firebase-service-account.json
               
               # Verify the file was created and has content
               if [ -s storage/app/firebase-service-account.json ]; then
