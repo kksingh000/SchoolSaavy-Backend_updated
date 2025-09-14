@@ -171,11 +171,11 @@ jobs:
             # Create Firebase service account file from GitHub secret
             echo "🔥 Creating Firebase service account file..."
             mkdir -p storage/app
-            if [ ! -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
-              # Write the JSON content to the file
-              cat > storage/app/firebase-service-account.json << 'FIREBASE_EOF'
-          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FIREBASE_EOF
+            
+            # Check if the secret exists and create the file
+            if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+              # Use single quotes to preserve the exact JSON content
+              echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > storage/app/firebase-service-account.json
               
               # Verify the file was created and has content
               if [ -s storage/app/firebase-service-account.json ]; then
@@ -257,7 +257,18 @@ jobs:
             
             # Verify Firebase service account file is accessible from within container
             echo "🔥 Verifying Firebase service account file in container..."
-            docker compose exec -T app ls -la /var/www/html/storage/app/firebase-service-account.json || echo "❌ Firebase service account file not found in container"
+            if docker compose exec -T app ls -la /var/www/html/storage/app/firebase-service-account.json; then
+              echo "✅ Firebase service account file found in container"
+              
+              # Check if the file has content
+              if docker compose exec -T app [ -s /var/www/html/storage/app/firebase-service-account.json ]; then
+                echo "✅ Firebase service account file has content"
+              else
+                echo "❌ Firebase service account file is empty in container"
+              fi
+            else
+              echo "❌ Firebase service account file not found in container"
+            fi
             
             # Copy supervisor configuration for queue workers
             echo "👷 Setting up queue workers..."
