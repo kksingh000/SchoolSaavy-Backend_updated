@@ -169,13 +169,13 @@ jobs:
             mkdir -p storage/logs
             
             # Create Firebase service account file from GitHub secret
-            echo "🔥 Creating Firebase service account file..."
             mkdir -p storage/app
-            
+            echo "🔥 Creating Firebase service account file..."
             # Check if the secret exists and create the file
             # Use proper quoting to handle spaces in the variable
             if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
             # Create the file using heredoc
+            echo "Found FIREBASE_SERVICE_ACCOUNT secret, creating file..."
             cat > storage/app/firebase-service-account.json << FIREBASE_EOF
           ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
           FIREBASE_EOF
