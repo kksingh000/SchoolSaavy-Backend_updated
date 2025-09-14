@@ -169,37 +169,37 @@ jobs:
             mkdir -p storage/logs
             
             # Create Firebase service account file from GitHub secret
-            mkdir -p storage/app
             echo "🔥 Creating Firebase service account file..."
-            # Check if the secret exists and create the file
-            # Use proper quoting to handle spaces in the variable
-            if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
-            # Create the file using heredoc
-            echo "Found FIREBASE_SERVICE_ACCOUNT secret, creating file..."
-            cat > storage/app/firebase-service-account.json << FIREBASE_EOF
-          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          FIREBASE_EOF
+            mkdir -p storage/app
             
-            # Verify the file was created and has content
-            if [ -s storage/app/firebase-service-account.json ]; then
-              echo "✅ Firebase service account file created successfully"
-              chmod 600 storage/app/firebase-service-account.json
-              ls -la storage/app/firebase-service-account.json
+            # Check if the secret exists and create the file
+            # Using printf to check if the variable is empty
+            if [ ! -z "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
+              echo "Found FIREBASE_SERVICE_ACCOUNT secret, creating file..."
+              # Create the file using heredoc to avoid shell interpretation issues
+              cat > storage/app/firebase-service-account.json << 'FIREBASE_EOF'
+${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+FIREBASE_EOF
               
-              # Validate JSON structure (basic check)
-              if python3 -m json.tool storage/app/firebase-service-account.json > /dev/null 2>&1; then
-                echo "✅ Firebase service account JSON is valid"
+              # Verify the file was created and has content
+              if [ -s storage/app/firebase-service-account.json ]; then
+                echo "✅ Firebase service account file created successfully"
+                chmod 600 storage/app/firebase-service-account.json
+                ls -la storage/app/firebase-service-account.json
+                
+                # Validate JSON structure (basic check)
+                if python3 -m json.tool storage/app/firebase-service-account.json > /dev/null 2>&1; then
+                  echo "✅ Firebase service account JSON is valid"
+                else
+                  echo "⚠️  Firebase service account JSON may be invalid"
+                fi
               else
-                echo "⚠️  Firebase service account JSON may be invalid"
+                echo "❌ Firebase service account file is empty or not created"
               fi
             else
-              echo "❌ Firebase service account file is empty or not created"
+              echo "❌ WARNING: FIREBASE_SERVICE_ACCOUNT secret is not set!"
+              echo "   Notifications will not work without this configuration"
             fi
-          else
-            echo "❌ WARNING: FIREBASE_SERVICE_ACCOUNT secret is not set!"
-            echo "   Notifications will not work without this configuration"
-          fi
-
             
             # Set proper permissions for storage directories
             chmod -R 755 storage/
