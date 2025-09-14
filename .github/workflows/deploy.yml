@@ -173,29 +173,33 @@ jobs:
             mkdir -p storage/app
             
             # Check if the secret exists and create the file
+            # Use proper quoting to handle spaces in the variable
             if [ -n "${{ secrets.FIREBASE_SERVICE_ACCOUNT }}" ]; then
-              # Use single quotes to preserve the exact JSON content
-              echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > storage/app/firebase-service-account.json
+            # Create the file using heredoc
+            cat > storage/app/firebase-service-account.json << FIREBASE_EOF
+          ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_EOF
+            
+            # Verify the file was created and has content
+            if [ -s storage/app/firebase-service-account.json ]; then
+              echo "✅ Firebase service account file created successfully"
+              chmod 600 storage/app/firebase-service-account.json
+              ls -la storage/app/firebase-service-account.json
               
-              # Verify the file was created and has content
-              if [ -s storage/app/firebase-service-account.json ]; then
-                echo "✅ Firebase service account file created successfully"
-                chmod 600 storage/app/firebase-service-account.json
-                ls -la storage/app/firebase-service-account.json
-                
-                # Validate JSON structure (basic check)
-                if python3 -m json.tool storage/app/firebase-service-account.json > /dev/null 2>&1; then
-                  echo "✅ Firebase service account JSON is valid"
-                else
-                  echo "⚠️  Firebase service account JSON may be invalid"
-                fi
+              # Validate JSON structure (basic check)
+              if python3 -m json.tool storage/app/firebase-service-account.json > /dev/null 2>&1; then
+                echo "✅ Firebase service account JSON is valid"
               else
-                echo "❌ Firebase service account file is empty or not created"
+                echo "⚠️  Firebase service account JSON may be invalid"
               fi
             else
-              echo "❌ WARNING: FIREBASE_SERVICE_ACCOUNT secret is not set!"
-              echo "   Notifications will not work without this configuration"
+              echo "❌ Firebase service account file is empty or not created"
             fi
+          else
+            echo "❌ WARNING: FIREBASE_SERVICE_ACCOUNT secret is not set!"
+            echo "   Notifications will not work without this configuration"
+          fi
+
             
             # Set proper permissions for storage directories
             chmod -R 755 storage/
