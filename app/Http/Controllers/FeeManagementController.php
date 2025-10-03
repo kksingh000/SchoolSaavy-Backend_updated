@@ -302,22 +302,47 @@ class FeeManagementController extends BaseController
             return $this->moduleAccessDenied();
         }
 
-        $filters = [
-            'class_id' => $request->query('class_id'),
-            'student_id' => $request->query('student_id'),
-            'academic_year_id' => $request->query('academic_year_id'),
-            'due_date' => $request->query('due_date'),
-            'status' => $request->query('status'),
-        ];
-
+        $classId = $request->query('class_id');
+        $academicYearId = $request->query('academic_year_id');
+        $studentId = $request->query('student_id');
+        $consolidated = $request->query('consolidated', 'true');
         $perPage = $request->query('per_page', 15);
         
-        $dueInstallments = $this->feeManagementService->getAllFeeInstallments($filters);
-
-        return $this->successResponse(
-            $dueInstallments,
-            'Due installments retrieved successfully'
-        );
+        try {
+            // If student_id is provided or consolidated=false, use the original approach
+            if ($studentId || strtolower($consolidated) === 'false') {
+                $filters = [
+                    'class_id' => $classId,
+                    'student_id' => $studentId,
+                    'academic_year_id' => $academicYearId,
+                    'due_date' => $request->query('due_date'),
+                    'status' => $request->query('status'),
+                ];
+                
+                $dueInstallments = $this->feeManagementService->getAllFeeInstallments($filters);
+                
+                return $this->successResponse(
+                    $dueInstallments,
+                    'Due installments retrieved successfully'
+                );
+            }
+            
+            // Use the new consolidated approach
+            $consolidatedDues = $this->feeManagementService->getConsolidatedStudentDues(
+                $classId,
+                $academicYearId,
+                $perPage
+            );
+            
+            return $this->successResponse(
+                \App\Http\Resources\ConsolidatedStudentDueResource::collection($consolidatedDues),
+                'Consolidated student dues retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Due installments error: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            \Illuminate\Support\Facades\Log::error($e->getTraceAsString());
+            return $this->errorResponse('Failed to retrieve due installments: ' . $e->getMessage());
+        }
     }
     
     /**

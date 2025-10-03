@@ -722,8 +722,8 @@ class FeeManagementService extends BaseService
             }
             
             // Calculate fee statistics
-            $totalFeeAmount = $activePlan->installments->sum('amount');
-            $totalPaidAmount = $activePlan->installments->sum('paid_amount');
+            $totalFeeAmount = (float)$activePlan->installments->sum('amount');
+            $totalPaidAmount = (float)$activePlan->installments->sum('paid_amount');
             $totalPendingAmount = $totalFeeAmount - $totalPaidAmount;
             
             // Get payment history
@@ -751,10 +751,10 @@ class FeeManagementService extends BaseService
                 'has_fee_plan' => true,
                 'fee_plan' => $activePlan,
                 'statistics' => [
-                    'total_fee_amount' => $totalFeeAmount,
-                    'total_paid_amount' => $totalPaidAmount,
-                    'total_pending_amount' => $totalPendingAmount,
-                    'payment_percentage' => $totalFeeAmount > 0 ? ($totalPaidAmount / $totalFeeAmount) * 100 : 0,
+                    'total_fee_amount' => round($totalFeeAmount, 2),
+                    'total_paid_amount' => round($totalPaidAmount, 2),
+                    'total_pending_amount' => round($totalPendingAmount, 2),
+                    'payment_percentage' => $totalFeeAmount > 0 ? round(($totalPaidAmount / $totalFeeAmount) * 100, 2) : 0,
                 ],
                 'payments' => $payments,
                 'upcoming_dues' => $upcomingDues,
@@ -882,6 +882,103 @@ class FeeManagementService extends BaseService
             }
             
             return $query->orderBy('due_date', 'asc')->paginate($perPage);
+        });
+    }
+    
+    /**
+     * Get consolidated student dues
+     * 
+     * @param int|null $classId Filter by class ID
+     * @param int|null $academicYearId Filter by academic year ID
+     * @param int $perPage Number of items per page
+     * @return \Illuminate\Pagination\LengthAwarePaginator
+     */
+    public function getConsolidatedStudentDues($classId = null, $academicYearId = null, $perPage = 15)
+    {
+        $schoolId = $this->getSchoolId();
+        $cacheKey = "consolidated_student_dues_{$schoolId}_{$classId}_{$academicYearId}_{$perPage}";
+        
+        // Temporarily disable caching for debugging
+        // Clear the cache first
+        Cache::forget($cacheKey);
+        
+        return Cache::remember($cacheKey, 300, function () use ($schoolId, $classId, $academicYearId, $perPage) {
+            // First, get all the installments with pending or overdue status
+            $installments = FeeInstallment::with([
+                'studentFeePlan.student.currentClass', 
+                'component.masterComponent'  // Load the component and its master component
+            ])
+            ->forSchool($schoolId)
+            ->where(function ($query) {
+                $query->where('status', 'Pending')
+                      ->orWhere('status', 'Overdue');
+            });
+            
+            // Filter by class
+            if ($classId) {
+                $installments->whereHas('studentFeePlan.student.classes', function ($q) use ($classId) {
+                    $q->where('class_id', $classId)
+                      ->where('is_active', true);
+                });
+            }
+            
+            // Filter by academic year
+            if ($academicYearId) {
+                $installments->whereHas('studentFeePlan.feeStructure', function ($q) use ($academicYearId) {
+                    $q->where('academic_year_id', $academicYearId);
+                });
+            }
+            
+            // Get all matching installments
+            $allInstallments = $installments->get();
+            
+            // Group installments by student
+            $studentInstallments = $allInstallments->groupBy(function ($installment) {
+                return $installment->studentFeePlan->student_id;
+            });
+            
+            // Create consolidated data for each student
+            $consolidatedData = $studentInstallments->map(function ($installments, $studentId) {
+                $student = $installments->first()->studentFeePlan->student;
+                
+                // Ensure student is properly loaded with relationships
+                if ($student && !$student->relationLoaded('currentClass')) {
+                    $student->load('currentClass');
+                }
+                
+                // Calculate total overdue amount
+                $overdue = $installments->where('status', 'Overdue')
+                    ->sum(function ($installment) {
+                        return (float)($installment->amount - $installment->paid_amount);
+                    });
+                
+                // Calculate total pending amount
+                $pending = $installments->where('status', 'Pending')
+                    ->sum(function ($installment) {
+                        return (float)($installment->amount - $installment->paid_amount);
+                    });
+                
+                return [
+                    'student' => $student,
+                    'overdue' => round($overdue, 2),
+                    'pending' => round($pending, 2),
+                    'installments' => $installments
+                ];
+            })
+            ->values();
+            
+            // Create a paginator manually
+            $page = request()->get('page', 1);
+            $total = $consolidatedData->count();
+            $items = $consolidatedData->forPage($page, $perPage);
+            
+            return new \Illuminate\Pagination\LengthAwarePaginator(
+                $items,
+                $total,
+                $perPage,
+                $page,
+                ['path' => request()->url()]
+            );
         });
     }
     

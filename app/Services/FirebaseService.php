@@ -19,13 +19,22 @@ class FirebaseService
         $this->projectId = config('services.firebase.project_id');
         $this->serviceAccountPath = config('services.firebase.service_account_path');
         
-        // Validate configuration
+        // Log configuration details for debugging
+        Log::debug('Firebase configuration', [
+            'project_id' => $this->projectId,
+            'service_account_path' => $this->serviceAccountPath,
+            'file_exists' => file_exists($this->serviceAccountPath ?? '')
+        ]);
+        
+        // Do not throw exceptions in constructor, handle gracefully
         if (empty($this->projectId)) {
-            throw new \Exception('Firebase project ID is not configured. Please set FIREBASE_PROJECT_ID in your environment.');
+            Log::warning('Firebase project ID is not configured. Please set FIREBASE_PROJECT_ID in your environment.');
         }
         
         if (empty($this->serviceAccountPath)) {
-            throw new \Exception('Firebase service account path is not configured. Please set FIREBASE_SERVICE_ACCOUNT_PATH in your environment.');
+            Log::warning('Firebase service account path is not configured. Please set FIREBASE_SERVICE_ACCOUNT_PATH in your environment.');
+        } elseif (!file_exists($this->serviceAccountPath)) {
+            Log::warning("Firebase service account file not found at {$this->serviceAccountPath}");
         }
     }
 
@@ -226,7 +235,13 @@ class FirebaseService
         // Ensure all data values are strings and clean
         $cleanData = $this->convertDataToStrings($data);
         
-        return [
+        // Add click_action to data instead of APNS payload
+        if (isset($cleanData['priority']) && !isset($cleanData['click_action'])) {
+            $cleanData['click_action'] = 'FLUTTER_NOTIFICATION_CLICK';
+        }
+        
+        // Build the FCM message with proper structure
+        $message = [
             'token' => $token,
             'notification' => [
                 'title' => (string) ($notification['title'] ?? ''),
@@ -237,7 +252,7 @@ class FirebaseService
                 'priority' => 'high',
                 'notification' => [
                     'channel_id' => 'default',
-                    'sound' => 'default',
+                    'sound' => 'default'
                 ]
             ],
             'apns' => [
@@ -251,8 +266,13 @@ class FirebaseService
                         'category' => 'GENERAL'
                     ]
                 ]
+            ],
+            'fcm_options' => [
+                'analytics_label' => 'schoolsaavy_notification'
             ]
         ];
+        
+        return $message;
     }
 
     /**
@@ -261,8 +281,24 @@ class FirebaseService
     private function sendMessage(array $message): array
     {
         try {
+            // Validate configuration
+            if (empty($this->projectId)) {
+                throw new \Exception('Firebase project ID is not configured. Please set FIREBASE_PROJECT_ID in your environment.');
+            }
+            
+            if (empty($this->serviceAccountPath) || !file_exists($this->serviceAccountPath)) {
+                throw new \Exception('Firebase service account file not found or not configured. Please check FIREBASE_SERVICE_ACCOUNT_PATH in your environment.');
+            }
+            
+            // Get access token
             $accessToken = $this->getAccessToken();
-
+            
+            // Validate token
+            if (empty($message['token'])) {
+                throw new \Exception('Device token is required');
+            }
+            
+            // Send message to Firebase
             $response = $this->client->post("https://fcm.googleapis.com/v1/projects/{$this->projectId}/messages:send", [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $accessToken,
@@ -270,7 +306,8 @@ class FirebaseService
                 ],
                 'json' => [
                     'message' => $message
-                ]
+                ],
+                'http_errors' => true
             ]);
 
             $result = json_decode($response->getBody(), true);
@@ -289,13 +326,23 @@ class FirebaseService
             }
 
             Log::error('Firebase send message failed', [
-                'error' => $e,
+                'error' => $errorMessage,
                 'message' => $message
             ]);
 
             return [
                 'success' => false,
                 'error' => $errorMessage
+            ];
+        } catch (\Exception $e) {
+            Log::error('Firebase send message failed', [
+                'error' => $e->getMessage(),
+                'message' => $message
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
             ];
         }
     }
@@ -305,21 +352,41 @@ class FirebaseService
      */
     private function getAccessToken(): string
     {
+        // Validate service account file exists
+        if (empty($this->serviceAccountPath)) {
+            throw new \Exception('Firebase service account path is not configured');
+        }
+        
         if (!file_exists($this->serviceAccountPath)) {
             throw new \Exception('Firebase service account file not found: ' . $this->serviceAccountPath);
         }
-
-        $client = new GoogleClient();
-        $client->setAuthConfig($this->serviceAccountPath);
-        $client->addScope('https://www.googleapis.com/auth/firebase.messaging');
-
-        $accessToken = $client->fetchAccessTokenWithAssertion();
-
-        if (isset($accessToken['error'])) {
-            throw new \Exception('Failed to get access token: ' . $accessToken['error']);
+        
+        try {
+            // Create Google client and configure auth
+            $client = new GoogleClient();
+            $client->setAuthConfig($this->serviceAccountPath);
+            $client->addScope('https://www.googleapis.com/auth/firebase.messaging');
+            
+            // Fetch access token
+            $accessToken = $client->fetchAccessTokenWithAssertion();
+            
+            // Check for errors
+            if (isset($accessToken['error'])) {
+                throw new \Exception('Failed to get access token: ' . $accessToken['error']);
+            }
+            
+            if (!isset($accessToken['access_token'])) {
+                throw new \Exception('Access token not found in response');
+            }
+            
+            return $accessToken['access_token'];
+        } catch (\Exception $e) {
+            Log::error('Firebase getAccessToken failed', [
+                'error' => $e->getMessage(),
+                'service_account_path' => $this->serviceAccountPath
+            ]);
+            throw $e;
         }
-
-        return $accessToken['access_token'];
     }
 
     /**

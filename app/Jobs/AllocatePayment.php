@@ -66,7 +66,7 @@ class AllocatePayment implements ShouldQueue
             return;
         }
         
-        $remainingAmount = $payment->amount;
+        $remainingAmount = (float)$payment->amount;
         Log::info("Payment amount to allocate: {$remainingAmount}");
         
         // Get pending installments sorted by due date (oldest first)
@@ -87,13 +87,13 @@ class AllocatePayment implements ShouldQueue
                 break;
             }
             
-            $dueAmount = $installment->amount - $installment->paid_amount;
+            $dueAmount = round((float)$installment->amount - (float)$installment->paid_amount, 2);
             
             if ($dueAmount <= 0) {
                 continue;
             }
             
-            $allocationAmount = min($remainingAmount, $dueAmount);
+            $allocationAmount = round(min($remainingAmount, $dueAmount), 2);
             
             Log::info("Allocating {$allocationAmount} to installment ID {$installment->id}");
             
@@ -105,15 +105,15 @@ class AllocatePayment implements ShouldQueue
             ]);
             
             // Update installment paid amount and status
-            $newPaidAmount = $installment->paid_amount + $allocationAmount;
-            $newStatus = $newPaidAmount >= $installment->amount ? 'Paid' : $installment->status;
+            $newPaidAmount = round((float)$installment->paid_amount + $allocationAmount, 2);
+            $newStatus = $newPaidAmount >= (float)$installment->amount ? 'Paid' : $installment->status;
             
             $installment->update([
                 'paid_amount' => $newPaidAmount,
                 'status' => $newStatus,
             ]);
             
-            $remainingAmount -= $allocationAmount;
+            $remainingAmount = round($remainingAmount - $allocationAmount, 2);
         }
         
         Log::info("Payment allocation completed for payment ID: {$this->paymentId}. Remaining unallocated amount: {$remainingAmount}");

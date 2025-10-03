@@ -159,30 +159,45 @@ class ProcessNotificationDelivery implements ShouldQueue
      */
     private function sendFirebaseNotification(FirebaseService $firebaseService, array $tokens, Notification $notification): array
     {
-        $firebaseNotification = [
-            'title' => (string) $notification->title,
-            'body' => (string) $notification->message
-        ];
+        try {
+            $firebaseNotification = [
+                'title' => (string) $notification->title,
+                'body' => (string) $notification->message
+            ];
 
-        // Prepare data payload with proper string conversion
-        $firebaseData = [
-            'notification_id' => (string) $notification->id,
-            'type' => (string) $notification->type,
-            'priority' => (string) $notification->priority,
-            'click_action' => 'FLUTTER_NOTIFICATION_CLICK'
-        ];
+            // Prepare data payload - ensure all values are strings
+            $firebaseData = [
+                'notification_id' => (string) $notification->id,
+                'type' => (string) $notification->type,
+                'priority' => (string) $notification->priority
+            ];
 
-        // Add custom data if present, ensuring all values are strings
-        if (!empty($notification->data)) {
-            foreach ($notification->data as $key => $value) {
-                $firebaseData[$key] = is_array($value) ? json_encode($value) : (string) $value;
+            // Add custom data if present, ensuring all values are strings
+            if (!empty($notification->data) && is_array($notification->data)) {
+                foreach ($notification->data as $key => $value) {
+                    if ($value !== null) {
+                        $firebaseData[$key] = is_array($value) ? json_encode($value) : (string) $value;
+                    }
+                }
             }
-        }
 
-        if (count($tokens) === 1) {
-            return $firebaseService->sendToToken($tokens[0], $firebaseNotification, $firebaseData);
-        } else {
-            return $firebaseService->sendToTokens($tokens, $firebaseNotification, $firebaseData);
+            // Send notification
+            if (count($tokens) === 1) {
+                return $firebaseService->sendToToken($tokens[0], $firebaseNotification, $firebaseData);
+            } else {
+                return $firebaseService->sendToTokens($tokens, $firebaseNotification, $firebaseData);
+            }
+        } catch (\Exception $e) {
+            Log::error('Error in sendFirebaseNotification', [
+                'notification_id' => $notification->id,
+                'error' => $e->getMessage(),
+                'tokens' => $tokens
+            ]);
+            
+            return [
+                'success' => false,
+                'error' => $e->getMessage()
+            ];
         }
     }
 

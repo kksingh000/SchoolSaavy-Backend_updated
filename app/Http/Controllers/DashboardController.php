@@ -7,6 +7,7 @@ use App\Models\Event;
 use App\Traits\OctaneCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Carbon\Carbon;
@@ -60,22 +61,42 @@ class DashboardController extends BaseController
         $school = $user->schoolAdmin->school;
         $schoolId = $school->id;
 
+        // Use Laravel Concurrency to run all queries simultaneously for better performance
+        [$schoolCounts, $attendanceStats, $pendingFees, $recentActivities, $upcomingEvents] = Concurrency::run([
+            // School counts
+            fn () => [
+                'total_students' => DB::table('students')->where('school_id', $schoolId)->count(),
+                'total_teachers' => DB::table('teachers')->where('school_id', $schoolId)->count(),
+                'total_classes' => DB::table('classes')->where('school_id', $schoolId)->where('is_active', true)->count(),
+                'active_modules' => DB::table('school_modules')
+                    ->where('school_id', $schoolId)
+                    ->where('status', 'active')
+                    ->count(),
+            ],
+            // Attendance stats
+            fn () => $this->getBatchedAttendanceStats($schoolId),
+            // Pending fees
+            fn () => $this->getPendingFeesAmount($schoolId),
+            // Recent activities
+            fn () => $this->getRecentActivities($schoolId),
+            // Upcoming events
+            fn () => $this->getUpcomingEvents($schoolId),
+        ]);
+
         return [
             'school_info' => [
                 'name' => $school->name,
                 'code' => $school->code,
-                'total_students' => $school->students()->count(),
-                'total_teachers' => $school->teachers()->count(),
-                'total_classes' => $school->classes()->count(),
+                ...$schoolCounts,
             ],
             'quick_stats' => [
-                'present_today' => $this->getTodayAttendanceCount($schoolId, 'present'),
-                'absent_today' => $this->getTodayAttendanceCount($schoolId, 'absent'),
-                'pending_fees' => $this->getPendingFeesAmount($schoolId),
-                'active_modules' => $school->modules()->wherePivot('status', 'active')->count(),
+                'present_today' => $attendanceStats['present'],
+                'absent_today' => $attendanceStats['absent'],
+                'pending_fees' => $pendingFees,
+                'active_modules' => $schoolCounts['active_modules'],
             ],
-            'recent_activities' => $this->getRecentActivities($schoolId),
-            'upcoming_events' => $this->getUpcomingEvents($schoolId),
+            'recent_activities' => $recentActivities,
+            'upcoming_events' => $upcomingEvents,
         ];
     }
 
@@ -209,25 +230,112 @@ class DashboardController extends BaseController
             ->count();
     }
 
+    private function getBatchedAttendanceStats($schoolId): array
+    {
+        $stats = DB::table('attendances')
+            ->select('status', DB::raw('COUNT(*) as count'))
+            ->where('school_id', $schoolId)
+            ->where('date', today())
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
+
+        return [
+            'present' => $stats['present'] ?? 0,
+            'absent' => $stats['absent'] ?? 0,
+        ];
+    }
+
     private function getPendingFeesAmount($schoolId): float
     {
-        return DB::table('student_fees')
-            ->join('students', 'student_fees.student_id', '=', 'students.id')
+        $amount = DB::table('fee_installments')
+            ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
+            ->join('students', 'student_fee_plans.student_id', '=', 'students.id')
             ->where('students.school_id', $schoolId)
-            ->where('student_fees.status', 'pending')
-            ->sum('student_fees.amount');
+            ->where('fee_installments.status', 'Pending')
+            ->sum('fee_installments.amount');
+            
+        return round((float)$amount, 2);
     }
 
     private function getRecentActivities($schoolId): array
     {
-        // Implement recent activities logic
-        return [];
+        $activities = [];
+
+        // Recent assignments (last 7 days)
+        $recentAssignments = Assignment::where('school_id', $schoolId)
+            ->where('assigned_date', '>=', Carbon::now()->subDays(7))
+            ->with(['teacher.user', 'class', 'subject'])
+            ->orderBy('assigned_date', 'desc')
+            ->limit(5)
+            ->get();
+
+        foreach ($recentAssignments as $assignment) {
+            $activities[] = [
+                'type' => 'assignment_created',
+                'title' => 'New Assignment: ' . $assignment->title,
+                'description' => 'Assignment created for ' . $assignment->class->name . ' - ' . $assignment->subject->name,
+                'created_by' => $assignment->teacher->user->name,
+                'date' => $assignment->assigned_date->format('Y-m-d'),
+                'time' => $assignment->created_at->format('H:i'),
+            ];
+        }
+
+        // Recent events (last 7 days)
+        $recentEvents = Event::where('school_id', $schoolId)
+            ->where('created_at', '>=', Carbon::now()->subDays(7))
+            ->published()
+            ->with('creator')
+            ->orderBy('created_at', 'desc')
+            ->limit(5)
+            ->get();
+
+        foreach ($recentEvents as $event) {
+            $activities[] = [
+                'type' => 'event_created',
+                'title' => 'New Event: ' . $event->title,
+                'description' => 'Scheduled for ' . $event->event_date->format('M d, Y'),
+                'created_by' => $event->creator->name,
+                'date' => $event->created_at->format('Y-m-d'),
+                'time' => $event->created_at->format('H:i'),
+            ];
+        }
+
+        // Sort by date and time
+        usort($activities, function($a, $b) {
+            $dateTimeA = $a['date'] . ' ' . $a['time'];
+            $dateTimeB = $b['date'] . ' ' . $b['time'];
+            return strcmp($dateTimeB, $dateTimeA);
+        });
+
+        return array_slice($activities, 0, 10);
     }
 
     private function getUpcomingEvents($schoolId): array
     {
-        // Implement upcoming events logic
-        return [];
+        return Event::where('school_id', $schoolId)
+            ->published()
+            ->upcoming()
+            ->with('creator')
+            ->orderBy('event_date', 'asc')
+            ->limit(5)
+            ->get()
+            ->map(function ($event) {
+                return [
+                    'id' => $event->id,
+                    'title' => $event->title,
+                    'description' => $event->description,
+                    'date' => $event->event_date->format('Y-m-d'),
+                    'formatted_date' => $event->event_date->format('M d, Y'),
+                    'time' => $event->formatted_time,
+                    'location' => $event->location,
+                    'type' => $event->type,
+                    'priority' => $event->priority,
+                    'days_until' => $event->days_until_event,
+                    'created_by' => $event->creator->name,
+                ];
+            })
+            ->toArray();
     }
 
     private function getTodaySchedule($teacherId): array
@@ -260,10 +368,13 @@ class DashboardController extends BaseController
 
     private function getStudentPendingFees($studentId): float
     {
-        return DB::table('student_fees')
-            ->where('student_id', $studentId)
-            ->where('status', 'pending')
-            ->sum('amount');
+        $amount = DB::table('fee_installments')
+            ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
+            ->where('student_fee_plans.student_id', $studentId)
+            ->where('fee_installments.status', 'Pending')
+            ->sum('fee_installments.amount');
+            
+        return round((float)$amount, 2);
     }
 
     private function getParentNotifications($parentId): array
