@@ -53,6 +53,9 @@ class MediaController extends BaseController
             // Get the current auth token (from Bearer header)
             $authToken = $request->bearerToken();
             
+            // URL-encode the token for RTMP URL (handles special characters like |)
+            $encodedToken = urlencode($authToken);
+            
             // Store stream metadata
             $streamData = [
                 'stream_key' => $streamKey,
@@ -74,12 +77,12 @@ class MediaController extends BaseController
                 'user_id' => $user->id,
             ]);
             
-            $mediaServerUrl = config('services.media_server.public_url', 'stream.schoolsaavy.com');
+            $mediaServerUrl = config('services.media_server.public_host', 'stream.schoolsaavy.com');
             
             return $this->successResponse([
                 'stream_key' => $streamKey,
                 'camera_name' => $cameraName,
-                'rtmp_url' => "rtmp://{$mediaServerUrl}/live/{$streamKey}?token={$authToken}",
+                'rtmp_url' => "rtmp://{$mediaServerUrl}/live/{$streamKey}?token={$encodedToken}",
                 'playback_urls' => [
                     'flv' => "https://{$mediaServerUrl}/live/{$streamKey}.flv",
                     'hls' => "https://{$mediaServerUrl}/hls/{$streamKey}/index.m3u8",
@@ -116,6 +119,9 @@ class MediaController extends BaseController
                 return $this->errorResponse('Missing stream key or token', null, 400);
             }
             
+            // URL-decode the token (handles special characters like | that were encoded)
+            $decodedToken = urldecode($token);
+            
             // Parse stream key: {school_id}_{user_id}
             $parts = explode('_', $streamKey);
             if (count($parts) !== 2) {
@@ -124,8 +130,8 @@ class MediaController extends BaseController
             
             [$schoolId, $userId] = $parts;
             
-            // Validate the token using Sanctum
-            $tokenModel = \Laravel\Sanctum\PersonalAccessToken::findToken($token);
+            // Validate the token using Sanctum (use decoded token)
+            $tokenModel = \Laravel\Sanctum\PersonalAccessToken::findToken($decodedToken);
             
             if (!$tokenModel) {
                 return $this->errorResponse('Invalid authentication token', null, 401);
