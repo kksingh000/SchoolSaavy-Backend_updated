@@ -170,7 +170,8 @@ services:
       - BACKEND_API_URL=http://app:8080/api
       - BACKEND_API_TOKEN=${MEDIA_SERVER_API_TOKEN:-}
       - MAX_STREAMS_PER_SCHOOL=10
-      - HLS_ENABLED=true
+      - HLS_ENABLED=false  # Disabled due to FFmpeg version detection issue
+      - DASH_ENABLED=false # Disabled - using HTTP-FLV instead
       - LOG_LEVEL=info
       - CORS_ORIGINS=*
     ports:
