@@ -76,12 +76,18 @@ jobs:
           [ -f "docker/mysql/my.cnf" ] && echo "✅ my.cnf found" || echo "❌ my.cnf not found"
           [ -f "docker/redis/redis.conf" ] && echo "✅ redis.conf found" || echo "❌ redis.conf not found"
           
-          # Copy only Docker configuration and persistent data directories
+          # Copy Docker configuration, media server, and persistent data directories
           rsync --exclude='.env' \
             --exclude='docker/certbot/' \
+            --exclude='media_server/.env' \
+            --exclude='media_server/node_modules/' \
+            --exclude='media_server/media/' \
+            --exclude='media_server/logs/' \
+            --exclude='media_server/recordings/' \
             -avz \
             docker-compose.yml \
             docker/ \
+            media_server/ \
             storage/ \
             public/ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
@@ -225,6 +231,30 @@ jobs:
               ls -la docker/redis/redis.conf
             else
               echo "❌ redis.conf missing!"
+            fi
+            
+            # Verify media server files
+            echo ""
+            echo "🔍 Checking media server files..."
+            if [ -d media_server ]; then
+              echo "✅ media_server directory exists"
+              if [ -f media_server/Dockerfile ]; then
+                echo "✅ media_server/Dockerfile exists"
+              else
+                echo "❌ media_server/Dockerfile MISSING!"
+              fi
+              if [ -f media_server/package.json ]; then
+                echo "✅ media_server/package.json exists"
+              else
+                echo "❌ media_server/package.json MISSING!"
+              fi
+              if [ -f media_server/rtmp-server.js ]; then
+                echo "✅ media_server/rtmp-server.js exists"
+              else
+                echo "❌ media_server/rtmp-server.js MISSING!"
+              fi
+            else
+              echo "❌ media_server directory MISSING!"
             fi
             
             # Create .gitkeep files to ensure directories persist
