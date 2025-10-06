@@ -76,37 +76,76 @@ jobs:
           [ -f "docker/mysql/my.cnf" ] && echo "✅ my.cnf found" || echo "❌ my.cnf not found"
           [ -f "docker/redis/redis.conf" ] && echo "✅ redis.conf found" || echo "❌ redis.conf not found"
           
-          # Verify media_server exists locally before syncing
-          echo "🔍 Checking media_server locally before sync..."
-          if [ -d "media_server" ]; then
-            echo "✅ media_server directory found locally"
-            ls -la media_server/ | grep -E "Dockerfile|package.json|rtmp-server.js"
-          else
-            echo "❌ media_server directory NOT FOUND locally!"
-            echo "This is a critical error - deployment cannot continue"
+          # Check media_server files BEFORE copying
+          echo "🔍 Checking media_server files in repository:"
+          ls -la media_server/ || echo "❌ media_server directory not found"
+          [ -f "media_server/Dockerfile" ] && echo "✅ media_server/Dockerfile found" || echo "❌ media_server/Dockerfile not found"
+          [ -f "media_server/package.json" ] && echo "✅ media_server/package.json found" || echo "❌ media_server/package.json not found"
+          [ -f "media_server/rtmp-server.js" ] && echo "✅ media_server/rtmp-server.js found" || echo "❌ media_server/rtmp-server.js not found"
+          
+          # Create target directories on the server first
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'PREPARE'
+            mkdir -p /var/www/schoolsaavy/docker/nginx
+            mkdir -p /var/www/schoolsaavy/docker/mysql
+            mkdir -p /var/www/schoolsaavy/docker/redis
+            mkdir -p /var/www/schoolsaavy/media_server
+            mkdir -p /var/www/schoolsaavy/storage
+            mkdir -p /var/www/schoolsaavy/public
+          PREPARE
+          
+          # Copy Docker configuration files separately to ensure they're copied correctly
+          echo "📁 Copying docker-compose.yml..."
+          scp docker-compose.yml ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker-compose.yml
+          
+          # Copy docker directory (excluding certbot)
+          echo "📁 Copying docker directory..."
+          rsync -avz \
+            --exclude='certbot/' \
+            docker/ \
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/
+          
+          # Copy media_server directory WITH ALL FILES
+          echo "📁 Copying media_server directory..."
+          # First, ensure media_server exists and has required files
+          if [ ! -f "media_server/Dockerfile" ]; then
+            echo "❌ ERROR: media_server/Dockerfile not found in repository!"
+            echo "Please ensure media_server/Dockerfile is committed to the repository"
             exit 1
           fi
           
-          # Copy Docker configuration, media server, and persistent data directories
-          echo "📤 Syncing files to production server..."
-          rsync --exclude='.env' \
-            --exclude='docker/certbot/' \
-            --exclude='media_server/.env' \
-            --exclude='media_server/node_modules/' \
-            --exclude='media_server/media/' \
-            --exclude='media_server/logs/' \
-            --exclude='media_server/recordings/' \
-            -avz \
-            docker-compose.yml \
-            docker/ \
+          # Use rsync with explicit includes to ensure all files are copied
+          rsync -avz \
+            --exclude='.env' \
+            --exclude='node_modules/' \
+            --exclude='media/' \
+            --exclude='logs/' \
+            --exclude='recordings/' \
             media_server/ \
-            storage/ \
-            public/ \
-            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
+            ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/media_server/
           
-          echo "✅ rsync completed successfully"
+          # Verify media_server files were copied
+          ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'VERIFY_MEDIA'
+            echo "🔍 Verifying media_server files on server..."
+            cd /var/www/schoolsaavy
+            if [ -f "media_server/Dockerfile" ]; then
+              echo "✅ media_server/Dockerfile exists on server"
+              ls -la media_server/Dockerfile
+            else
+              echo "❌ media_server/Dockerfile MISSING on server!"
+              echo "Contents of media_server directory:"
+              ls -la media_server/
+              exit 1
+            fi
+          VERIFY_MEDIA
           
-          # Force copy nginx.conf, mysql config, and redis config as files (not inside directory)
+          # Copy storage and public directories
+          echo "📁 Copying storage directory..."
+          rsync -avz storage/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/storage/
+          
+          echo "📁 Copying public directory..."
+          rsync -avz public/ ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/public/
+          
+          # Force copy nginx.conf, mysql config, and redis config
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'CLEANUP'
             cd /var/www/schoolsaavy
             # Remove any config directories that should be files
@@ -122,42 +161,30 @@ jobs:
               echo "🧹 Removing redis.conf directory..."
               rm -rf docker/redis/redis.conf
             fi
-            # Ensure directories exist
-            mkdir -p docker/nginx
-            mkdir -p docker/mysql
-            mkdir -p docker/redis
           CLEANUP
           
-          # Copy nginx.conf from repository (must exist)
+          # Copy config files individually
           if [ -f "docker/nginx/nginx.conf" ]; then
-            echo "📁 Copying nginx.conf from repository..."
+            echo "📁 Copying nginx.conf..."
             scp docker/nginx/nginx.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/nginx/nginx.conf
-            echo "✅ nginx.conf copied successfully"
           else
-            echo "❌ ERROR: nginx.conf not found in repository!"
-            echo "❌ Please ensure docker/nginx/nginx.conf is committed to the repository"
+            echo "❌ ERROR: nginx.conf not found!"
             exit 1
           fi
           
-          # Copy my.cnf from repository (must exist)  
           if [ -f "docker/mysql/my.cnf" ]; then
-            echo "📁 Copying my.cnf from repository..."
+            echo "📁 Copying my.cnf..."
             scp docker/mysql/my.cnf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/mysql/my.cnf
-            echo "✅ my.cnf copied successfully"
           else
-            echo "❌ ERROR: my.cnf not found in repository!"
-            echo "❌ Please ensure docker/mysql/my.cnf is committed to the repository"
+            echo "❌ ERROR: my.cnf not found!"
             exit 1
           fi
           
-          # Copy redis.conf from repository (must exist)
           if [ -f "docker/redis/redis.conf" ]; then
-            echo "📁 Copying redis.conf from repository..."
+            echo "📁 Copying redis.conf..."
             scp docker/redis/redis.conf ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/docker/redis/redis.conf
-            echo "✅ redis.conf copied successfully"
           else
-            echo "❌ ERROR: redis.conf not found in repository!"
-            echo "❌ Please ensure docker/redis/redis.conf is committed to the repository"
+            echo "❌ ERROR: redis.conf not found!"
             exit 1
           fi
 
@@ -168,22 +195,24 @@ jobs:
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd /var/www/schoolsaavy
             
-            # Clean up any incorrect config directories
-            if [ -d "docker/nginx/nginx.conf" ]; then
-              echo "Removing incorrect nginx.conf directory..."
-              rm -rf docker/nginx/nginx.conf
-            fi
-            if [ -d "docker/mysql/my.cnf" ]; then
-              echo "Removing incorrect my.cnf directory..."
-              rm -rf docker/mysql/my.cnf
-            fi
-            if [ -d "docker/redis/redis.conf" ]; then
-              echo "Removing incorrect redis.conf directory..."
-              rm -rf docker/redis/redis.conf
+            # Final verification before Docker build
+            echo "🔍 Final verification of critical files..."
+            if [ ! -f "media_server/Dockerfile" ]; then
+              echo "❌ CRITICAL: media_server/Dockerfile is MISSING!"
+              echo "Contents of media_server:"
+              ls -la media_server/
+              echo ""
+              echo "Attempting to find Dockerfile in wrong locations:"
+              find . -name "Dockerfile" -type f | head -10
+              exit 1
             fi
             
+            echo "✅ All critical files verified:"
+            ls -la media_server/Dockerfile
+            ls -la media_server/package.json 2>/dev/null || echo "⚠️  package.json missing"
+            ls -la media_server/rtmp-server.js 2>/dev/null || echo "⚠️  rtmp-server.js missing"
+            
             # Ensure required directories exist with proper Laravel storage structure
-            mkdir -p docker/nginx docker/mysql docker/redis public
             mkdir -p storage/app/public
             mkdir -p storage/framework/cache/data
             mkdir -p storage/framework/sessions
@@ -194,20 +223,17 @@ jobs:
             echo "🔥 Creating Firebase service account file..."
             mkdir -p storage/app
             
-            # Check if the secret exists and create the file - FIXED VERSION
+            # Check if the secret exists and create the file
             FIREBASE_SECRET='${{ secrets.FIREBASE_SERVICE_ACCOUNT }}'
             if [ -n "${FIREBASE_SECRET}" ]; then
               echo "Found FIREBASE_SERVICE_ACCOUNT secret, creating file..."
-              # Create the file using printf to avoid interpretation issues
               printf '%s\n' "${FIREBASE_SECRET}" > storage/app/firebase-service-account.json
               
-              # Verify the file was created and has content
               if [ -s storage/app/firebase-service-account.json ]; then
                 echo "✅ Firebase service account file created successfully"
                 chmod 600 storage/app/firebase-service-account.json
                 ls -la storage/app/firebase-service-account.json
                 
-                # Validate JSON structure (basic check)
                 if python3 -m json.tool storage/app/firebase-service-account.json > /dev/null 2>&1; then
                   echo "✅ Firebase service account JSON is valid"
                 else
@@ -218,83 +244,12 @@ jobs:
               fi
             else
               echo "❌ WARNING: FIREBASE_SERVICE_ACCOUNT secret is not set!"
-              echo "   Notifications will not work without this configuration"
             fi
             
-            # Set proper permissions for storage directories
+            # Set proper permissions
             chmod -R 755 storage/
             
-            # Verify config files were copied and show status
-            echo "🔍 Checking config files..."
-            if [ -f docker/nginx/nginx.conf ]; then
-              echo "✅ nginx.conf exists"
-              ls -la docker/nginx/nginx.conf
-            else
-              echo "❌ nginx.conf missing!"
-            fi
-            
-            if [ -f docker/mysql/my.cnf ]; then
-              echo "✅ my.cnf exists"
-              ls -la docker/mysql/my.cnf
-            else
-              echo "❌ my.cnf missing!"
-            fi
-            
-            if [ -f docker/redis/redis.conf ]; then
-              echo "✅ redis.conf exists"
-              ls -la docker/redis/redis.conf
-            else
-              echo "❌ redis.conf missing!"
-            fi
-            
-            # Verify media server files
-            echo ""
-            echo "🔍 Checking media server files..."
-            echo "Working directory: $(pwd)"
-            echo "Contents of current directory:"
-            ls -la | head -20
-            echo ""
-            
-            if [ -d media_server ]; then
-              echo "✅ media_server directory exists"
-              echo "Contents of media_server:"
-              ls -la media_server/ | head -20
-              echo ""
-              
-              if [ -f media_server/Dockerfile ]; then
-                echo "✅ media_server/Dockerfile exists"
-                echo "Dockerfile size: $(stat -f%z media_server/Dockerfile 2>/dev/null || stat -c%s media_server/Dockerfile) bytes"
-              else
-                echo "❌ media_server/Dockerfile MISSING!"
-                echo "⚠️  Docker build will fail!"
-                exit 1
-              fi
-              
-              if [ -f media_server/package.json ]; then
-                echo "✅ media_server/package.json exists"
-              else
-                echo "❌ media_server/package.json MISSING!"
-                exit 1
-              fi
-              
-              if [ -f media_server/rtmp-server.js ]; then
-                echo "✅ media_server/rtmp-server.js exists"
-              else
-                echo "❌ media_server/rtmp-server.js MISSING!"
-                exit 1
-              fi
-              
-              echo "✅ All media server files verified!"
-            else
-              echo "❌ media_server directory MISSING!"
-              echo "⚠️  This will cause Docker build to fail!"
-              echo ""
-              echo "Available directories:"
-              ls -d */
-              exit 1
-            fi
-            
-            # Create .gitkeep files to ensure directories persist
+            # Create .gitkeep files
             touch storage/framework/cache/data/.gitkeep
             touch storage/framework/sessions/.gitkeep
             touch storage/framework/views/.gitkeep
@@ -306,17 +261,10 @@ jobs:
             echo "🐳 Checking Docker daemon..."
             if docker info > /dev/null 2>&1; then
               echo "✅ Docker daemon is accessible"
-              docker version
             else
               echo "❌ Docker daemon is NOT accessible!"
-              echo "Is Docker running?"
-              sudo systemctl status docker || true
               exit 1
             fi
-            
-            # Check Docker Compose version
-            echo "📦 Docker Compose version:"
-            docker compose version
             
             # Update the image tag in docker-compose.yml
             sed -i "s|image: ghcr.io/sunnybhadana/schoolsaavy-backend:.*|image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest|g" docker-compose.yml || true
@@ -329,7 +277,7 @@ jobs:
             echo "🛑 Stopping existing containers..."
             docker compose down 2>&1
             
-            # Remove old images to save space (keep last 2 versions)
+            # Remove old images to save space
             docker image prune -f
             
             # Validate docker-compose.yml syntax
@@ -342,118 +290,20 @@ jobs:
               exit 1
             fi
             
-            # List available services
-            echo "📋 Services to start:"
-            docker compose config --services
-            
-            # Start the application with verbose output
+            # Start the application
             echo "🚀 Starting Docker containers..."
-            echo "Command: docker compose up -d"
-            
-            # Run docker compose up and capture output
-            docker compose up -d > /tmp/docker-up-stdout.log 2> /tmp/docker-up-stderr.log
-            COMPOSE_EXIT_CODE=$?
-            
-            echo "--- STDOUT ---"
-            cat /tmp/docker-up-stdout.log
-            echo "--- STDERR ---"
-            cat /tmp/docker-up-stderr.log
-            
-            # Check for build errors in stderr
-            if grep -q "failed to solve" /tmp/docker-up-stderr.log || grep -q "failed to read dockerfile" /tmp/docker-up-stderr.log; then
-              echo ""
-              echo "❌ Docker build FAILED!"
-              echo "Exit code: $COMPOSE_EXIT_CODE"
-              echo ""
-              echo "🔍 Checking what went wrong..."
-              
-              # Check if media_server directory and files exist
-              echo "📁 Media server files check:"
-              ls -la media_server/ || echo "❌ media_server directory not found!"
-              ls -la media_server/Dockerfile || echo "❌ Dockerfile not found!"
-              ls -la media_server/package.json || echo "❌ package.json not found!"
-              
-              echo ""
-              echo "💡 This usually means:"
-              echo "   1. The media_server directory wasn't synced properly"
-              echo "   2. The Dockerfile is missing from the media_server directory"
-              echo "   3. File permissions prevent Docker from reading the files"
-              
-              exit 1
-            fi
-            
-            if [ $COMPOSE_EXIT_CODE -eq 0 ]; then
-              echo "✅ Docker Compose command completed successfully"
-            else
-              echo "❌ Docker Compose returned exit code: $COMPOSE_EXIT_CODE"
-              exit 1
-            fi
+            docker compose up -d --build
             
             # Wait for services to be ready
             echo "⏳ Waiting for services to initialize..."
-            sleep 10
+            sleep 15
             
-            # Check if containers are running after initial startup
-            echo "🔍 Checking container status after startup..."
-            docker compose ps -a
-            
-            # If no containers are running, get detailed logs
-            if ! docker compose ps | grep -q "Up"; then
-              echo "⚠️  Containers not running yet, checking why..."
-              echo ""
-              echo "=== REDIS LOGS ==="
-              docker compose logs redis 2>&1 || echo "No redis logs"
-              echo ""
-              echo "=== APP LOGS ==="
-              docker compose logs app 2>&1 || echo "No app logs"
-              echo ""
-              echo "=== NGINX LOGS ==="
-              docker compose logs nginx 2>&1 || echo "No nginx logs"
-              echo ""
-              echo "=== QUEUE LOGS ==="
-              docker compose logs queue 2>&1 || echo "No queue logs"
-              echo ""
-              echo "=== MEDIA-SERVER LOGS ==="
-              docker compose logs media-server 2>&1 || echo "No media-server logs"
-              echo ""
-            fi
-            
-            # Wait additional time for services to fully start
-            sleep 20
-            
-            # Debug: Check if .env file exists and app can start
-            echo "🔍 Debugging application startup..."
-            docker compose exec -T app ls -la /var/www/html/.env || echo "❌ .env file not found"
-            docker compose exec -T app php artisan --version || echo "❌ Laravel not working"
-            docker compose exec -T app php artisan config:show database.default || echo "❌ Database config issue"
-            
-            # Verify Firebase service account file is accessible from within container
-            echo "🔥 Verifying Firebase service account file in container..."
-            if docker compose exec -T app ls -la /var/www/html/storage/app/firebase-service-account.json; then
-              echo "✅ Firebase service account file found in container"
-              
-              # Check if the file has content
-              if docker compose exec -T app [ -s /var/www/html/storage/app/firebase-service-account.json ]; then
-                echo "✅ Firebase service account file has content"
-              else
-                echo "❌ Firebase service account file is empty in container"
-              fi
-            else
-              echo "❌ Firebase service account file not found in container"
-            fi
-            
-            # Copy supervisor configuration for queue workers
-            echo "👷 Setting up queue workers..."
-            if [ -f "docker/supervisor/schoolsaavy-queues.conf" ]; then
-              docker compose exec -T app cp /var/www/html/docker/supervisor/schoolsaavy-queues.conf /etc/supervisor/conf.d/schoolsaavy-queues.conf || echo "⚠️  Failed to copy supervisor config"
-              docker compose exec -T app supervisorctl reread || echo "⚠️  Failed to reread supervisor config"
-              docker compose exec -T app supervisorctl update || echo "⚠️  Failed to update supervisor config"
-              docker compose exec -T app supervisorctl status || echo "⚠️  Failed to get supervisor status"
-            else
-              echo "⚠️  Supervisor config file not found, queue workers may not be properly configured"
-            fi
+            # Check container status
+            echo "🔍 Checking container status..."
+            docker compose ps
             
             # Run database migrations
+            echo "🔄 Running migrations..."
             docker compose exec -T app php artisan migrate --force || true
             
             # Clear cache
@@ -461,17 +311,15 @@ jobs:
             docker compose exec -T app php artisan config:clear || true
             docker compose exec -T app php artisan route:clear || true
             
-            # Restart services to pick up config changes
-            echo "🔄 Restarting services..."
-            docker compose restart app
-            docker compose restart nginx
-            docker compose restart mysql
-            docker compose restart redis
+            # Setup queue workers if supervisor config exists
+            if [ -f "docker/supervisor/schoolsaavy-queues.conf" ]; then
+              echo "👷 Setting up queue workers..."
+              docker compose exec -T app cp /var/www/html/docker/supervisor/schoolsaavy-queues.conf /etc/supervisor/conf.d/schoolsaavy-queues.conf || true
+              docker compose exec -T app supervisorctl reread || true
+              docker compose exec -T app supervisorctl update || true
+            fi
             
-            # Wait for services to be ready
-            sleep 20
-            
-            # Show running containers
+            # Final status check
             docker compose ps
           EOF
 
@@ -482,83 +330,29 @@ jobs:
             
             echo "🔍 Checking deployment status..."
             
-            # Check if critical files exist
-            echo ""
+            # Check critical files
             echo "📋 Checking critical files..."
-            if [ ! -f .env ]; then
-              echo "❌ CRITICAL: .env file is MISSING!"
-              echo "   This is likely why containers aren't starting."
-              echo ""
-              echo "🔧 MANUAL SETUP REQUIRED:"
-              echo "   1. SSH to the server"
-              echo "   2. cd /var/www/schoolsaavy"
-              echo "   3. cp .env.example .env"
-              echo "   4. nano .env  (edit with production values)"
-              echo "   5. docker compose up -d"
-              echo ""
-              echo "📖 See: media_server/ENV_SETUP_GUIDE.md for detailed instructions"
-              echo ""
-            else
-              echo "✅ .env file exists"
-            fi
+            [ -f .env ] && echo "✅ .env file exists" || echo "❌ .env file MISSING!"
+            [ -f media_server/.env ] && echo "✅ media_server/.env exists" || echo "⚠️  media_server/.env MISSING!"
+            [ -f media_server/Dockerfile ] && echo "✅ media_server/Dockerfile exists" || echo "❌ media_server/Dockerfile MISSING!"
             
-            if [ ! -f media_server/.env ]; then
-              echo "⚠️  WARNING: media_server/.env is MISSING!"
-              echo "   Media server may not work properly."
-              echo "   Create it with: cp media_server/.env.example media_server/.env"
-            else
-              echo "✅ media_server/.env file exists"
-            fi
-            
-            # Check if containers are running
+            # Check container status
             echo ""
-            echo "🐳 Checking Docker containers..."
-            docker compose ps -a
+            echo "🐳 Docker containers status:"
+            docker compose ps
             
             if docker compose ps | grep -q "Up"; then
               echo ""
               echo "✅ Deployment successful! Containers are running."
-              echo ""
               
-              # Show detailed container status
-              docker compose ps
-              
-              echo ""
-              echo "🔥 Checking Firebase configuration..."
-              # Check Firebase configuration using our custom command
-              docker compose exec -T app php artisan firebase:check || echo "❌ Firebase check failed"
-              
+              # Check Firebase if possible
+              docker compose exec -T app php artisan firebase:check 2>/dev/null || echo "⚠️  Firebase check not available"
             else
               echo ""
-              echo "❌ Deployment failed! Containers are not running."
+              echo "❌ Some containers are not running properly."
               echo ""
-              echo "📊 Container Status:"
-              docker compose ps -a
-              echo ""
-              echo "📋 Last 100 lines of logs:"
-              echo "--- APP LOGS ---"
-              docker compose logs --tail=100 app 2>&1 || echo "No app logs"
-              echo ""
-              echo "--- NGINX LOGS ---"
-              docker compose logs --tail=50 nginx 2>&1 || echo "No nginx logs"
-              echo ""
-              echo "--- MYSQL LOGS ---"
-              docker compose logs --tail=50 mysql 2>&1 || echo "No mysql logs"
-              echo ""
-              
-              echo "🔍 Quick Diagnostics:"
-              echo "1. .env file: $([ -f .env ] && echo '✅ EXISTS' || echo '❌ MISSING')"
-              echo "2. docker-compose.yml: $([ -f docker-compose.yml ] && echo '✅ EXISTS' || echo '❌ MISSING')"
-              echo "3. Docker images:"
-              docker images | grep -E "schoolsaavy|ghcr.io" | head -5
-              echo ""
-              
-              echo "🚀 To fix manually:"
-              echo "   1. SSH to server: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
-              echo "   2. Run debug script: bash /var/www/schoolsaavy/scripts/debug-deployment.sh"
-              echo "   3. Check .env file exists: ls -la /var/www/schoolsaavy/.env"
-              echo "   4. Restart containers: cd /var/www/schoolsaavy && docker compose up -d"
-              
+              echo "📋 Container logs:"
+              docker compose logs --tail=50 app 2>&1 || true
               exit 1
             fi
           EOF
