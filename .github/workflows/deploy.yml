@@ -76,7 +76,19 @@ jobs:
           [ -f "docker/mysql/my.cnf" ] && echo "✅ my.cnf found" || echo "❌ my.cnf not found"
           [ -f "docker/redis/redis.conf" ] && echo "✅ redis.conf found" || echo "❌ redis.conf not found"
           
+          # Verify media_server exists locally before syncing
+          echo "🔍 Checking media_server locally before sync..."
+          if [ -d "media_server" ]; then
+            echo "✅ media_server directory found locally"
+            ls -la media_server/ | grep -E "Dockerfile|package.json|rtmp-server.js"
+          else
+            echo "❌ media_server directory NOT FOUND locally!"
+            echo "This is a critical error - deployment cannot continue"
+            exit 1
+          fi
+          
           # Copy Docker configuration, media server, and persistent data directories
+          echo "📤 Syncing files to production server..."
           rsync --exclude='.env' \
             --exclude='docker/certbot/' \
             --exclude='media_server/.env' \
@@ -91,6 +103,8 @@ jobs:
             storage/ \
             public/ \
             ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}:/var/www/schoolsaavy/
+          
+          echo "✅ rsync completed successfully"
           
           # Force copy nginx.conf, mysql config, and redis config as files (not inside directory)
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'CLEANUP'
@@ -236,25 +250,48 @@ jobs:
             # Verify media server files
             echo ""
             echo "🔍 Checking media server files..."
+            echo "Working directory: $(pwd)"
+            echo "Contents of current directory:"
+            ls -la | head -20
+            echo ""
+            
             if [ -d media_server ]; then
               echo "✅ media_server directory exists"
+              echo "Contents of media_server:"
+              ls -la media_server/ | head -20
+              echo ""
+              
               if [ -f media_server/Dockerfile ]; then
                 echo "✅ media_server/Dockerfile exists"
+                echo "Dockerfile size: $(stat -f%z media_server/Dockerfile 2>/dev/null || stat -c%s media_server/Dockerfile) bytes"
               else
                 echo "❌ media_server/Dockerfile MISSING!"
+                echo "⚠️  Docker build will fail!"
+                exit 1
               fi
+              
               if [ -f media_server/package.json ]; then
                 echo "✅ media_server/package.json exists"
               else
                 echo "❌ media_server/package.json MISSING!"
+                exit 1
               fi
+              
               if [ -f media_server/rtmp-server.js ]; then
                 echo "✅ media_server/rtmp-server.js exists"
               else
                 echo "❌ media_server/rtmp-server.js MISSING!"
+                exit 1
               fi
+              
+              echo "✅ All media server files verified!"
             else
               echo "❌ media_server directory MISSING!"
+              echo "⚠️  This will cause Docker build to fail!"
+              echo ""
+              echo "Available directories:"
+              ls -d */
+              exit 1
             fi
             
             # Create .gitkeep files to ensure directories persist
@@ -313,20 +350,42 @@ jobs:
             echo "🚀 Starting Docker containers..."
             echo "Command: docker compose up -d"
             
-            # Capture both stdout and stderr
-            if docker compose up -d > /tmp/docker-up-stdout.log 2> /tmp/docker-up-stderr.log; then
-              echo "✅ Docker Compose command completed"
-              echo "--- STDOUT ---"
-              cat /tmp/docker-up-stdout.log
-              echo "--- STDERR ---"
-              cat /tmp/docker-up-stderr.log
+            # Run docker compose up and capture output
+            docker compose up -d > /tmp/docker-up-stdout.log 2> /tmp/docker-up-stderr.log
+            COMPOSE_EXIT_CODE=$?
+            
+            echo "--- STDOUT ---"
+            cat /tmp/docker-up-stdout.log
+            echo "--- STDERR ---"
+            cat /tmp/docker-up-stderr.log
+            
+            # Check for build errors in stderr
+            if grep -q "failed to solve" /tmp/docker-up-stderr.log || grep -q "failed to read dockerfile" /tmp/docker-up-stderr.log; then
+              echo ""
+              echo "❌ Docker build FAILED!"
+              echo "Exit code: $COMPOSE_EXIT_CODE"
+              echo ""
+              echo "🔍 Checking what went wrong..."
+              
+              # Check if media_server directory and files exist
+              echo "📁 Media server files check:"
+              ls -la media_server/ || echo "❌ media_server directory not found!"
+              ls -la media_server/Dockerfile || echo "❌ Dockerfile not found!"
+              ls -la media_server/package.json || echo "❌ package.json not found!"
+              
+              echo ""
+              echo "💡 This usually means:"
+              echo "   1. The media_server directory wasn't synced properly"
+              echo "   2. The Dockerfile is missing from the media_server directory"
+              echo "   3. File permissions prevent Docker from reading the files"
+              
+              exit 1
+            fi
+            
+            if [ $COMPOSE_EXIT_CODE -eq 0 ]; then
+              echo "✅ Docker Compose command completed successfully"
             else
-              echo "❌ Docker Compose command FAILED!"
-              echo "Exit code: $?"
-              echo "--- STDOUT ---"
-              cat /tmp/docker-up-stdout.log
-              echo "--- STDERR ---"
-              cat /tmp/docker-up-stderr.log
+              echo "❌ Docker Compose returned exit code: $COMPOSE_EXIT_CODE"
               exit 1
             fi
             
