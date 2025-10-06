@@ -298,10 +298,10 @@ app.get('/health', (req, res) => {
 // Get active streams
 app.get('/api/streams', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader && config.auth.enabled) {
-      return res.status(401).json({ error: 'Authorization required' });
-    }
+    // const authHeader = req.headers.authorization;
+    // if (!authHeader && config.auth.enabled) {
+    //   return res.status(401).json({ error: 'Authorization required' });
+    // }
 
     const streams = streamManager.getAllStreams();
     res.json({
