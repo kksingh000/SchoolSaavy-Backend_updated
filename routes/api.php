@@ -110,8 +110,11 @@ Route::middleware(['json.response'])->group(function () {
 
     // Media Server Routes (Camera Streaming)
     Route::prefix('media')->middleware('auth:sanctum')->group(function () {
-        // Validate stream (called by media server)
-        Route::post('validate-stream', [App\Http\Controllers\MediaController::class, 'validateStream']);
+        // Get streaming credentials (uses existing auth token)
+        Route::post('streaming-credentials', [App\Http\Controllers\MediaController::class, 'getStreamingCredentials']);
+        
+        // Validate stream (called by media server - no auth middleware)
+        Route::withoutMiddleware('auth:sanctum')->post('validate-stream', [App\Http\Controllers\MediaController::class, 'validateStream']);
         
         // Get active streams for school (requires school context)
         Route::middleware('inject.school')->group(function () {
