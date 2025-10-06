@@ -19,10 +19,12 @@ use Illuminate\Support\Facades\Auth;
 class CameraController extends BaseController
 {
     protected CameraService $cameraService;
+    protected \App\Services\MediaServerService $mediaServerService;
 
     public function __construct(CameraService $cameraService)
     {
         $this->cameraService = $cameraService;
+        $this->mediaServerService = app(\App\Services\MediaServerService::class);
     }
 
     /**
@@ -537,5 +539,75 @@ class CameraController extends BaseController
 </html>';
 
         return response($html)->header('Content-Type', 'text/html');
+    }
+
+    /**
+     * Get media server status and configuration
+     */
+    public function getMediaServerStatus(Request $request)
+    {
+        if (!$this->checkModuleAccess('camera-monitoring')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $config = $this->mediaServerService->getServerConfig();
+            $activeStreams = $this->mediaServerService->getActiveStreams();
+            
+            return $this->successResponse([
+                'server' => $config,
+                'active_streams' => count($activeStreams),
+                'streams' => $activeStreams,
+                'recommended_settings' => $this->mediaServerService->getRecommendedStreamSettings(),
+            ], 'Media server status retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to get media server status: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get RTMP publish credentials for a camera (for mobile streaming apps)
+     */
+    public function getPublishCredentials(Request $request, int $id)
+    {
+        if (!$this->checkModuleAccess('camera-monitoring')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $schoolId = $request->school_id;
+            $userId = Auth::id();
+            
+            $camera = $this->cameraService->find($id);
+
+            if (!$camera || $camera->school_id !== $schoolId) {
+                return $this->errorResponse('Camera not found', null, 404);
+            }
+
+            // Generate publish URL and stream key
+            $credentials = $this->mediaServerService->generatePublishUrl(
+                $camera->id,
+                $schoolId,
+                $userId
+            );
+
+            return $this->successResponse([
+                'camera' => [
+                    'id' => $camera->id,
+                    'name' => $camera->camera_name,
+                    'room' => $camera->room->name ?? 'N/A',
+                ],
+                'credentials' => $credentials,
+                'instructions' => [
+                    'step_1' => 'Open your mobile streaming app (e.g., Larix Broadcaster)',
+                    'step_2' => 'Enter the RTMP URL: ' . $credentials['publish_url'],
+                    'step_3' => 'Enter the Stream Key: ' . $credentials['stream_key'],
+                    'step_4' => 'Start streaming',
+                ],
+                'recommended_settings' => $this->mediaServerService->getRecommendedStreamSettings(),
+            ], 'Publish credentials generated successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to generate credentials: ' . $e->getMessage());
+        }
     }
 }

@@ -42,9 +42,11 @@ class MediaController extends BaseController
                 return $this->errorResponse('Live streaming module not active', null, 403);
             }
             
-            // Get optional camera name from request
+            // Get camera details from request
             $cameraName = $request->input('camera_name', 'Camera ' . $user->id);
             $description = $request->input('description', '');
+            $cameraType = $request->input('camera_type', 'classroom'); // classroom, playground, etc.
+            $roomId = $request->input('room_id'); // Optional: link to specific class/room
             
             // Generate stream key based on user ID and school ID
             // Format: {school_id}_{user_id}
@@ -56,8 +58,57 @@ class MediaController extends BaseController
             // URL-encode the token for RTMP URL (handles special characters like |)
             $encodedToken = urlencode($authToken);
             
-            // Store stream metadata
+            $mediaServerUrl = config('services.media_server.public_host', 'stream.schoolsaavy.com');
+            
+            // Build URLs
+            $rtmpUrl = "rtmp://{$mediaServerUrl}/live/{$streamKey}?token={$encodedToken}";
+            $streamUrl = "https://{$mediaServerUrl}/live/{$streamKey}.flv";
+            
+            // Check if camera already exists for this user, otherwise create it
+            $camera = \App\Models\SchoolCamera::where('school_id', $school->id)
+                ->where('rtmp_url', "rtmp://{$mediaServerUrl}/live/{$streamKey}")
+                ->first();
+                
+            if (!$camera) {
+                // Create new camera record
+                $camera = \App\Models\SchoolCamera::create([
+                    'school_id' => $school->id,
+                    'room_id' => $roomId,
+                    'camera_name' => $cameraName,
+                    'camera_type' => $cameraType,
+                    'description' => $description,
+                    'stream_url' => $streamUrl,
+                    'rtmp_url' => "rtmp://{$mediaServerUrl}/live/{$streamKey}",
+                    'status' => 'active',
+                    'privacy_level' => 'restricted',
+                    'installation_date' => now(),
+                    'location_description' => $description,
+                    'settings' => [
+                        'user_id' => $user->id,
+                        'user_name' => $user->first_name . ' ' . $user->last_name,
+                        'stream_key' => $streamKey,
+                    ],
+                ]);
+            } else {
+                // Update existing camera
+                $camera->update([
+                    'camera_name' => $cameraName,
+                    'description' => $description,
+                    'camera_type' => $cameraType,
+                    'room_id' => $roomId,
+                    'status' => 'active',
+                    'settings' => array_merge($camera->settings ?? [], [
+                        'user_id' => $user->id,
+                        'user_name' => $user->first_name . ' ' . $user->last_name,
+                        'stream_key' => $streamKey,
+                        'last_updated' => now()->toISOString(),
+                    ]),
+                ]);
+            }
+            
+            // Store stream metadata in cache for quick access (24 hours)
             $streamData = [
+                'camera_id' => $camera->id,
                 'stream_key' => $streamKey,
                 'school_id' => $school->id,
                 'user_id' => $user->id,
@@ -68,21 +119,21 @@ class MediaController extends BaseController
                 'status' => 'ready', // ready to stream
             ];
             
-            // Store in cache (24 hours)
             Cache::put("stream_credentials_{$user->id}", $streamData, 86400);
+            Cache::put("camera_{$camera->id}_stream_key", $streamKey, 86400);
             
             Log::info('Streaming credentials generated', [
+                'camera_id' => $camera->id,
                 'stream_key' => $streamKey,
                 'school_id' => $school->id,
                 'user_id' => $user->id,
             ]);
             
-            $mediaServerUrl = config('services.media_server.public_host', 'stream.schoolsaavy.com');
-            
             return $this->successResponse([
-                'stream_key' => $streamKey,
+                'camera_id' => $camera->id, // Database ID (permanent, unique)
+                'stream_key' => $streamKey, // Stream identifier (school_user format)
                 'camera_name' => $cameraName,
-                'rtmp_url' => "rtmp://{$mediaServerUrl}/live/{$streamKey}?token={$encodedToken}",
+                'rtmp_url' => $rtmpUrl,
                 'playback_urls' => [
                     'flv' => "https://{$mediaServerUrl}/live/{$streamKey}.flv",
                     'hls' => "https://{$mediaServerUrl}/hls/{$streamKey}/index.m3u8",
@@ -97,7 +148,9 @@ class MediaController extends BaseController
             ], 'Streaming credentials generated successfully');
             
         } catch (\Exception $e) {
-            Log::error('Error generating streaming credentials: ' . $e->getMessage());
+            Log::error('Error generating streaming credentials: ' . $e->getMessage(), [
+                'trace' => $e->getTraceAsString()
+            ]);
             return $this->errorResponse('Failed to generate streaming credentials', null, 500);
         }
     }
@@ -184,36 +237,60 @@ class MediaController extends BaseController
                 Cache::put($activeStreamsKey, $activeStreams, 3600); // 1 hour TTL
             }
             
-            // Get or create stream metadata
-            $streamMetadata = Cache::get("stream_credentials_{$userId}", [
-                'camera_name' => 'Camera ' . $userId,
-                'description' => '',
-            ]);
+            // Find the camera record by stream key
+            $mediaServerUrl = config('services.media_server.public_host', 'stream.schoolsaavy.com');
+            $camera = \App\Models\SchoolCamera::where('school_id', $school->id)
+                ->where('rtmp_url', "rtmp://{$mediaServerUrl}/live/{$streamKey}")
+                ->first();
+            
+            if ($camera) {
+                // Update camera status to active (streaming)
+                $camera->update([
+                    'status' => 'active',
+                    'settings' => array_merge($camera->settings ?? [], [
+                        'last_stream_start' => now()->toISOString(),
+                        'is_currently_streaming' => true,
+                    ]),
+                ]);
+                
+                $cameraId = $camera->id;
+                $cameraName = $camera->camera_name;
+            } else {
+                // Fallback to cache if camera not found
+                $streamMetadata = Cache::get("stream_credentials_{$userId}", []);
+                $cameraId = $streamMetadata['camera_id'] ?? null;
+                $cameraName = $streamMetadata['camera_name'] ?? 'Camera ' . $userId;
+            }
             
             // Update stream metadata with active status
-            $streamMetadata = array_merge($streamMetadata, [
+            $streamMetadata = [
+                'camera_id' => $cameraId,
                 'stream_key' => $streamKey,
                 'school_id' => $school->id,
                 'user_id' => $user->id,
                 'user_name' => $user->first_name . ' ' . $user->last_name,
+                'camera_name' => $cameraName,
                 'started_at' => now()->toISOString(),
                 'status' => 'active',
-            ]);
+            ];
             
             Cache::put("stream_{$streamKey}_metadata", $streamMetadata, 3600);
             
             // Log stream start
             Log::info('Stream validation successful', [
+                'camera_id' => $cameraId,
                 'stream_key' => $streamKey,
                 'school_id' => $school->id,
                 'user_id' => $user->id,
             ]);
             
             return $this->successResponse([
+                'camera_id' => $cameraId,
                 'school_id' => $school->id,
                 'user_id' => $user->id,
                 'metadata' => [
-                    'camera_name' => $streamMetadata['camera_name'] ?? 'Camera',
+                    'camera_id' => $cameraId,
+                    'camera_name' => $cameraName,
                     'user_name' => $user->first_name . ' ' . $user->last_name,
                     'school_name' => $school->name,
                     'started_at' => now()->toISOString(),

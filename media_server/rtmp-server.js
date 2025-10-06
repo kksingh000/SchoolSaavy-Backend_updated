@@ -113,9 +113,94 @@ const streamManager = new StreamManager();
 // ============================
 // Authentication Helper
 // ============================
+
+/**
+ * Parse stream key to extract school ID, user ID, and camera ID
+ * 
+ * Supported Formats:
+ * 1. Full Format: {school_id}_{user_id}_{camera_id}
+ *    Example: 1_5_2 -> schoolId: 1, userId: 5, cameraId: 2
+ * 
+ * 2. Short Format (No User ID): {school_id}_{camera_id}
+ *    Example: 1_2 -> schoolId: 1, userId: 'camera', cameraId: 2
+ *    Use Case: Direct IP camera streaming without user tracking
+ * 
+ * 3. Single ID: {school_id}
+ *    Example: 1 -> schoolId: 1, userId: 'unknown', cameraId: 'unknown'
+ */
+function parseStreamKey(streamKey) {
+  try {
+    const parts = streamKey.split('_');
+    
+    // Format 1: Full format with user ID (school_user_camera)
+    if (parts.length >= 3) {
+      logger.info(`[Parse] Full format: "${streamKey}" -> School: ${parts[0]}, User: ${parts[1]}, Camera: ${parts[2]}`);
+      return {
+        schoolId: parts[0],
+        userId: parts[1],
+        cameraId: parts[2],
+        format: 'full',
+        valid: true
+      };
+    }
+    
+    // Format 2: Short format without user ID (school_camera)
+    if (parts.length === 2) {
+      logger.info(`[Parse] Short format: "${streamKey}" -> School: ${parts[0]}, Camera: ${parts[1]} (no user tracking)`);
+      return {
+        schoolId: parts[0],
+        userId: 'camera', // Mark as direct camera stream
+        cameraId: parts[1],
+        format: 'short',
+        valid: true
+      };
+    }
+    
+    // Format 3: Single school ID
+    if (parts.length === 1 && !isNaN(parts[0])) {
+      logger.info(`[Parse] School only: "${streamKey}" -> School: ${parts[0]}`);
+      return {
+        schoolId: parts[0],
+        userId: 'unknown',
+        cameraId: 'unknown',
+        format: 'school-only',
+        valid: true
+      };
+    }
+    
+    // Fallback for non-standard stream keys
+    logger.warn(`[Parse] Non-standard format: "${streamKey}" - using as-is with default school`);
+    return {
+      schoolId: 'default',
+      userId: 'unknown',
+      cameraId: streamKey,
+      format: 'legacy',
+      valid: false
+    };
+  } catch (error) {
+    logger.error('Error parsing stream key:', error);
+    return {
+      schoolId: 'default',
+      userId: 'unknown',
+      cameraId: streamKey,
+      format: 'error',
+      valid: false
+    };
+  }
+}
+
 async function validateStreamToken(streamKey, token) {
   if (!config.auth.enabled) {
-    return { valid: true, schoolId: 'demo', userId: 'demo' };
+    // Parse stream key to get school ID even without auth
+    const parsed = parseStreamKey(streamKey);
+    logger.info(`[No Auth] Parsed stream key "${streamKey}" -> schoolId: ${parsed.schoolId}, userId: ${parsed.userId}, cameraId: ${parsed.cameraId}`);
+    
+    return { 
+      valid: true, 
+      schoolId: parsed.schoolId, 
+      userId: parsed.userId,
+      metadata: { cameraId: parsed.cameraId }
+    };
   }
 
   try {
@@ -409,8 +494,10 @@ function setupEventHandlers(mediaServer) {
         return;
       }
     } else {
-      // No auth - add stream anyway
-      streamManager.addStream(streamKey, 'demo', 'demo', {});
+      // No auth - parse stream key and add stream
+      const parsed = parseStreamKey(streamKey);
+      logger.info(`[No Auth] Adding stream "${streamKey}" for school ${parsed.schoolId}`);
+      streamManager.addStream(streamKey, parsed.schoolId, parsed.userId, { cameraId: parsed.cameraId });
     }
   });
 

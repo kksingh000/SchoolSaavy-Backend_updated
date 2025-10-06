@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Log;
 
 class SchoolCamera extends Model
 {
@@ -117,16 +118,31 @@ class SchoolCamera extends Model
             return null;
         }
 
-        // Convert RTMP URL to various HTTP streaming formats
-        if (strpos($this->stream_url, 'rtmp://') === 0) {
-            // Try multiple common streaming server configurations
-            $baseUrl = str_replace('rtmp://', 'http://', $this->stream_url);
-            $baseUrl = str_replace(':1935/', ':8000/', $baseUrl);
-            
-            // Return the most common FLV format first
-            return $baseUrl . '.flv';
+        // If the stream_url is already an HTTP URL (like from DevTunnels), return as-is
+        if (strpos($this->stream_url, 'http://') === 0 || strpos($this->stream_url, 'https://') === 0) {
+            return $this->stream_url;
         }
 
+        // If it's an RTMP URL, generate playback URLs via media server
+        if (strpos($this->stream_url, 'rtmp://') === 0) {
+            $mediaServerService = app(\App\Services\MediaServerService::class);
+            
+            // Extract stream key from RTMP URL
+            // Format: rtmp://host:port/app/stream_key
+            $parts = parse_url($this->stream_url);
+            if (isset($parts['path'])) {
+                $pathParts = explode('/', trim($parts['path'], '/'));
+                $streamKey = end($pathParts); // Get last part as stream key
+                
+                // Get playback URLs from media server
+                $playbackUrls = $mediaServerService->getPlaybackUrls($streamKey);
+                
+                // Return HTTP-FLV as primary playback format (best for mobile)
+                return $playbackUrls['http_flv'] ?? null;
+            }
+        }
+
+        // Fallback to original URL if format is unknown
         return $this->stream_url;
     }
 
@@ -138,30 +154,82 @@ class SchoolCamera extends Model
 
         $urls = [];
         
-        if (strpos($this->stream_url, 'rtmp://') === 0) {
-            $basePath = str_replace('rtmp://192.168.1.8:1935/', '', $this->stream_url);
+        // If it's an HTTP/HTTPS URL, try variations
+        if (strpos($this->stream_url, 'http://') === 0 || strpos($this->stream_url, 'https://') === 0) {
+            $urls[] = $this->stream_url;
             
-            // Common streaming server URL patterns + fallback test video
-            $urls = [
-                "http://192.168.1.8:8000/{$basePath}.flv",
-                "http://192.168.1.8:8000/hls/{$basePath}.m3u8", 
-                "http://192.168.1.8:8080/{$basePath}.flv",
-                "http://192.168.1.8:8080/hls/{$basePath}.m3u8",
-                "http://192.168.1.8:8080/live/{$basePath}/index.m3u8",
-                "http://192.168.1.8:1935/live/{$basePath}/playlist.m3u8",
-                $this->stream_url, // Original RTMP URL
-                // Fallback test video if no real stream is available
-                'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-            ];
+            // Try .m3u8 (HLS) variant
+            if (strpos($this->stream_url, '.flv') !== false) {
+                $urls[] = str_replace('.flv', '.m3u8', $this->stream_url);
+            }
+            
+            // Try /hls/ path variant
+            if (strpos($this->stream_url, '/live/') !== false) {
+                $hlsUrl = str_replace('/live/', '/hls/live/', $this->stream_url);
+                $hlsUrl = str_replace('.flv', '.m3u8', $hlsUrl);
+                $urls[] = $hlsUrl;
+            }
         }
+        // If it's an RTMP URL, generate all playback formats via media server
+        elseif (strpos($this->stream_url, 'rtmp://') === 0) {
+            $mediaServerService = app(\App\Services\MediaServerService::class);
+            
+            // Extract stream key from RTMP URL
+            $parts = parse_url($this->stream_url);
+            if (isset($parts['path'])) {
+                $pathParts = explode('/', trim($parts['path'], '/'));
+                $streamKey = end($pathParts);
+                
+                // Get all playback URLs from media server
+                $playbackUrls = $mediaServerService->getPlaybackUrls($streamKey);
+                $urls = array_values($playbackUrls);
+                
+                // Add original RTMP URL as fallback
+                $urls[] = $this->stream_url;
+            }
+        }
+        
+        // Add test video as absolute last resort
+        $urls[] = 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4';
         
         return array_unique($urls);
     }
 
     public function getIsOnlineAttribute()
     {
-        // Always return true if camera is active - let the client try to connect
-        return $this->status === 'active';
+        // Check if camera is marked as active in database
+        if ($this->status !== 'active') {
+            return false;
+        }
+
+        // If stream URL is an HTTP/HTTPS URL, assume it's online (external stream)
+        if (strpos($this->stream_url, 'http://') === 0 || strpos($this->stream_url, 'https://') === 0) {
+            return true;
+        }
+
+        // If it's an RTMP URL, check with media server if stream is actually live
+        if (strpos($this->stream_url, 'rtmp://') === 0) {
+            try {
+                $mediaServerService = app(\App\Services\MediaServerService::class);
+                
+                // Extract stream key
+                $parts = parse_url($this->stream_url);
+                if (isset($parts['path'])) {
+                    $pathParts = explode('/', trim($parts['path'], '/'));
+                    $streamKey = end($pathParts);
+                    
+                    // Check if stream is currently live on media server
+                    return $mediaServerService->isStreamLive($streamKey);
+                }
+            } catch (\Exception $e) {
+                Log::debug("Error checking stream status: " . $e->getMessage());
+                // Fallback to true if media server is unavailable
+                return true;
+            }
+        }
+
+        // Default to active status
+        return true;
     }
 
     public function getTotalViewersAttribute()

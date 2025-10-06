@@ -18,6 +18,12 @@ use Carbon\Carbon;
 
 class CameraService extends BaseService
 {
+    protected MediaServerService $mediaServerService;
+
+    public function __construct()
+    {
+        $this->mediaServerService = app(MediaServerService::class);
+    }
     protected function initializeModel()
     {
         $this->model = SchoolCamera::class;
@@ -153,16 +159,44 @@ class CameraService extends BaseService
         }
 
         if ($classRoomIds->isEmpty()) {
+            Log::debug("Parent {$parentId} has no children with active class enrollments in school {$schoolId}");
             return collect();
         }
 
-        // Get cameras in children's class rooms
-        return SchoolCamera::with(['room'])
+        Log::debug("Parent {$parentId} has children in classes: " . $classRoomIds->implode(', '));
+
+        // Get cameras in children's class rooms with enhanced data
+        $cameras = SchoolCamera::with(['room'])
             ->forSchool($schoolId)
             ->active()
             ->whereIn('privacy_level', ['public', 'restricted'])
             ->whereIn('room_id', $classRoomIds)
             ->get();
+
+        // Add media server status for RTMP cameras
+        $cameras->transform(function($camera) {
+            if (strpos($camera->stream_url, 'rtmp://') === 0) {
+                try {
+                    $parts = parse_url($camera->stream_url);
+                    if (isset($parts['path'])) {
+                        $pathParts = explode('/', trim($parts['path'], '/'));
+                        $streamKey = end($pathParts);
+                        
+                        // Add real-time status from media server
+                        $camera->setAttribute('stream_server_status', [
+                            'is_live' => $this->mediaServerService->isStreamLive($streamKey),
+                            'stream_key' => $streamKey,
+                        ]);
+                    }
+                } catch (\Exception $e) {
+                    Log::debug("Could not check media server status for camera {$camera->id}");
+                }
+            }
+            
+            return $camera;
+        });
+
+        return $cameras;
     }
 
     /**
@@ -172,16 +206,58 @@ class CameraService extends BaseService
     {
         $camera = SchoolCamera::forSchool($schoolId)->find($cameraId);
         if (!$camera || $camera->status !== 'active') {
+            Log::debug("Camera {$cameraId} not found or not active");
             return false;
         }
 
         // Check if camera privacy allows parent access
         if (!in_array($camera->privacy_level, ['public', 'restricted'])) {
+            Log::debug("Camera {$cameraId} privacy level ({$camera->privacy_level}) doesn't allow parent access");
             return false;
         }
 
-        // Temporarily allow all access for testing - TODO: Fix the class relationship logic
-        return true;
+        // Get parent user
+        $parent = User::find($parentId);
+        if (!$parent || $parent->user_type !== 'parent' || !$parent->parent) {
+            Log::debug("Invalid parent user: {$parentId}");
+            return false;
+        }
+
+        // Check if camera has a room assigned
+        if (!$camera->room_id) {
+            Log::debug("Camera {$cameraId} has no room assigned");
+            // Allow access if camera has no room (might be a common area camera)
+            return true;
+        }
+
+        // Get the children's class room IDs
+        $childrenQuery = $parent->parent->students()->forSchool($schoolId);
+        
+        if ($studentId) {
+            $childrenQuery->where('id', $studentId);
+        }
+        
+        $children = $childrenQuery->with(['classes' => function($query) {
+            $query->wherePivot('is_active', true);
+        }])->get();
+
+        if ($children->isEmpty()) {
+            Log::debug("Parent {$parentId} has no children in school {$schoolId}");
+            return false;
+        }
+
+        // Check if any child is enrolled in the camera's classroom
+        foreach ($children as $child) {
+            foreach ($child->classes as $class) {
+                if ($class->id == $camera->room_id) {
+                    Log::debug("Access granted: Child {$child->id} is in class {$class->id} matching camera room");
+                    return true;
+                }
+            }
+        }
+
+        Log::debug("Access denied: No children in camera's room {$camera->room_id}");
+        return false;
     }
 
     /**
@@ -232,13 +308,51 @@ class CameraService extends BaseService
         // Log access attempt
         $accessLog = $camera->logAccess($parentId, $studentId);
 
+        // Get playback URLs
+        $playbackUrls = $this->getPlaybackUrls($camera);
+
         return [
             'token' => $camera->generateSecureStreamUrl($parentId, $expiresIn),
             'expires_in' => $expiresIn,
             'access_log_id' => $accessLog->id,
             'camera_name' => $camera->camera_name,
             'classroom' => $camera->room ? $camera->room->name : null,
+            'stream_urls' => $playbackUrls,
+            'is_live' => $camera->is_online,
+            'recommended_format' => 'http_flv', // Best for mobile
         ];
+    }
+
+    /**
+     * Get playback URLs for a camera
+     */
+    private function getPlaybackUrls(SchoolCamera $camera): array
+    {
+        $urls = [
+            'primary' => $camera->direct_stream_url,
+            'alternatives' => $camera->alternative_stream_urls,
+        ];
+
+        // If camera uses RTMP, add media server playback URLs
+        if (strpos($camera->stream_url, 'rtmp://') === 0) {
+            try {
+                $parts = parse_url($camera->stream_url);
+                if (isset($parts['path'])) {
+                    $pathParts = explode('/', trim($parts['path'], '/'));
+                    $streamKey = end($pathParts);
+                    
+                    $mediaServerUrls = $this->mediaServerService->getPlaybackUrls($streamKey);
+                    $urls['media_server'] = $mediaServerUrls;
+                    
+                    // Check if stream is actually live
+                    $urls['is_live_on_server'] = $this->mediaServerService->isStreamLive($streamKey);
+                }
+            } catch (\Exception $e) {
+                Log::warning("Could not get media server URLs for camera {$camera->id}: " . $e->getMessage());
+            }
+        }
+
+        return $urls;
     }
 
     /**

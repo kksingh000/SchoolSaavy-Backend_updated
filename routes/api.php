@@ -109,15 +109,15 @@ Route::middleware(['json.response'])->group(function () {
     });
 
     // Media Server Routes (Camera Streaming)
-    Route::prefix('media')->middleware('auth:sanctum')->group(function () {
-        // Get streaming credentials (uses existing auth token)
-        Route::post('streaming-credentials', [App\Http\Controllers\MediaController::class, 'getStreamingCredentials']);
+    Route::prefix('media')->group(function () {
+        // Get streaming credentials (requires auth and school context)
+        Route::middleware(['auth:sanctum', 'inject.school'])->post('streaming-credentials', [App\Http\Controllers\MediaController::class, 'getStreamingCredentials']);
         
         // Validate stream (called by media server - no auth middleware)
-        Route::withoutMiddleware('auth:sanctum')->post('validate-stream', [App\Http\Controllers\MediaController::class, 'validateStream']);
+        Route::post('validate-stream', [App\Http\Controllers\MediaController::class, 'validateStream']);
         
-        // Get active streams for school (requires school context)
-        Route::middleware('inject.school')->group(function () {
+        // Get active streams for school (requires auth and school context)
+        Route::middleware(['auth:sanctum', 'inject.school'])->group(function () {
             Route::get('streams', [App\Http\Controllers\MediaController::class, 'getActiveStreams']);
             Route::get('stream/{streamKey}', [App\Http\Controllers\MediaController::class, 'getStreamInfo']);
             Route::delete('stream/{streamKey}', [App\Http\Controllers\MediaController::class, 'endStream']);

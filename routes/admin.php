@@ -522,5 +522,9 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
         Route::post('{id}/stream-token', [CameraController::class, 'generateStreamToken']);
         Route::get('{id}/stream', [CameraController::class, 'streamCamera']);
         Route::post('end-session', [CameraController::class, 'endSession']);
+        
+        // Media server integration
+        Route::get('media-server/status', [CameraController::class, 'getMediaServerStatus']);
+        Route::get('{id}/publish-credentials', [CameraController::class, 'getPublishCredentials']);
     });
 });

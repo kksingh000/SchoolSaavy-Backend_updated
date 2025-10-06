@@ -42,10 +42,15 @@ return [
     ],
 
     'media_server' => [
-        'url' => env('MEDIA_SERVER_URL', 'http://localhost:8002'),
+        'enabled' => env('MEDIA_SERVER_ENABLED', true),
+        'url' => env('MEDIA_SERVER_URL', 'http://localhost:8000'),
         'public_host' => env('MEDIA_SERVER_PUBLIC_HOST', 'localhost'),
+        'http_port' => env('MEDIA_SERVER_HTTP_PORT', 8000),
+        'rtmp_port' => env('MEDIA_SERVER_RTMP_PORT', 1935),
         'api_token' => env('MEDIA_SERVER_API_TOKEN'),
         'secret' => env('MEDIA_SERVER_SECRET', 'schoolsaavy_media_secret_2025'),
+        'auth_enabled' => env('MEDIA_SERVER_AUTH_ENABLED', false),
+        'timeout' => env('MEDIA_SERVER_TIMEOUT', 5),
     ],
 
 ];
