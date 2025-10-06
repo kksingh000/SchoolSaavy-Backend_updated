@@ -307,14 +307,52 @@ jobs:
             docker compose ps
           EOF
 
-      - name: Verify deployment
+      - name: Verify Deployment
         run: |
           ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }} << 'EOF'
             cd /var/www/schoolsaavy
             
+            echo "🔍 Checking deployment status..."
+            
+            # Check if critical files exist
+            echo ""
+            echo "📋 Checking critical files..."
+            if [ ! -f .env ]; then
+              echo "❌ CRITICAL: .env file is MISSING!"
+              echo "   This is likely why containers aren't starting."
+              echo ""
+              echo "🔧 MANUAL SETUP REQUIRED:"
+              echo "   1. SSH to the server"
+              echo "   2. cd /var/www/schoolsaavy"
+              echo "   3. cp .env.example .env"
+              echo "   4. nano .env  (edit with production values)"
+              echo "   5. docker compose up -d"
+              echo ""
+              echo "📖 See: media_server/ENV_SETUP_GUIDE.md for detailed instructions"
+              echo ""
+            else
+              echo "✅ .env file exists"
+            fi
+            
+            if [ ! -f media_server/.env ]; then
+              echo "⚠️  WARNING: media_server/.env is MISSING!"
+              echo "   Media server may not work properly."
+              echo "   Create it with: cp media_server/.env.example media_server/.env"
+            else
+              echo "✅ media_server/.env file exists"
+            fi
+            
             # Check if containers are running
+            echo ""
+            echo "🐳 Checking Docker containers..."
+            docker compose ps -a
+            
             if docker compose ps | grep -q "Up"; then
+              echo ""
               echo "✅ Deployment successful! Containers are running."
+              echo ""
+              
+              # Show detailed container status
               docker compose ps
               
               echo ""
@@ -323,8 +361,36 @@ jobs:
               docker compose exec -T app php artisan firebase:check || echo "❌ Firebase check failed"
               
             else
+              echo ""
               echo "❌ Deployment failed! Containers are not running."
-              docker compose logs --tail=50
+              echo ""
+              echo "📊 Container Status:"
+              docker compose ps -a
+              echo ""
+              echo "📋 Last 100 lines of logs:"
+              echo "--- APP LOGS ---"
+              docker compose logs --tail=100 app 2>&1 || echo "No app logs"
+              echo ""
+              echo "--- NGINX LOGS ---"
+              docker compose logs --tail=50 nginx 2>&1 || echo "No nginx logs"
+              echo ""
+              echo "--- MYSQL LOGS ---"
+              docker compose logs --tail=50 mysql 2>&1 || echo "No mysql logs"
+              echo ""
+              
+              echo "🔍 Quick Diagnostics:"
+              echo "1. .env file: $([ -f .env ] && echo '✅ EXISTS' || echo '❌ MISSING')"
+              echo "2. docker-compose.yml: $([ -f docker-compose.yml ] && echo '✅ EXISTS' || echo '❌ MISSING')"
+              echo "3. Docker images:"
+              docker images | grep -E "schoolsaavy|ghcr.io" | head -5
+              echo ""
+              
+              echo "🚀 To fix manually:"
+              echo "   1. SSH to server: ssh ${{ secrets.SSH_USER }}@${{ secrets.SSH_HOST }}"
+              echo "   2. Run debug script: bash /var/www/schoolsaavy/scripts/debug-deployment.sh"
+              echo "   3. Check .env file exists: ls -la /var/www/schoolsaavy/.env"
+              echo "   4. Restart containers: cd /var/www/schoolsaavy && docker compose up -d"
+              
               exit 1
             fi
           EOF
