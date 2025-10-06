@@ -164,7 +164,7 @@ services:
       - RTMP_PORT=1935
       - INTERNAL_HTTP_PORT=8001
       - SERVER_HOST=0.0.0.0
-      - PUBLIC_HOST=${MEDIA_SERVER_PUBLIC_HOST:-localhost}
+      - PUBLIC_HOST=stream.schoolsaavy.com
       - AUTH_ENABLED=false
       - AUTH_SECRET=${MEDIA_SERVER_SECRET:-schoolsaavy_media_secret_2025}
       - BACKEND_API_URL=http://app:8080/api

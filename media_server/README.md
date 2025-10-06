@@ -1,20 +1,27 @@
 # 🎥 SchoolSavvy Media Server
 
-A production-ready RTMP media server for real-time camera streaming in the SchoolSavvy platform. Built with Node.js, supporting multi-tenant architecture with authentication, stream management, and multiple playback protocols.
+A production-ready RTMP media server for real-time camera streaming in the SchoolSavvy platform. Built with Node.js, supporting multi-tenant architecture with **simplified Sanctum token authentication**, stream management, and multiple playback protocols.
 
 ## 🚀 Features
 
 - **RTMP Streaming**: Real-time streaming protocol support for mobile camera apps
-- **Multi-Protocol Playback**: HTTP-FLV, HLS, and RTMP playback options
+- **Multi-Protocol Playback**: HTTP-FLV, HLS (when enabled), and RTMP playback options
 - **Multi-Tenant Support**: School-isolated stream management
-- **Authentication**: Token-based authentication with Laravel backend integration
+- **Simplified Authentication**: Uses existing Laravel Sanctum tokens (no separate key generation needed!)
 - **Stream Management**: API for monitoring and managing active streams
-- **Auto-Transcoding**: FFmpeg-based HLS transcoding for iOS/Safari support
+- **Auto-Transcoding**: FFmpeg-based HLS transcoding for iOS/Safari support (optional)
 - **CORS Enabled**: Full cross-origin support for web applications
 - **Rate Limiting**: Protection against abuse
 - **Comprehensive Logging**: Winston-based structured logging
 - **Health Monitoring**: Built-in health check endpoint
 - **Docker Ready**: Full containerization with health checks
+
+## ⚡ Quick Start
+
+**New users?** Check out our simplified guides:
+- **[Quick Start (2 minutes)](./QUICK_START_STREAMING.md)** - Get streaming in 2 minutes
+- **[Full Guide](./STREAMING_WITH_AUTH_TOKEN.md)** - Complete authentication flow
+- **[Postman Collection](../postman_collections/SchoolSavvy_Media_Streaming_Token_Based.postman_collection.json)** - Test the API
 
 ## 📋 Requirements
 
@@ -93,17 +100,62 @@ BACKEND_API_TOKEN=your_secure_token_here
 LOG_LEVEL=info
 ```
 
-## 📱 Usage
+## 📱 Usage - Simplified!
+
+### ✨ New Simplified Flow
+
+**No need to generate separate stream keys!** Just use your existing login token.
+
+#### Step 1: Login (Get Your Token)
+```bash
+POST https://api.schoolsaavy.com/api/auth/login
+{
+  "email": "teacher@school.com",
+  "password": "password"
+}
+```
+
+Save the `token` from response.
+
+#### Step 2: Get Streaming Credentials
+```bash
+POST https://api.schoolsaavy.com/api/media/streaming-credentials
+Authorization: Bearer YOUR_TOKEN
+{
+  "camera_name": "My Classroom Camera"
+}
+```
+
+Response includes complete RTMP URL with your token embedded:
+```json
+{
+  "stream_key": "5_12",
+  "rtmp_url": "rtmp://stream.schoolsaavy.com/live/5_12?token=YOUR_TOKEN",
+  "playback_urls": {
+    "flv": "https://stream.schoolsaavy.com/live/5_12.flv",
+    "hls": "https://stream.schoolsaavy.com/hls/5_12/index.m3u8"
+  }
+}
+```
+
+#### Step 3: Start Streaming
+Copy the `rtmp_url` into your streaming app (Larix/OBS) and start streaming!
 
 ### Streaming from Mobile (Larix Broadcaster)
 
-1. **Install Larix Broadcaster** on your mobile device
-2. **Configure connection**:
-   - URL: `rtmp://your-server-ip:1935/live`
-   - Stream Key: `your_unique_stream_key`
-   - If auth enabled, append token: `your_stream_key?token=YOUR_TOKEN`
+1. **Get your RTMP URL** from Step 2 above
+2. **Open Larix Broadcaster**
+3. **Settings** → **Connections** → **New Connection**
+4. **Paste the complete RTMP URL** (including `?token=...`)
+5. **Start streaming** 🎥
 
-3. **Start streaming** from the app
+### Streaming from Desktop (OBS Studio)
+
+1. **Get your RTMP URL** from Step 2 above
+2. **Open OBS** → **Settings** → **Stream**
+3. **Server**: `rtmp://stream.schoolsaavy.com/live/5_12`
+4. **Stream Key**: `?token=YOUR_TOKEN`
+5. **Start streaming** 🎥
 
 ### Playback URLs
 
@@ -203,37 +255,76 @@ GET /api/streams/school/:schoolId
 GET /api/stream/:streamKey
 ```
 
-## 🔐 Authentication
+## 🔐 Authentication - Simplified!
 
-When `AUTH_ENABLED=true`, the server validates streams against your Laravel backend:
+### How It Works (New Approach)
 
-1. **Mobile app publishes** with token: `rtmp://server:1935/live/stream_key?token=USER_TOKEN`
-2. **Media server validates** by calling: `POST /api/media/validate-stream`
-3. **Backend verifies** token and returns school/user info
-4. **Stream is accepted** or rejected based on validation
+When `AUTH_ENABLED=true`, authentication uses your existing Laravel Sanctum token:
 
-### Backend API Expected Response
+1. **User logs in** to Laravel API → receives Sanctum token
+2. **User requests streaming credentials** → gets RTMP URL with token embedded
+3. **User starts streaming** → Media server validates token with Laravel
+4. **Stream is allowed** if token is valid and user has permissions
 
-Your Laravel API should implement:
+### Stream Key Format
+```
+{school_id}_{user_id}
+```
+
+**Example**: `5_12`
+- School ID: 5
+- User ID: 12
+
+**Benefits**:
+- ✅ Simple and predictable
+- ✅ No random generation needed
+- ✅ Unique per user
+- ✅ No expiration management
+
+### Backend Validation Flow
+
+Your Laravel `MediaController` implements:
 
 ```php
 POST /api/media/validate-stream
-Authorization: Bearer {token}
-Body: {"stream_key": "camera1"}
+Body: {
+  "streamKey": "5_12",
+  "token": "1|abcdef..."
+}
 
-Response:
+Response (on success):
 {
-  "status": "success",
-  "data": {
-    "school_id": "123",
-    "user_id": "456",
-    "metadata": {
-      "camera_name": "Main Entrance",
-      "location": "Building A"
-    }
+  "success": true,
+  "school_id": "5",
+  "user_id": "12",
+  "metadata": {
+    "camera_name": "Main Entrance"
   }
 }
 ```
+
+The media server calls this endpoint to validate each streaming attempt.
+
+### No Separate Keys Needed!
+
+**Old way (complex)**:
+1. Login → Get auth token
+2. Generate stream key → Get separate key + token
+3. Manage key expiration
+4. Delete old keys
+
+**New way (simple)**:
+1. Login → Get auth token
+2. Get streaming credentials (reuses same token)
+3. Stream! No extra management needed
+
+### Security Features
+
+- ✅ **Token validation**: Every stream validated against Laravel
+- ✅ **School isolation**: Users can only stream to their school
+- ✅ **Role-based**: Only teachers/admins can stream
+- ✅ **Module check**: Live-streaming module must be active
+- ✅ **One stream per user**: Prevents abuse
 
 ## 🏗️ Architecture
 
