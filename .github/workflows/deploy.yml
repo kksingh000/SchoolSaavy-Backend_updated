@@ -239,19 +239,58 @@ jobs:
             sed -i "s|image: ghcr.io/sunnybhadana/schoolsaavy-backend:.*|image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest|g" docker-compose.yml || true
             
             # Pull the latest images
-            docker compose pull
+            echo "📦 Pulling latest Docker images..."
+            docker compose pull 2>&1 || echo "⚠️  Some images may not have been pulled"
             
             # Stop existing containers
-            docker compose down
+            echo "🛑 Stopping existing containers..."
+            docker compose down 2>&1
             
             # Remove old images to save space (keep last 2 versions)
             docker image prune -f
             
-            # Start the application
-            docker compose up -d
+            # Start the application with verbose output
+            echo "🚀 Starting Docker containers..."
+            docker compose up -d 2>&1 | tee /tmp/docker-compose-up.log
+            
+            # Check immediate startup errors
+            if [ $? -ne 0 ]; then
+              echo "❌ Docker Compose failed to start!"
+              cat /tmp/docker-compose-up.log
+              exit 1
+            fi
             
             # Wait for services to be ready
-            sleep 30
+            echo "⏳ Waiting for services to initialize..."
+            sleep 10
+            
+            # Check if containers are running after initial startup
+            echo "🔍 Checking container status after startup..."
+            docker compose ps -a
+            
+            # If no containers are running, get detailed logs
+            if ! docker compose ps | grep -q "Up"; then
+              echo "⚠️  Containers not running yet, checking why..."
+              echo ""
+              echo "=== REDIS LOGS ==="
+              docker compose logs redis 2>&1 || echo "No redis logs"
+              echo ""
+              echo "=== APP LOGS ==="
+              docker compose logs app 2>&1 || echo "No app logs"
+              echo ""
+              echo "=== NGINX LOGS ==="
+              docker compose logs nginx 2>&1 || echo "No nginx logs"
+              echo ""
+              echo "=== QUEUE LOGS ==="
+              docker compose logs queue 2>&1 || echo "No queue logs"
+              echo ""
+              echo "=== MEDIA-SERVER LOGS ==="
+              docker compose logs media-server 2>&1 || echo "No media-server logs"
+              echo ""
+            fi
+            
+            # Wait additional time for services to fully start
+            sleep 20
             
             # Debug: Check if .env file exists and app can start
             echo "🔍 Debugging application startup..."
