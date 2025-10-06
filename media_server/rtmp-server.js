@@ -354,6 +354,95 @@ app.listen(config.server.httpPort, config.server.host, () => {
 });
 
 // ============================
+// Node Media Server Event Handlers Setup
+// ============================
+function setupEventHandlers(mediaServer) {
+  mediaServer.on('preConnect', (id, args) => {
+    logger.debug(`[preConnect] id=${id} args=${JSON.stringify(args)}`);
+  });
+
+  mediaServer.on('postConnect', (id, args) => {
+    logger.debug(`[postConnect] id=${id} args=${JSON.stringify(args)}`);
+  });
+
+  mediaServer.on('doneConnect', (id, args) => {
+    logger.debug(`[doneConnect] id=${id}`);
+  });
+
+  mediaServer.on('prePublish', async (id, StreamPath, args) => {
+    logger.info(`[prePublish] id=${id} StreamPath=${StreamPath} args=${JSON.stringify(args)}`);
+    
+    const streamKey = StreamPath.split('/').pop();
+    
+    // Validate authentication
+    if (config.auth.enabled) {
+      const token = args.token || args.key;
+      
+      if (!token) {
+        logger.warn(`[prePublish] No token provided for stream: ${streamKey}`);
+        const session = mediaServer.getSession(id);
+        session.reject();
+        return;
+      }
+
+      const validation = await validateStreamToken(streamKey, token);
+      
+      if (!validation.valid) {
+        logger.warn(`[prePublish] Invalid token for stream: ${streamKey}`);
+        const session = mediaServer.getSession(id);
+        session.reject();
+        return;
+      }
+
+      // Add stream to manager
+      const added = streamManager.addStream(
+        streamKey, 
+        validation.schoolId, 
+        validation.userId,
+        validation.metadata
+      );
+
+      if (!added) {
+        logger.warn(`[prePublish] Could not add stream: ${streamKey} (limit reached)`);
+        const session = mediaServer.getSession(id);
+        session.reject();
+        return;
+      }
+    } else {
+      // No auth - add stream anyway
+      streamManager.addStream(streamKey, 'demo', 'demo', {});
+    }
+  });
+
+  mediaServer.on('postPublish', (id, StreamPath, args) => {
+    const streamKey = StreamPath.split('/').pop();
+    logger.info(`[postPublish] Stream started: ${streamKey}`);
+    logger.info(`📺 Playback URLs:`);
+    logger.info(`   - RTMP: rtmp://${config.server.publicHost}:${config.rtmp.port}/live/${streamKey}`);
+    logger.info(`   - FLV:  http://${config.server.publicHost}:${config.server.httpPort}/live/${streamKey}.flv`);
+    logger.info(`   - HLS:  http://${config.server.publicHost}:${config.server.httpPort}/live/${streamKey}/index.m3u8`);
+  });
+
+  mediaServer.on('donePublish', (id, StreamPath, args) => {
+    const streamKey = StreamPath.split('/').pop();
+    logger.info(`[donePublish] Stream ended: ${streamKey}`);
+    streamManager.removeStream(streamKey);
+  });
+
+  mediaServer.on('prePlay', (id, StreamPath, args) => {
+    logger.debug(`[prePlay] id=${id} StreamPath=${StreamPath}`);
+  });
+
+  mediaServer.on('postPlay', (id, StreamPath, args) => {
+    logger.debug(`[postPlay] id=${id} StreamPath=${StreamPath}`);
+  });
+
+  mediaServer.on('donePlay', (id, StreamPath, args) => {
+    logger.debug(`[donePlay] id=${id} StreamPath=${StreamPath}`);
+  });
+}
+
+// ============================
 // Node Media Server Setup
 // ============================
 const nmsConfig = {
@@ -367,102 +456,62 @@ const nmsConfig = {
 };
 
 // Only add transcoding if HLS is enabled
+// Note: Transcoding requires FFmpeg to be properly installed
 if (config.trans.tasks[0].hls || config.trans.tasks[0].dash) {
-  nmsConfig.trans = config.trans;
-  logger.info('HLS/DASH transcoding enabled');
+  try {
+    // Check if FFmpeg is available before enabling transcoding
+    const { execSync } = require('child_process');
+    try {
+      const ffmpegVersion = execSync('ffmpeg -version', { encoding: 'utf8' });
+      if (ffmpegVersion) {
+        nmsConfig.trans = config.trans;
+        logger.info('✅ HLS/DASH transcoding enabled (FFmpeg detected)');
+      }
+    } catch (ffmpegError) {
+      logger.warn('⚠️  FFmpeg not found or not working properly. Disabling HLS/DASH transcoding.');
+      logger.warn('   Falling back to HTTP-FLV and RTMP only');
+      logger.debug('FFmpeg check error:', ffmpegError.message);
+    }
+  } catch (error) {
+    logger.error('Error checking FFmpeg availability:', error);
+    logger.warn('Disabling transcoding due to FFmpeg check failure');
+  }
 } else {
-  logger.info('HLS/DASH transcoding disabled (HTTP-FLV and RTMP only)');
+  logger.info('ℹ️  HLS/DASH transcoding disabled (HTTP-FLV and RTMP only)');
 }
 
-const nms = new NodeMediaServer(nmsConfig);
+let nms = new NodeMediaServer(nmsConfig);
 
-// ============================
-// Event Handlers
-// ============================
-
-nms.on('preConnect', (id, args) => {
-  logger.debug(`[preConnect] id=${id} args=${JSON.stringify(args)}`);
-});
-
-nms.on('postConnect', (id, args) => {
-  logger.debug(`[postConnect] id=${id} args=${JSON.stringify(args)}`);
-});
-
-nms.on('doneConnect', (id, args) => {
-  logger.debug(`[doneConnect] id=${id}`);
-});
-
-nms.on('prePublish', async (id, StreamPath, args) => {
-  logger.info(`[prePublish] id=${id} StreamPath=${StreamPath} args=${JSON.stringify(args)}`);
+// Wrap nms.run() in try-catch to handle any initialization errors
+let serverStarted = false;
+try {
+  nms.run();
+  serverStarted = true;
+  logger.info('✅ Node Media Server started successfully');
+} catch (error) {
+  logger.error('❌ Failed to start Node Media Server:', error);
   
-  const streamKey = StreamPath.split('/').pop();
-  
-  // Validate authentication
-  if (config.auth.enabled) {
-    const token = args.token || args.key;
-    
-    if (!token) {
-      logger.warn(`[prePublish] No token provided for stream: ${streamKey}`);
-      const session = nms.getSession(id);
-      session.reject();
-      return;
-    }
-
-    const validation = await validateStreamToken(streamKey, token);
-    
-    if (!validation.valid) {
-      logger.warn(`[prePublish] Invalid token for stream: ${streamKey}`);
-      const session = nms.getSession(id);
-      session.reject();
-      return;
-    }
-
-    // Add stream to manager
-    const added = streamManager.addStream(
-      streamKey, 
-      validation.schoolId, 
-      validation.userId,
-      validation.metadata
-    );
-
-    if (!added) {
-      logger.warn(`[prePublish] Could not add stream: ${streamKey} (limit reached)`);
-      const session = nms.getSession(id);
-      session.reject();
-      return;
+  // If transcoding was enabled and it failed, try again without it
+  if (nmsConfig.trans) {
+    logger.warn('🔄 Retrying without transcoding...');
+    delete nmsConfig.trans;
+    try {
+      nms = new NodeMediaServer(nmsConfig);
+      nms.run();
+      serverStarted = true;
+      logger.info('✅ Media server started successfully without transcoding');
+    } catch (retryError) {
+      logger.error('❌ Failed to start media server even without transcoding:', retryError);
+      process.exit(1);
     }
   } else {
-    // No auth - add stream anyway
-    streamManager.addStream(streamKey, 'demo', 'demo', {});
+    logger.error('❌ Media server failed to start');
+    process.exit(1);
   }
-});
+}
 
-nms.on('postPublish', (id, StreamPath, args) => {
-  const streamKey = StreamPath.split('/').pop();
-  logger.info(`[postPublish] Stream started: ${streamKey}`);
-  logger.info(`📺 Playback URLs:`);
-  logger.info(`   - RTMP: rtmp://${config.server.publicHost}:${config.rtmp.port}/live/${streamKey}`);
-  logger.info(`   - FLV:  http://${config.server.publicHost}:${config.server.httpPort}/live/${streamKey}.flv`);
-  logger.info(`   - HLS:  http://${config.server.publicHost}:${config.server.httpPort}/live/${streamKey}/index.m3u8`);
-});
-
-nms.on('donePublish', (id, StreamPath, args) => {
-  const streamKey = StreamPath.split('/').pop();
-  logger.info(`[donePublish] Stream ended: ${streamKey}`);
-  streamManager.removeStream(streamKey);
-});
-
-nms.on('prePlay', (id, StreamPath, args) => {
-  logger.debug(`[prePlay] id=${id} StreamPath=${StreamPath}`);
-});
-
-nms.on('postPlay', (id, StreamPath, args) => {
-  logger.debug(`[postPlay] id=${id} StreamPath=${StreamPath}`);
-});
-
-nms.on('donePlay', (id, StreamPath, args) => {
-  logger.debug(`[donePlay] id=${id} StreamPath=${StreamPath}`);
-});
+// Setup event handlers
+setupEventHandlers(nms);
 
 // ============================
 // Start Media Server
