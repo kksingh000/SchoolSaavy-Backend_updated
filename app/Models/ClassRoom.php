@@ -91,4 +91,9 @@ class ClassRoom extends Model
     {
         return $this->hasMany(ClassRoom::class, 'promotes_to_class_id');
     }
+
+    public function cameras()
+    {
+        return $this->hasMany(\App\Models\SchoolCamera::class, 'room_id');
+    }
 }

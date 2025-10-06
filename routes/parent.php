@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\ParentController;
+use App\Http\Controllers\ParentCameraController;
 
 /*
 |--------------------------------------------------------------------------
@@ -57,5 +58,18 @@ Route::prefix('parent')->middleware(['auth:sanctum', 'school.status', 'inject.sc
 
         // Deactivate device token
         Route::post('deactivate-token', [App\Http\Controllers\NotificationController::class, 'deactivateDeviceToken']);
+    });
+
+    // Camera Monitoring APIs for Parents (Class-based Access)
+    Route::prefix('cameras')->group(function () {
+        // Get accessible cameras (class-based)
+        Route::get('accessible', [ParentCameraController::class, 'getAccessibleCameras']);
+        
+        // Get classroom access info
+        Route::get('classroom-access', [ParentCameraController::class, 'getClassroomAccess']);
+        
+        // Live streaming
+        Route::post('{cameraId}/stream-token', [ParentCameraController::class, 'getStreamToken']);
+        Route::post('end-session', [ParentCameraController::class, 'endSession']);
     });
 });

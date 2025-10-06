@@ -206,6 +206,27 @@ class ModuleSeeder extends Seeder
                 'sort_order' => 12,
             ],
             [
+                'name' => 'Camera Monitoring',
+                'slug' => 'camera-monitoring',
+                'description' => 'Live camera monitoring system for enhanced school security and parent transparency',
+                'monthly_price' => 45.00,
+                'yearly_price' => 450.00,
+                'features' => [
+                    'Live Camera Streaming',
+                    'Multi-Location Coverage',
+                    'Parent Access Control',
+                    'Privacy Level Management',
+                    'Time-based Scheduling',
+                    'Access Logging & Analytics',
+                    'WebRTC Integration',
+                    'Mobile App Support',
+                    'Secure Token Authentication',
+                    'Permission Management System'
+                ],
+                'is_active' => true,
+                'sort_order' => 13,
+            ],
+            [
                 'name' => 'Student Promotion System',
                 'slug' => 'promotion-system',
                 'description' => 'Advanced academic year management and student promotion system',
@@ -224,7 +245,7 @@ class ModuleSeeder extends Seeder
                     'Class Progression Management'
                 ],
                 'is_active' => true,
-                'sort_order' => 13,
+                'sort_order' => 14,
             ],
         ];
 

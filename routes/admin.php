@@ -23,6 +23,7 @@ use App\Http\Controllers\AdmissionNumberController;
 use App\Http\Controllers\RollNumberController;
 use App\Http\Controllers\FeeStructureController;
 use App\Http\Controllers\FeePaymentController;
+use App\Http\Controllers\CameraController;
 
 /*
 |--------------------------------------------------------------------------
@@ -496,4 +497,30 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
     //     Route::get('/', [\App\Http\Controllers\FeePaymentController::class, 'getStudentFeesWithPayments'])
     //         ->middleware('api.cache:ttl:300,vary_by_school:true');
     // });
+
+    // Camera Monitoring System Routes
+    Route::prefix('cameras')->group(function () {
+        // Camera CRUD operations
+        Route::get('/', [CameraController::class, 'index']);
+        Route::post('/', [CameraController::class, 'store']);
+        Route::get('{id}', [CameraController::class, 'show']);
+        Route::put('{id}', [CameraController::class, 'update']);
+        Route::delete('{id}', [CameraController::class, 'destroy']);
+
+        // Camera management operations
+        Route::patch('{id}/privacy', [CameraController::class, 'updatePrivacy']);
+        Route::get('{id}/analytics', [CameraController::class, 'getAnalytics']);
+        Route::get('room/{roomId}', [CameraController::class, 'getCamerasByRoom']);
+
+        // Permission management
+        Route::get('permissions/list', [CameraController::class, 'getPermissions']);
+        Route::post('permissions/create', [CameraController::class, 'createPermission']);
+        Route::patch('permissions/{permissionId}/approve', [CameraController::class, 'approveAccess']);
+        Route::patch('permissions/{permissionId}/reject', [CameraController::class, 'rejectAccess']);
+
+        // Stream management
+        Route::post('{id}/stream-token', [CameraController::class, 'generateStreamToken']);
+        Route::get('{id}/stream', [CameraController::class, 'streamCamera']);
+        Route::post('end-session', [CameraController::class, 'endSession']);
+    });
 });

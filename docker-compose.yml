@@ -150,12 +150,59 @@ services:
     networks:
       - schoolsavvy_network
 
+  # Media Server for Camera Streaming
+  media-server:
+    build:
+      context: ./media_server
+      dockerfile: Dockerfile
+    container_name: schoolsavvy_media_server
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - HTTP_PORT=8000
+      - RTMP_PORT=1935
+      - INTERNAL_HTTP_PORT=8001
+      - SERVER_HOST=0.0.0.0
+      - PUBLIC_HOST=${MEDIA_SERVER_PUBLIC_HOST:-localhost}
+      - AUTH_ENABLED=true
+      - AUTH_SECRET=${MEDIA_SERVER_SECRET:-schoolsaavy_media_secret_2025}
+      - BACKEND_API_URL=http://app:8080/api
+      - BACKEND_API_TOKEN=${MEDIA_SERVER_API_TOKEN:-}
+      - MAX_STREAMS_PER_SCHOOL=10
+      - HLS_ENABLED=true
+      - LOG_LEVEL=info
+      - CORS_ORIGINS=*
+    ports:
+      - "1935:1935"  # RTMP
+      - "8002:8000"  # HTTP/API (mapped to 8002 to avoid conflicts)
+    volumes:
+      - media_data:/app/media
+      - media_logs:/app/logs
+      - media_recordings:/app/recordings
+    depends_on:
+      - app
+      - redis
+    networks:
+      - schoolsavvy_network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:8000/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }).on('error', () => { process.exit(1); });"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
 volumes:
   mysql_data:
     driver: local
   redis_data:
     driver: local
   nginx_logs:
+    driver: local
+  media_data:
+    driver: local
+  media_logs:
+    driver: local
+  media_recordings:
     driver: local
 
 networks:

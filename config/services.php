@@ -41,4 +41,11 @@ return [
         'database_url' => env('FIREBASE_DATABASE_URL'),
     ],
 
+    'media_server' => [
+        'url' => env('MEDIA_SERVER_URL', 'http://localhost:8002'),
+        'public_host' => env('MEDIA_SERVER_PUBLIC_HOST', 'localhost'),
+        'api_token' => env('MEDIA_SERVER_API_TOKEN'),
+        'secret' => env('MEDIA_SERVER_SECRET', 'schoolsaavy_media_secret_2025'),
+    ],
+
 ];

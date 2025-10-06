@@ -1,0 +1,31 @@
+# Logs
+logs/
+*.log
+
+# Node modules
+node_modules/
+npm-debug.log*
+
+# Media files
+media/
+recordings/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp

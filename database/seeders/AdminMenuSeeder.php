@@ -515,6 +515,68 @@ class AdminMenuSeeder extends Seeder
                 'updated_at' => $now
             ],
 
+            // Camera Management System
+            [
+                'id' => 'cameras',
+                'name' => 'sys.nav.cameras',
+                'code' => 'cameras',
+                'parent_id' => 'group_management',
+                'type' => 'CATALOGUE',
+                'icon' => 'ph:camera-bold',
+                'path' => '/cameras',
+                'component' => null,
+                'meta' => null,
+                'sort_order' => 3,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now
+            ],
+            [
+                'id' => 'camera_management',
+                'name' => 'sys.nav.camera_management',
+                'code' => 'cameras:management',
+                'parent_id' => 'cameras',
+                'type' => 'MENU',
+                'icon' => null,
+                'path' => '/cameras/management',
+                'component' => '/pages/cameras/CameraManagement',
+                'meta' => null,
+                'sort_order' => 1,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now
+            ],
+            [
+                'id' => 'camera_permissions',
+                'name' => 'sys.nav.camera_permissions',
+                'code' => 'cameras:permissions',
+                'parent_id' => 'cameras',
+                'type' => 'MENU',
+                'icon' => null,
+                'path' => '/cameras/permissions',
+                'component' => '/pages/cameras/CameraPermissions',
+                'meta' => null,
+                'sort_order' => 2,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now
+            ],
+            [
+                'id' => 'camera_analytics',
+                'name' => 'sys.nav.camera_analytics',
+                'code' => 'cameras:analytics',
+                'parent_id' => 'cameras',
+                'type' => 'MENU',
+                'icon' => null,
+                'path' => '/cameras/analytics',
+                'component' => '/pages/cameras/CameraAnalytics',
+                'meta' => null,
+                'sort_order' => 3,
+                'is_active' => true,
+                'created_at' => $now,
+                'updated_at' => $now
+            ],
+
             [
                 'id' => 'system',
                 'name' => 'sys.nav.system.index',
@@ -525,7 +587,7 @@ class AdminMenuSeeder extends Seeder
                 'path' => '/system',
                 'component' => null,
                 'meta' => null,
-                'sort_order' => 3,
+                'sort_order' => 4,
                 'is_active' => true,
                 'created_at' => $now,
                 'updated_at' => $now

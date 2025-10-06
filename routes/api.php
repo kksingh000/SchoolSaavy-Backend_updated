@@ -108,6 +108,24 @@ Route::middleware(['json.response'])->group(function () {
         Route::post('deactivate-token', [App\Http\Controllers\NotificationController::class, 'deactivateDeviceToken']);
     });
 
+    // Media Server Routes (Camera Streaming)
+    Route::prefix('media')->middleware('auth:sanctum')->group(function () {
+        // Validate stream (called by media server)
+        Route::post('validate-stream', [App\Http\Controllers\MediaController::class, 'validateStream']);
+        
+        // Get active streams for school (requires school context)
+        Route::middleware('inject.school')->group(function () {
+            Route::get('streams', [App\Http\Controllers\MediaController::class, 'getActiveStreams']);
+            Route::get('stream/{streamKey}', [App\Http\Controllers\MediaController::class, 'getStreamInfo']);
+            Route::delete('stream/{streamKey}', [App\Http\Controllers\MediaController::class, 'endStream']);
+        });
+    });
+
+    // Public Camera Stream Access (token-based authentication)
+    Route::prefix('camera')->group(function () {
+        Route::get('stream/{id}', [App\Http\Controllers\CameraController::class, 'publicStreamAccess']);
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Include Role-Specific Route Files

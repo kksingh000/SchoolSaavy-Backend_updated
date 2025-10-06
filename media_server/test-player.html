@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SchoolSavvy Media Server - Stream Player</title>
+    <script src="https://cdn.jsdelivr.net/npm/flv.js/dist/flv.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 30px;
+        }
+        
+        h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+        
+        .player-card {
+            background: white;
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            margin-bottom: 20px;
+        }
+        
+        .controls {
+            margin-bottom: 20px;
+        }
+        
+        .input-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input[type="text"], select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus, select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+        
+        .btn-secondary {
+            background: #718096;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4a5568;
+        }
+        
+        #videoContainer {
+            width: 100%;
+            background: #000;
+            border-radius: 8px;
+            overflow: hidden;
+            position: relative;
+            margin-bottom: 20px;
+        }
+        
+        #player {
+            width: 100%;
+            display: block;
+        }
+        
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            display: none;
+        }
+        
+        .status.success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+        
+        .status.error {
+            background: #fed7d7;
+            color: #742a2a;
+            border: 1px solid #fc8181;
+        }
+        
+        .status.info {
+            background: #bee3f8;
+            color: #2c5282;
+            border: 1px solid #90cdf4;
+        }
+        
+        .stream-info {
+            background: #f7fafc;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+        }
+        
+        .stream-info h3 {
+            margin-bottom: 10px;
+            color: #2d3748;
+        }
+        
+        .info-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .info-item:last-child {
+            border-bottom: none;
+        }
+        
+        .info-label {
+            font-weight: 600;
+            color: #4a5568;
+        }
+        
+        .info-value {
+            color: #2d3748;
+            font-family: monospace;
+        }
+        
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8em;
+            }
+            
+            .button-group {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎥 SchoolSavvy Media Server</h1>
+            <p class="subtitle">Live Stream Player</p>
+        </header>
+        
+        <div class="player-card">
+            <div class="controls">
+                <div class="input-group">
+                    <label for="serverUrl">Server URL</label>
+                    <input type="text" id="serverUrl" value="http://localhost:8002" placeholder="http://your-server:8002">
+                </div>
+                
+                <div class="input-group">
+                    <label for="streamKey">Stream Key</label>
+                    <input type="text" id="streamKey" value="test" placeholder="Enter stream key">
+                </div>
+                
+                <div class="input-group">
+                    <label for="protocol">Protocol</label>
+                    <select id="protocol">
+                        <option value="flv">HTTP-FLV (Recommended - Low Latency)</option>
+                        <option value="hls">HLS (iOS Compatible)</option>
+                    </select>
+                </div>
+                
+                <div class="button-group">
+                    <button class="btn-primary" onclick="playStream()">▶️ Play Stream</button>
+                    <button class="btn-danger" onclick="stopStream()">⏹️ Stop</button>
+                    <button class="btn-secondary" onclick="checkHealth()">🏥 Health Check</button>
+                </div>
+            </div>
+            
+            <div id="status" class="status"></div>
+            
+            <div id="videoContainer">
+                <video id="player" controls muted></video>
+            </div>
+            
+            <div class="stream-info" id="streamInfo" style="display: none;">
+                <h3>📊 Stream Information</h3>
+                <div id="infoContent"></div>
+            </div>
+        </div>
+        
+        <div class="player-card">
+            <h2>📝 Quick Guide</h2>
+            <ol style="line-height: 2; color: #4a5568;">
+                <li><strong>Start streaming</strong> from Larix Broadcaster or OBS to: <code>rtmp://your-server:1935/live/test</code></li>
+                <li><strong>Enter your server URL</strong> above (e.g., http://localhost:8002)</li>
+                <li><strong>Enter your stream key</strong> (e.g., "test")</li>
+                <li><strong>Click Play Stream</strong> to watch</li>
+            </ol>
+            
+            <h3 style="margin-top: 20px;">🎬 Example Stream URLs:</h3>
+            <ul style="line-height: 2; color: #4a5568; font-family: monospace; font-size: 14px;">
+                <li><strong>RTMP Publish:</strong> rtmp://localhost:1935/live/test</li>
+                <li><strong>HTTP-FLV Play:</strong> http://localhost:8002/live/test.flv</li>
+                <li><strong>HLS Play:</strong> http://localhost:8002/live/test/index.m3u8</li>
+            </ul>
+        </div>
+    </div>
+    
+    <script>
+        let flvPlayer = null;
+        let hlsPlayer = null;
+        
+        function showStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = `status ${type}`;
+            status.style.display = 'block';
+            
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    status.style.display = 'none';
+                }, 5000);
+            }
+        }
+        
+        function playStream() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            const streamKey = document.getElementById('streamKey').value;
+            const protocol = document.getElementById('protocol').value;
+            
+            if (!serverUrl || !streamKey) {
+                showStatus('❌ Please enter server URL and stream key', 'error');
+                return;
+            }
+            
+            // Stop any existing stream
+            stopStream();
+            
+            const videoElement = document.getElementById('player');
+            
+            if (protocol === 'flv') {
+                if (!flvjs.isSupported()) {
+                    showStatus('❌ Your browser does not support HTTP-FLV playback', 'error');
+                    return;
+                }
+                
+                const streamUrl = `${serverUrl}/live/${streamKey}.flv`;
+                showStatus(`🔄 Loading HTTP-FLV stream: ${streamUrl}`, 'info');
+                
+                try {
+                    flvPlayer = flvjs.createPlayer({
+                        type: 'flv',
+                        url: streamUrl,
+                        isLive: true,
+                        hasAudio: true,
+                        hasVideo: true,
+                        enableWorker: true,
+                        enableStashBuffer: false,
+                        stashInitialSize: 128,
+                        autoCleanupSourceBuffer: true
+                    });
+                    
+                    flvPlayer.attachMediaElement(videoElement);
+                    flvPlayer.load();
+                    
+                    flvPlayer.on('error', (err) => {
+                        console.error('FLV Player Error:', err);
+                        showStatus('❌ Stream error. Make sure the stream is active.', 'error');
+                    });
+                    
+                    flvPlayer.on('statistics_info', (info) => {
+                        updateStreamInfo(info);
+                    });
+                    
+                    flvPlayer.play().then(() => {
+                        showStatus('✅ Stream playing successfully!', 'success');
+                    }).catch(err => {
+                        showStatus('❌ Failed to play stream: ' + err.message, 'error');
+                    });
+                    
+                } catch (error) {
+                    showStatus('❌ Error initializing player: ' + error.message, 'error');
+                }
+                
+            } else if (protocol === 'hls') {
+                const streamUrl = `${serverUrl}/live/${streamKey}/index.m3u8`;
+                showStatus(`🔄 Loading HLS stream: ${streamUrl}`, 'info');
+                
+                if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                    // Native HLS support (Safari, iOS)
+                    videoElement.src = streamUrl;
+                    videoElement.play().then(() => {
+                        showStatus('✅ Stream playing successfully!', 'success');
+                    }).catch(err => {
+                        showStatus('❌ Failed to play stream: ' + err.message, 'error');
+                    });
+                } else {
+                    showStatus('❌ HLS playback not supported. Try HTTP-FLV instead.', 'error');
+                }
+            }
+        }
+        
+        function stopStream() {
+            if (flvPlayer) {
+                flvPlayer.pause();
+                flvPlayer.unload();
+                flvPlayer.detachMediaElement();
+                flvPlayer.destroy();
+                flvPlayer = null;
+            }
+            
+            const videoElement = document.getElementById('player');
+            videoElement.src = '';
+            
+            document.getElementById('streamInfo').style.display = 'none';
+            showStatus('⏹️ Stream stopped', 'info');
+        }
+        
+        function updateStreamInfo(info) {
+            const infoDiv = document.getElementById('streamInfo');
+            const contentDiv = document.getElementById('infoContent');
+            
+            infoDiv.style.display = 'block';
+            
+            contentDiv.innerHTML = `
+                <div class="info-item">
+                    <span class="info-label">Video Codec:</span>
+                    <span class="info-value">${info.videoCodec || 'N/A'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Audio Codec:</span>
+                    <span class="info-value">${info.audioCodec || 'N/A'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Video FPS:</span>
+                    <span class="info-value">${Math.round(info.fps) || 'N/A'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Current Speed:</span>
+                    <span class="info-value">${Math.round(info.speed * 100) / 100} KB/s</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Dropped Frames:</span>
+                    <span class="info-value">${info.droppedFrames || 0}</span>
+                </div>
+            `;
+        }
+        
+        function checkHealth() {
+            const serverUrl = document.getElementById('serverUrl').value;
+            
+            if (!serverUrl) {
+                showStatus('❌ Please enter server URL', 'error');
+                return;
+            }
+            
+            showStatus('🔄 Checking server health...', 'info');
+            
+            fetch(`${serverUrl}/health`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'healthy') {
+                        showStatus(`✅ Server is healthy! Active streams: ${data.activeStreams}`, 'success');
+                    } else {
+                        showStatus('⚠️ Server health check returned warnings', 'error');
+                    }
+                    console.log('Health Check:', data);
+                })
+                .catch(error => {
+                    showStatus('❌ Cannot reach server. Is it running?', 'error');
+                    console.error('Health check error:', error);
+                });
+        }
+        
+        // Auto-check health on load
+        window.addEventListener('load', () => {
+            setTimeout(checkHealth, 1000);
+        });
+    </script>
+</body>
+</html>

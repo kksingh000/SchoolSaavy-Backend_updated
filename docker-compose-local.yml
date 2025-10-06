@@ -176,8 +176,46 @@ services:
     networks:
       - schoolsavvy_network
 
+  # Media Server for Camera Streaming (Local Development)
+  media-server:
+    build:
+      context: ./media_server
+      dockerfile: Dockerfile
+    container_name: schoolsavvy_media_server_local
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=development
+      - HTTP_PORT=8000
+      - RTMP_PORT=1935
+      - INTERNAL_HTTP_PORT=8001
+      - SERVER_HOST=0.0.0.0
+      - PUBLIC_HOST=localhost
+      - AUTH_ENABLED=false
+      - AUTH_SECRET=schoolsaavy_media_secret_2025
+      - BACKEND_API_URL=http://app:8080/api
+      - MAX_STREAMS_PER_SCHOOL=10
+      - HLS_ENABLED=false
+      - LOG_LEVEL=debug
+      - CORS_ORIGINS=*
+    ports:
+      - "1935:1935"  # RTMP
+      - "8002:8000"  # HTTP/API
+    volumes:
+      - ./media_server:/app
+      - /app/node_modules  # Prevent overwriting node_modules
+      - media_data_local:/app/media
+      - media_logs_local:/app/logs
+    depends_on:
+      - app
+    networks:
+      - schoolsavvy_network
+
 volumes:
   mysql_data_local:
+    driver: local
+  media_data_local:
+    driver: local
+  media_logs_local:
     driver: local
 
 networks:

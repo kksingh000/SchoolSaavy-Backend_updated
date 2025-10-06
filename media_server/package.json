@@ -1,0 +1,40 @@
+{
+  "name": "schoolsaavy-media-server",
+  "version": "2.0.0",
+  "description": "RTMP Media Server for SchoolSaavy Camera System - Multi-tenant with Authentication",
+  "main": "rtmp-server.js",
+  "scripts": {
+    "start": "node rtmp-server.js",
+    "dev": "nodemon rtmp-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "setup": "npm install && mkdir -p media logs recordings"
+  },
+  "dependencies": {
+    "node-media-server": "^2.6.4",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.2",
+    "morgan": "^1.10.0",
+    "winston": "^3.11.0",
+    "express-rate-limit": "^7.1.5",
+    "helmet": "^7.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  },
+  "keywords": [
+    "rtmp",
+    "streaming",
+    "schoolsaavy",
+    "media-server",
+    "multi-tenant",
+    "camera-streaming"
+  ],
+  "author": "SchoolSaavy Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}

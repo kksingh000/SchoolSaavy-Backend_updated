@@ -1,0 +1,24 @@
+# Logs
+logs/
+*.log
+
+# Node modules
+node_modules/
+
+# Media files
+media/
+recordings/
+
+# Environment (use .env.example as template)
+.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
