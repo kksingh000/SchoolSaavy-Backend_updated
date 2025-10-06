@@ -235,6 +235,22 @@ jobs:
             # Log in to GitHub Container Registry
             echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
             
+            # Check Docker daemon
+            echo "🐳 Checking Docker daemon..."
+            if docker info > /dev/null 2>&1; then
+              echo "✅ Docker daemon is accessible"
+              docker version
+            else
+              echo "❌ Docker daemon is NOT accessible!"
+              echo "Is Docker running?"
+              sudo systemctl status docker || true
+              exit 1
+            fi
+            
+            # Check Docker Compose version
+            echo "📦 Docker Compose version:"
+            docker compose version
+            
             # Update the image tag in docker-compose.yml
             sed -i "s|image: ghcr.io/sunnybhadana/schoolsaavy-backend:.*|image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest|g" docker-compose.yml || true
             
@@ -249,14 +265,38 @@ jobs:
             # Remove old images to save space (keep last 2 versions)
             docker image prune -f
             
+            # Validate docker-compose.yml syntax
+            echo "✅ Validating docker-compose.yml..."
+            if docker compose config > /dev/null 2>&1; then
+              echo "✅ docker-compose.yml is valid"
+            else
+              echo "❌ docker-compose.yml has errors!"
+              docker compose config
+              exit 1
+            fi
+            
+            # List available services
+            echo "📋 Services to start:"
+            docker compose config --services
+            
             # Start the application with verbose output
             echo "🚀 Starting Docker containers..."
-            docker compose up -d 2>&1 | tee /tmp/docker-compose-up.log
+            echo "Command: docker compose up -d"
             
-            # Check immediate startup errors
-            if [ $? -ne 0 ]; then
-              echo "❌ Docker Compose failed to start!"
-              cat /tmp/docker-compose-up.log
+            # Capture both stdout and stderr
+            if docker compose up -d > /tmp/docker-up-stdout.log 2> /tmp/docker-up-stderr.log; then
+              echo "✅ Docker Compose command completed"
+              echo "--- STDOUT ---"
+              cat /tmp/docker-up-stdout.log
+              echo "--- STDERR ---"
+              cat /tmp/docker-up-stderr.log
+            else
+              echo "❌ Docker Compose command FAILED!"
+              echo "Exit code: $?"
+              echo "--- STDOUT ---"
+              cat /tmp/docker-up-stdout.log
+              echo "--- STDERR ---"
+              cat /tmp/docker-up-stderr.log
               exit 1
             fi
             
