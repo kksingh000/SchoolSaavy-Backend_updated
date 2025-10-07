@@ -4,6 +4,8 @@ namespace App\Http\Controllers;
 
 use App\Models\Assignment;
 use App\Models\Event;
+use App\Models\Student;
+use App\Models\Teacher;
 use App\Traits\OctaneCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -62,7 +64,7 @@ class DashboardController extends BaseController
         $schoolId = $school->id;
 
         // Use Laravel Concurrency to run all queries simultaneously for better performance
-        [$schoolCounts, $attendanceStats, $pendingFees, $recentActivities, $upcomingEvents] = Concurrency::run([
+        [$schoolCounts, $attendanceStats, $pendingFees, $recentActivities, $upcomingEvents, $attendanceGraphData, $feeCollectionAnalytics, $performanceAnalytics, $classDistribution, $assignmentStatistics] = Concurrency::run([
             // School counts
             fn () => [
                 'total_students' => DB::table('students')->where('school_id', $schoolId)->count(),
@@ -81,6 +83,12 @@ class DashboardController extends BaseController
             fn () => $this->getRecentActivities($schoolId),
             // Upcoming events
             fn () => $this->getUpcomingEvents($schoolId),
+            // Analytics data
+            fn () => $this->calculateAttendanceGraphData($schoolId),
+            fn () => $this->calculateFeeCollectionAnalytics($schoolId),
+            fn () => $this->calculateStudentPerformanceAnalytics($schoolId, $user),
+            fn () => $this->calculateClassDistribution($schoolId),
+            fn () => $this->calculateAssignmentStatistics($schoolId, $user),
         ]);
 
         return [
@@ -97,6 +105,14 @@ class DashboardController extends BaseController
             ],
             'recent_activities' => $recentActivities,
             'upcoming_events' => $upcomingEvents,
+            // Add all analytics data
+            'analytics' => [
+                'attendance_graph' => $attendanceGraphData,
+                'fee_collection' => $feeCollectionAnalytics,
+                'performance_analytics' => $performanceAnalytics,
+                'class_distribution' => $classDistribution,
+                'assignment_statistics' => $assignmentStatistics,
+            ],
         ];
     }
 
@@ -253,7 +269,7 @@ class DashboardController extends BaseController
             ->join('students', 'student_fee_plans.student_id', '=', 'students.id')
             ->where('students.school_id', $schoolId)
             ->where('fee_installments.status', 'Pending')
-            ->sum('fee_installments.amount');
+            ->sum(DB::raw('fee_installments.amount - COALESCE(fee_installments.paid_amount, 0)'));
             
         return round((float)$amount, 2);
     }
@@ -372,7 +388,7 @@ class DashboardController extends BaseController
             ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
             ->where('student_fee_plans.student_id', $studentId)
             ->where('fee_installments.status', 'Pending')
-            ->sum('fee_installments.amount');
+            ->sum(DB::raw('fee_installments.amount - COALESCE(fee_installments.paid_amount, 0)'));
             
         return round((float)$amount, 2);
     }
@@ -420,6 +436,154 @@ class DashboardController extends BaseController
         } catch (\Exception $e) {
             Log::error('Error retrieving attendance graph data: ' . $e->getMessage());
             return $this->errorResponse('An error occurred while retrieving attendance data', null, 500);
+        }
+    }
+
+    /**
+     * Get fee collection analytics for the dashboard
+     */
+    public function getFeeCollectionAnalytics(): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            
+            if ($user->user_type !== 'school_admin') {
+                return $this->errorResponse('Access denied. Only school admins can access this data.', null, 403);
+            }
+
+            $schoolId = $user->schoolAdmin?->school_id;
+            if (!$schoolId) {
+                return $this->errorResponse('School not found for this admin', null, 404);
+            }
+
+            $feeAnalytics = $this->cacheSchoolQuery(
+                'fee_analytics_' . now()->format('Y-m-d'),
+                function () use ($schoolId) {
+                    return $this->calculateFeeCollectionAnalytics($schoolId);
+                },
+                $this->getCacheTTL('fees') // 30 minutes
+            );
+
+            return $this->successResponse(
+                $feeAnalytics,
+                'Fee collection analytics retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            Log::error('Error retrieving fee analytics: ' . $e->getMessage());
+            return $this->errorResponse('An error occurred while retrieving fee analytics', null, 500);
+        }
+    }
+
+    /**
+     * Get student performance analytics for charts
+     */
+    public function getStudentPerformanceAnalytics(): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            
+            if (!in_array($user->user_type, ['school_admin', 'teacher'])) {
+                return $this->errorResponse('Access denied. Only admins and teachers can access this data.', null, 403);
+            }
+
+            $schoolId = match ($user->user_type) {
+                'school_admin' => $user->schoolAdmin?->school_id,
+                'teacher' => $user->teacher?->school_id,
+                default => null
+            };
+            if (!$schoolId) {
+                return $this->errorResponse('School not found', null, 404);
+            }
+
+            $performanceData = $this->cacheSchoolQuery(
+                'performance_analytics_' . now()->format('Y-m-d'),
+                function () use ($schoolId, $user) {
+                    return $this->calculateStudentPerformanceAnalytics($schoolId, $user);
+                },
+                $this->getCacheTTL('performance') // 60 minutes
+            );
+
+            return $this->successResponse(
+                $performanceData,
+                'Student performance analytics retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            Log::error('Error retrieving performance analytics: ' . $e->getMessage());
+            return $this->errorResponse('An error occurred while retrieving performance analytics', null, 500);
+        }
+    }
+
+    /**
+     * Get class-wise student distribution for doughnut chart
+     */
+    public function getClassDistribution(): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            
+            if ($user->user_type !== 'school_admin') {
+                return $this->errorResponse('Access denied. Only school admins can access this data.', null, 403);
+            }
+
+            $schoolId = $user->schoolAdmin?->school_id;
+            if (!$schoolId) {
+                return $this->errorResponse('School not found for this admin', null, 404);
+            }
+
+            $classDistribution = $this->cacheSchoolQuery(
+                'class_distribution_' . now()->format('Y-m-d'),
+                function () use ($schoolId) {
+                    return $this->calculateClassDistribution($schoolId);
+                },
+                $this->getCacheTTL('classes') // 60 minutes
+            );
+
+            return $this->successResponse(
+                $classDistribution,
+                'Class distribution data retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            Log::error('Error retrieving class distribution: ' . $e->getMessage());
+            return $this->errorResponse('An error occurred while retrieving class distribution', null, 500);
+        }
+    }
+
+    /**
+     * Get assignment statistics for teachers/admin
+     */
+    public function getAssignmentStatistics(): JsonResponse
+    {
+        try {
+            $user = Auth::user();
+            
+            if (!in_array($user->user_type, ['school_admin', 'teacher'])) {
+                return $this->errorResponse('Access denied', null, 403);
+            }
+
+            $schoolId = match ($user->user_type) {
+                'school_admin' => $user->schoolAdmin?->school_id,
+                'teacher' => $user->teacher?->school_id,
+                default => null
+            };
+            if (!$schoolId) {
+                return $this->errorResponse('School not found', null, 404);
+            }
+
+            $assignmentStats = $this->cacheSchoolQuery(
+                'assignment_stats_' . now()->format('Y-m-d') . '_' . $user->id,
+                function () use ($schoolId, $user) {
+                    return $this->calculateAssignmentStatistics($schoolId, $user);
+                },
+                $this->getCacheTTL('assignments') // 30 minutes
+            );
+
+            return $this->successResponse(
+                $assignmentStats,
+                'Assignment statistics retrieved successfully'
+            );
+        } catch (\Exception $e) {
+            Log::error('Error retrieving assignment statistics: ' . $e->getMessage());
+            return $this->errorResponse('An error occurred while retrieving assignment statistics', null, 500);
         }
     }
 
@@ -479,5 +643,219 @@ class DashboardController extends BaseController
             'cached_at' => now()->toISOString(),
             'cache_expires_in_minutes' => 30
         ];
+    }
+
+    /**
+     * Calculate fee collection analytics
+     */
+    private function calculateFeeCollectionAnalytics($schoolId): array
+    {
+        // Get monthly fee collection for the last 6 months
+        $months = [];
+        $collectedData = [];
+        $pendingData = [];
+
+        for ($i = 5; $i >= 0; $i--) {
+            $date = Carbon::now()->subMonths($i);
+            $months[] = $date->format('M Y');
+
+            // Get fee collections for this month
+            $collected = DB::table('fee_payments')
+                ->join('students', 'fee_payments.student_id', '=', 'students.id')
+                ->where('students.school_id', $schoolId)
+                ->where('fee_payments.status', 'Completed')
+                ->whereYear('fee_payments.payment_date', $date->year)
+                ->whereMonth('fee_payments.payment_date', $date->month)
+                ->sum('fee_payments.amount');
+
+            // Get pending fees for this month
+            $pending = DB::table('fee_installments')
+                ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
+                ->join('students', 'student_fee_plans.student_id', '=', 'students.id')
+                ->where('students.school_id', $schoolId)
+                ->where('fee_installments.status', 'Pending')
+                ->whereYear('fee_installments.due_date', $date->year)
+                ->whereMonth('fee_installments.due_date', $date->month)
+                ->sum(DB::raw('fee_installments.amount - COALESCE(fee_installments.paid_amount, 0)'));
+
+            $collectedData[] = round((float)$collected, 2);
+            $pendingData[] = round((float)$pending, 2);
+        }
+
+        // Calculate totals
+        $totalCollected = array_sum($collectedData);
+        $totalPending = array_sum($pendingData);
+        $collectionRate = ($totalCollected + $totalPending) > 0 ? 
+            round(($totalCollected / ($totalCollected + $totalPending)) * 100, 1) : 0;
+
+        return [
+            'chart_data' => [
+                'months' => $months,
+                'collected' => $collectedData,
+                'pending' => $pendingData,
+            ],
+            'summary' => [
+                'total_collected_6_months' => $totalCollected,
+                'total_pending_6_months' => $totalPending,
+                'collection_rate' => $collectionRate . '%',
+                'average_monthly_collection' => $totalCollected / 6,
+            ],
+            'cached_at' => now()->toISOString(),
+        ];
+    }
+
+    /**
+     * Calculate student performance analytics
+     */
+    private function calculateStudentPerformanceAnalytics($schoolId, $user): array
+    {
+        // Get assessment results for performance tracking
+        $performanceData = DB::table('assessment_results')
+            ->join('assessments', 'assessment_results.assessment_id', '=', 'assessments.id')
+            ->join('students', 'assessment_results.student_id', '=', 'students.id')
+            ->join('classes', 'assessments.class_id', '=', 'classes.id')
+            ->where('students.school_id', $schoolId)
+            ->whereNotNull('assessment_results.result_published_at')
+            ->select(
+                'classes.name as class_name',
+                DB::raw('AVG(assessment_results.marks_obtained) as avg_marks'),
+                DB::raw('COUNT(*) as total_assessments')
+            )
+            ->groupBy('classes.id', 'classes.name')
+            ->orderBy('classes.name')
+            ->get();
+
+        $classNames = [];
+        $avgMarks = [];
+
+        foreach ($performanceData as $data) {
+            $classNames[] = $data->class_name;
+            $avgMarks[] = round($data->avg_marks, 2);
+        }
+
+        // Get subject-wise performance
+        $subjectPerformance = DB::table('assessment_results')
+            ->join('assessments', 'assessment_results.assessment_id', '=', 'assessments.id')
+            ->join('students', 'assessment_results.student_id', '=', 'students.id')
+            ->join('subjects', 'assessments.subject_id', '=', 'subjects.id')
+            ->where('students.school_id', $schoolId)
+            ->whereNotNull('assessment_results.result_published_at')
+            ->select(
+                'subjects.name as subject_name',
+                DB::raw('AVG(assessment_results.marks_obtained) as avg_marks'),
+                DB::raw('COUNT(*) as total_assessments')
+            )
+            ->groupBy('subjects.id', 'subjects.name')
+            ->orderBy('avg_marks', 'desc')
+            ->limit(5)
+            ->get();
+
+        return [
+            'class_performance' => [
+                'labels' => $classNames,
+                'data' => $avgMarks,
+            ],
+            'subject_performance' => [
+                'labels' => $subjectPerformance->pluck('subject_name')->toArray(),
+                'data' => $subjectPerformance->pluck('avg_marks')->map(fn($marks) => round($marks, 2))->toArray(),
+            ],
+            'summary' => [
+                'total_assessments' => $performanceData->sum('total_assessments'),
+                'overall_avg' => round($performanceData->avg('avg_marks'), 2),
+            ],
+        ];
+    }
+
+    /**
+     * Calculate class distribution data
+     */
+    private function calculateClassDistribution($schoolId): array
+    {
+        $classDistribution = DB::table('class_student')
+            ->join('classes', 'class_student.class_id', '=', 'classes.id')
+            ->join('students', 'class_student.student_id', '=', 'students.id')
+            ->where('students.school_id', $schoolId)
+            ->where('class_student.is_active', true)
+            ->where('classes.is_active', true)
+            ->select(
+                'classes.name as class_name',
+                DB::raw('COUNT(DISTINCT students.id) as student_count')
+            )
+            ->groupBy('classes.id', 'classes.name')
+            ->orderBy('classes.name')
+            ->get();
+
+        return [
+            'labels' => $classDistribution->pluck('class_name')->toArray(),
+            'data' => $classDistribution->pluck('student_count')->toArray(),
+            'colors' => $this->generateChartColors($classDistribution->count()),
+        ];
+    }
+
+    /**
+     * Calculate assignment statistics
+     */
+    private function calculateAssignmentStatistics($schoolId, $user): array
+    {
+        $baseQuery = DB::table('assignments')
+            ->where('school_id', $schoolId);
+
+        // If user is teacher, filter by their assignments
+        if ($user->user_type === 'teacher') {
+            $baseQuery->where('teacher_id', $user->teacher->id);
+        }
+
+        // Get assignment counts by status
+        $statusCounts = (clone $baseQuery)
+            ->select('status', DB::raw('COUNT(*) as count'))
+            ->groupBy('status')
+            ->pluck('count', 'status')
+            ->toArray();
+
+        // Get assignments created in last 7 days
+        $recentAssignments = (clone $baseQuery)
+            ->where('assigned_date', '>=', Carbon::now()->subDays(7))
+            ->count();
+
+        // Get submission statistics
+        $submissionStats = DB::table('assignment_submissions')
+            ->join('assignments', 'assignment_submissions.assignment_id', '=', 'assignments.id')
+            ->where('assignments.school_id', $schoolId)
+            ->when($user->user_type === 'teacher', function($query) use ($user) {
+                return $query->where('assignments.teacher_id', $user->teacher->id);
+            })
+            ->select('assignment_submissions.status', DB::raw('COUNT(*) as count'))
+            ->groupBy('assignment_submissions.status')
+            ->pluck('count', 'status')
+            ->toArray();
+
+        return [
+            'assignment_status' => [
+                'labels' => array_keys($statusCounts),
+                'data' => array_values($statusCounts),
+            ],
+            'submission_status' => [
+                'labels' => array_keys($submissionStats),
+                'data' => array_values($submissionStats),
+            ],
+            'summary' => [
+                'total_assignments' => array_sum($statusCounts),
+                'recent_assignments' => $recentAssignments,
+                'total_submissions' => array_sum($submissionStats),
+            ],
+        ];
+    }
+
+    /**
+     * Generate chart colors for dynamic data
+     */
+    private function generateChartColors($count): array
+    {
+        $colors = [
+            '#8B5CF6', '#06B6D4', '#10B981', '#F59E0B', '#EF4444',
+            '#8B5A2B', '#6366F1', '#EC4899', '#14B8A6', '#F97316'
+        ];
+
+        return array_slice($colors, 0, $count);
     }
 }

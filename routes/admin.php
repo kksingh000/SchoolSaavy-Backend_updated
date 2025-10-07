@@ -45,6 +45,10 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
     // Dashboard Analytics Routes (with longer cache for expensive queries)
     Route::prefix('dashboard')->group(function () {
         Route::get('attendance-graph', [DashboardController::class, 'getAttendanceGraphData']);
+        Route::get('fee-analytics', [DashboardController::class, 'getFeeCollectionAnalytics']);
+        Route::get('performance-analytics', [DashboardController::class, 'getStudentPerformanceAnalytics']);
+        Route::get('class-distribution', [DashboardController::class, 'getClassDistribution']);
+        Route::get('assignment-statistics', [DashboardController::class, 'getAssignmentStatistics']);
     });
 
     Route::get("test", function (\Illuminate\Http\Request $request) {
