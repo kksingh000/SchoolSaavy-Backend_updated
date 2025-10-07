@@ -388,6 +388,150 @@ class CameraService extends BaseService
     }
 
     /**
+     * Get system-wide camera analytics
+     */
+    public function getSystemAnalytics(int $schoolId, array $filters = [])
+    {
+        $startDate = isset($filters['start_date']) 
+            ? Carbon::parse($filters['start_date'])->startOfDay()
+            : now()->subDays(30)->startOfDay();
+        $endDate = isset($filters['end_date']) 
+            ? Carbon::parse($filters['end_date'])->endOfDay()
+            : now()->endOfDay();
+
+        // Overview statistics
+        $totalCameras = SchoolCamera::forSchool($schoolId)->count();
+        $activeCameras = SchoolCamera::forSchool($schoolId)->active()->count();
+        
+        // Access request statistics  
+        $totalAccessRequests = CameraPermission::forSchool($schoolId)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->count();
+        
+        // Daily view statistics (using camera relationship for school filtering)
+        $dailyViews = CameraAccessLog::whereHas('camera', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
+            ->inDateRange($startDate, $endDate)
+            ->successful()
+            ->selectRaw('DATE(access_start_time) as date, COUNT(*) as views')
+            ->groupBy('date')
+            ->get();
+        
+        $averageDailyViews = $dailyViews->avg('views') ?? 0;
+        
+        // Permission status breakdown
+        $permissionStats = CameraPermission::forSchool($schoolId)
+            ->whereBetween('created_at', [$startDate, $endDate])
+            ->selectRaw('request_status, COUNT(*) as count')
+            ->groupBy('request_status')
+            ->pluck('count', 'request_status')
+            ->toArray();
+        
+        // Usage statistics (using camera relationship for school filtering)
+        $totalViewTime = CameraAccessLog::whereHas('camera', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
+            ->inDateRange($startDate, $endDate)
+            ->successful()
+            ->whereNotNull('access_end_time')
+            ->sum('duration_seconds');
+        
+        $averageSessionDuration = CameraAccessLog::whereHas('camera', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
+            ->inDateRange($startDate, $endDate)
+            ->successful()
+            ->whereNotNull('access_end_time')
+            ->avg('duration_seconds');
+        
+        // Peak usage hour (using camera relationship for school filtering)
+        $peakHourData = CameraAccessLog::whereHas('camera', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
+            ->inDateRange($startDate, $endDate)
+            ->successful()
+            ->selectRaw('HOUR(access_start_time) as hour, COUNT(*) as views')
+            ->groupBy('hour')
+            ->orderBy('views', 'desc')
+            ->first();
+        
+        // Camera performance data
+        $cameraPerformance = SchoolCamera::forSchool($schoolId)
+            ->with(['room'])
+            ->get()
+            ->map(function ($camera) use ($startDate, $endDate) {
+                $views = $camera->accessLogs()
+                    ->inDateRange($startDate, $endDate)
+                    ->successful()
+                    ->count();
+                
+                $uniqueViewers = $camera->accessLogs()
+                    ->inDateRange($startDate, $endDate)
+                    ->successful()
+                    ->distinct('parent_id')
+                    ->count();
+                
+                $avgDuration = $camera->accessLogs()
+                    ->inDateRange($startDate, $endDate)
+                    ->successful()
+                    ->whereNotNull('access_end_time')
+                    ->avg('duration_seconds');
+                
+                return [
+                    'id' => $camera->id,
+                    'name' => $camera->camera_name,
+                    'location' => $camera->location_description,
+                    'total_views' => $views,
+                    'unique_viewers' => $uniqueViewers,
+                    'average_view_duration' => round($avgDuration / 60, 1), // Convert to minutes
+                    'is_active' => $camera->status === 'active',
+                ];
+            });
+        
+        // Recent access activity (using camera relationship for school filtering)
+        $recentAccess = CameraAccessLog::whereHas('camera', function ($query) use ($schoolId) {
+                $query->where('school_id', $schoolId);
+            })
+            ->with(['camera', 'parent'])
+            ->successful()
+            ->latest('access_start_time')
+            ->limit(20)
+            ->get()
+            ->map(function ($log) {
+                return [
+                    'parent_name' => $log->parent->name ?? 'Unknown',
+                    'camera_name' => $log->camera->camera_name ?? 'Unknown',
+                    'location' => $log->camera->location_description ?? 'Unknown',
+                    'duration' => round(($log->duration_seconds ?? 0) / 60, 1), // Convert to minutes
+                    'accessed_at' => $log->access_start_time,
+                ];
+            });
+
+        return [
+            'overview' => [
+                'total_cameras' => $totalCameras,
+                'active_cameras' => $activeCameras,
+                'total_access_requests' => $totalAccessRequests,
+                'average_daily_views' => round($averageDailyViews, 1),
+            ],
+            'permission_stats' => [
+                'approved' => $permissionStats['approved'] ?? 0,
+                'pending' => $permissionStats['pending'] ?? 0,
+                'rejected' => $permissionStats['rejected'] ?? 0,
+                'expired' => 0, // We'll calculate expired separately if needed
+            ],
+            'usage_stats' => [
+                'total_view_time' => round($totalViewTime / 60, 1), // Convert to minutes
+                'average_session_duration' => round(($averageSessionDuration ?? 0) / 60, 1), // Convert to minutes
+                'peak_usage_hour' => $peakHourData->hour ?? null,
+            ],
+            'camera_performance' => $cameraPerformance->toArray(),
+            'recent_access' => $recentAccess->toArray(),
+        ];
+    }
+
+    /**
      * Get camera analytics
      */
     public function getCameraAnalytics(int $cameraId, int $schoolId, array $filters = [])

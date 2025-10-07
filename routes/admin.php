@@ -504,6 +504,9 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
 
     // Camera Monitoring System Routes
     Route::prefix('cameras')->group(function () {
+        // System-wide analytics (must be before {id} routes)
+        Route::get('system/analytics', [CameraController::class, 'getSystemAnalytics']);
+        
         // Camera CRUD operations
         Route::get('/', [CameraController::class, 'index']);
         Route::post('/', [CameraController::class, 'store']);

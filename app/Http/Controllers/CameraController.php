@@ -176,6 +176,32 @@ class CameraController extends BaseController
     }
 
     /**
+     * Get system-wide camera analytics
+     */
+    public function getSystemAnalytics(Request $request)
+    {
+        if (!$this->checkModuleAccess('camera-monitoring')) {
+            return $this->moduleAccessDenied();
+        }
+
+        try {
+            $request->validate([
+                'start_date' => 'nullable|date',
+                'end_date' => 'nullable|date|after_or_equal:start_date',
+            ]);
+
+            $schoolId = $request->school_id;
+            $filters = $request->only(['start_date', 'end_date']);
+            
+            $analytics = $this->cameraService->getSystemAnalytics($schoolId, $filters);
+
+            return $this->successResponse($analytics, 'System camera analytics retrieved successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to retrieve system analytics: ' . $e->getMessage());
+        }
+    }
+
+    /**
      * Get camera analytics
      */
     public function getAnalytics(Request $request, int $id)
