@@ -9,6 +9,7 @@ use App\Models\Teacher;
 use App\Traits\OctaneCache;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Concurrency;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -63,32 +64,105 @@ class DashboardController extends BaseController
         $school = $user->schoolAdmin->school;
         $schoolId = $school->id;
 
-        // Use Laravel Concurrency to run all queries simultaneously for better performance
-        [$schoolCounts, $attendanceStats, $pendingFees, $recentActivities, $upcomingEvents, $attendanceGraphData, $feeCollectionAnalytics, $performanceAnalytics, $classDistribution, $assignmentStatistics] = Concurrency::run([
+        // Run basic queries first in smaller concurrent batches for better performance
+        [$schoolCounts, $attendanceStats, $pendingFees, $recentActivities, $upcomingEvents] = Concurrency::run([
             // School counts
-            fn () => [
-                'total_students' => DB::table('students')->where('school_id', $schoolId)->count(),
-                'total_teachers' => DB::table('teachers')->where('school_id', $schoolId)->count(),
-                'total_classes' => DB::table('classes')->where('school_id', $schoolId)->where('is_active', true)->count(),
-                'active_modules' => DB::table('school_modules')
-                    ->where('school_id', $schoolId)
-                    ->where('status', 'active')
-                    ->count(),
-            ],
+            function () use ($schoolId) {
+                try {
+                    return [
+                        'total_students' => DB::table('students')->where('school_id', $schoolId)->count(),
+                        'total_teachers' => DB::table('teachers')->where('school_id', $schoolId)->count(),
+                        'total_classes' => DB::table('classes')->where('school_id', $schoolId)->where('is_active', true)->count(),
+                        'active_modules' => DB::table('school_modules')
+                            ->where('school_id', $schoolId)
+                            ->where('status', 'active')
+                            ->count(),
+                    ];
+                } catch (\Exception $e) {
+                    Log::error('Error in school counts: ' . $e->getMessage());
+                    return ['total_students' => 0, 'total_teachers' => 0, 'total_classes' => 0, 'active_modules' => 0];
+                }
+            },
             // Attendance stats
-            fn () => $this->getBatchedAttendanceStats($schoolId),
+            function () use ($schoolId) {
+                try {
+                    return $this->getBatchedAttendanceStats($schoolId);
+                } catch (\Exception $e) {
+                    Log::error('Error in getBatchedAttendanceStats: ' . $e->getMessage());
+                    return ['present' => 0, 'absent' => 0];
+                }
+            },
             // Pending fees
-            fn () => $this->getPendingFeesAmount($schoolId),
+            function () use ($schoolId) {
+                try {
+                    return $this->getPendingFeesAmount($schoolId);
+                } catch (\Exception $e) {
+                    Log::error('Error in getPendingFeesAmount: ' . $e->getMessage());
+                    return 0;
+                }
+            },
             // Recent activities
-            fn () => $this->getRecentActivities($schoolId),
+            function () use ($schoolId) {
+                try {
+                    return $this->getRecentActivities($schoolId);
+                } catch (\Exception $e) {
+                    Log::error('Error in getRecentActivities: ' . $e->getMessage());
+                    return [];
+                }
+            },
             // Upcoming events
-            fn () => $this->getUpcomingEvents($schoolId),
-            // Analytics data
-            fn () => $this->calculateAttendanceGraphData($schoolId),
-            fn () => $this->calculateFeeCollectionAnalytics($schoolId),
-            fn () => $this->calculateStudentPerformanceAnalytics($schoolId, $user),
-            fn () => $this->calculateClassDistribution($schoolId),
-            fn () => $this->calculateAssignmentStatistics($schoolId, $user),
+            function () use ($schoolId) {
+                try {
+                    return $this->getUpcomingEvents($schoolId);
+                } catch (\Exception $e) {
+                    Log::error('Error in getUpcomingEvents: ' . $e->getMessage());
+                    return [];
+                }
+            },
+        ]);
+
+        // Run analytics queries in a second batch (with caching these are fast)
+        [$attendanceGraphData, $feeCollectionAnalytics, $performanceAnalytics, $classDistribution, $assignmentStatistics] = Concurrency::run([
+            function () use ($schoolId) {
+                try {
+                    return $this->calculateAttendanceGraphData($schoolId);
+                } catch (\Exception $e) {
+                    Log::error('Error in calculateAttendanceGraphData: ' . $e->getMessage());
+                    return ['chart_data' => ['dates' => [], 'present' => [], 'absent' => []], 'summary' => []];
+                }
+            },
+            function () use ($schoolId) {
+                try {
+                    return $this->calculateFeeCollectionAnalytics($schoolId);
+                } catch (\Exception $e) {
+                    Log::error('Error in calculateFeeCollectionAnalytics: ' . $e->getMessage());
+                    return ['chart_data' => ['months' => [], 'collected' => [], 'pending' => []], 'summary' => []];
+                }
+            },
+            function () use ($schoolId, $user) {
+                try {
+                    return $this->calculateStudentPerformanceAnalytics($schoolId, $user);
+                } catch (\Exception $e) {
+                    Log::error('Error in calculateStudentPerformanceAnalytics: ' . $e->getMessage());
+                    return ['class_performance' => ['labels' => [], 'data' => []], 'subject_performance' => ['labels' => [], 'data' => []], 'summary' => []];
+                }
+            },
+            function () use ($schoolId) {
+                try {
+                    return $this->calculateClassDistribution($schoolId);
+                } catch (\Exception $e) {
+                    Log::error('Error in calculateClassDistribution: ' . $e->getMessage());
+                    return ['labels' => [], 'data' => [], 'colors' => []];
+                }
+            },
+            function () use ($schoolId, $user) {
+                try {
+                    return $this->calculateAssignmentStatistics($schoolId, $user);
+                } catch (\Exception $e) {
+                    Log::error('Error in calculateAssignmentStatistics: ' . $e->getMessage());
+                    return ['assignment_status' => ['labels' => [], 'data' => []], 'submission_status' => ['labels' => [], 'data' => []], 'summary' => []];
+                }
+            },
         ]);
 
         return [
@@ -592,27 +666,40 @@ class DashboardController extends BaseController
      */
     private function calculateAttendanceGraphData($schoolId): array
     {
+        return Cache::remember("dashboard_attendance_{$schoolId}", 1800, function () use ($schoolId) {
+        $startDate = Carbon::now()->subDays(4)->format('Y-m-d');
+        $endDate = Carbon::now()->format('Y-m-d');
+        
+        // Single optimized query for all 5 days
+        $attendanceData = DB::table('attendances')
+            ->select(
+                DB::raw('DATE(date) as attendance_date'),
+                'status',
+                DB::raw('COUNT(*) as count')
+            )
+            ->where('school_id', $schoolId)
+            ->whereBetween('date', [$startDate, $endDate])
+            ->groupBy(DB::raw('DATE(date)'), 'status')
+            ->orderBy('attendance_date')
+            ->get()
+            ->groupBy('attendance_date');
+
+        // Initialize arrays for last 5 days
         $dates = [];
         $presentData = [];
         $absentData = [];
 
-        // Get last 5 days (excluding weekends if needed)
+        // Build data for each of the last 5 days
         for ($i = 4; $i >= 0; $i--) {
             $date = Carbon::now()->subDays($i);
             $dateString = $date->format('Y-m-d');
-            $dates[] = $date->format('M d'); // Format: "Aug 25"
+            $dates[] = $date->format('M d');
 
-            // Get attendance counts for this date
-            $attendanceStats = DB::table('attendances')
-                ->select('status', DB::raw('COUNT(*) as count'))
-                ->where('school_id', $schoolId)
-                ->whereDate('date', $dateString)
-                ->groupBy('status')
-                ->pluck('count', 'status')
-                ->toArray();
+            $dayData = $attendanceData->get($dateString, collect());
+            $statusCounts = $dayData->pluck('count', 'status')->toArray();
 
-            $presentData[] = $attendanceStats['present'] ?? 0;
-            $absentData[] = $attendanceStats['absent'] ?? 0;
+            $presentData[] = $statusCounts['present'] ?? 0;
+            $absentData[] = $statusCounts['absent'] ?? 0;
         }
 
         // Calculate additional metrics
@@ -643,6 +730,7 @@ class DashboardController extends BaseController
             'cached_at' => now()->toISOString(),
             'cache_expires_in_minutes' => 30
         ];
+        }); // End cache closure
     }
 
     /**
@@ -650,36 +738,58 @@ class DashboardController extends BaseController
      */
     private function calculateFeeCollectionAnalytics($schoolId): array
     {
-        // Get monthly fee collection for the last 6 months
+        return Cache::remember("dashboard_fees_{$schoolId}", 1800, function () use ($schoolId) {
+        // Optimized query for fee collections in last 6 months
+        $startDate = Carbon::now()->subMonths(5)->startOfMonth();
+        $endDate = Carbon::now()->endOfMonth();
+        
+        // Single query for collected fees
+        $collectedFees = DB::table('fee_payments')
+            ->join('students', 'fee_payments.student_id', '=', 'students.id')
+            ->where('students.school_id', $schoolId)
+            ->where('fee_payments.status', 'Completed')
+            ->whereBetween('fee_payments.payment_date', [$startDate, $endDate])
+            ->select(
+                DB::raw('YEAR(fee_payments.payment_date) as year'),
+                DB::raw('MONTH(fee_payments.payment_date) as month'),
+                DB::raw('SUM(fee_payments.amount) as total_collected')
+            )
+            ->groupBy(DB::raw('YEAR(fee_payments.payment_date)'), DB::raw('MONTH(fee_payments.payment_date)'))
+            ->get()
+            ->keyBy(function($item) {
+                return $item->year . '-' . str_pad($item->month, 2, '0', STR_PAD_LEFT);
+            });
+
+        // Single query for pending fees
+        $pendingFees = DB::table('fee_installments')
+            ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
+            ->join('students', 'student_fee_plans.student_id', '=', 'students.id')
+            ->where('students.school_id', $schoolId)
+            ->where('fee_installments.status', 'Pending')
+            ->whereBetween('fee_installments.due_date', [$startDate, $endDate])
+            ->select(
+                DB::raw('YEAR(fee_installments.due_date) as year'),
+                DB::raw('MONTH(fee_installments.due_date) as month'),
+                DB::raw('SUM(fee_installments.amount - COALESCE(fee_installments.paid_amount, 0)) as total_pending')
+            )
+            ->groupBy(DB::raw('YEAR(fee_installments.due_date)'), DB::raw('MONTH(fee_installments.due_date)'))
+            ->get()
+            ->keyBy(function($item) {
+                return $item->year . '-' . str_pad($item->month, 2, '0', STR_PAD_LEFT);
+            });
+
+        // Build chart data for last 6 months
         $months = [];
         $collectedData = [];
         $pendingData = [];
 
         for ($i = 5; $i >= 0; $i--) {
             $date = Carbon::now()->subMonths($i);
+            $monthKey = $date->format('Y-m');
             $months[] = $date->format('M Y');
 
-            // Get fee collections for this month
-            $collected = DB::table('fee_payments')
-                ->join('students', 'fee_payments.student_id', '=', 'students.id')
-                ->where('students.school_id', $schoolId)
-                ->where('fee_payments.status', 'Completed')
-                ->whereYear('fee_payments.payment_date', $date->year)
-                ->whereMonth('fee_payments.payment_date', $date->month)
-                ->sum('fee_payments.amount');
-
-            // Get pending fees for this month
-            $pending = DB::table('fee_installments')
-                ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
-                ->join('students', 'student_fee_plans.student_id', '=', 'students.id')
-                ->where('students.school_id', $schoolId)
-                ->where('fee_installments.status', 'Pending')
-                ->whereYear('fee_installments.due_date', $date->year)
-                ->whereMonth('fee_installments.due_date', $date->month)
-                ->sum(DB::raw('fee_installments.amount - COALESCE(fee_installments.paid_amount, 0)'));
-
-            $collectedData[] = round((float)$collected, 2);
-            $pendingData[] = round((float)$pending, 2);
+            $collectedData[] = round((float) ($collectedFees->get($monthKey)?->total_collected ?? 0), 2);
+            $pendingData[] = round((float) ($pendingFees->get($monthKey)?->total_pending ?? 0), 2);
         }
 
         // Calculate totals
@@ -702,6 +812,7 @@ class DashboardController extends BaseController
             ],
             'cached_at' => now()->toISOString(),
         ];
+        }); // End cache closure
     }
 
     /**
@@ -709,6 +820,7 @@ class DashboardController extends BaseController
      */
     private function calculateStudentPerformanceAnalytics($schoolId, $user): array
     {
+        return Cache::remember("dashboard_performance_{$schoolId}", 1800, function () use ($schoolId) {
         // Get assessment results for performance tracking
         $performanceData = DB::table('assessment_results')
             ->join('assessments', 'assessment_results.assessment_id', '=', 'assessments.id')
@@ -730,7 +842,7 @@ class DashboardController extends BaseController
 
         foreach ($performanceData as $data) {
             $classNames[] = $data->class_name;
-            $avgMarks[] = round($data->avg_marks, 2);
+            $avgMarks[] = round($data->avg_marks ?? 0, 2);
         }
 
         // Get subject-wise performance
@@ -757,13 +869,14 @@ class DashboardController extends BaseController
             ],
             'subject_performance' => [
                 'labels' => $subjectPerformance->pluck('subject_name')->toArray(),
-                'data' => $subjectPerformance->pluck('avg_marks')->map(fn($marks) => round($marks, 2))->toArray(),
+                'data' => $subjectPerformance->pluck('avg_marks')->map(fn($marks) => round($marks ?? 0, 2))->toArray(),
             ],
             'summary' => [
                 'total_assessments' => $performanceData->sum('total_assessments'),
-                'overall_avg' => round($performanceData->avg('avg_marks'), 2),
+                'overall_avg' => round($performanceData->avg('avg_marks') ?? 0, 2),
             ],
         ];
+        }); // End cache closure
     }
 
     /**
@@ -771,6 +884,7 @@ class DashboardController extends BaseController
      */
     private function calculateClassDistribution($schoolId): array
     {
+        return Cache::remember("dashboard_class_distribution_{$schoolId}", 3600, function () use ($schoolId) {
         $classDistribution = DB::table('class_student')
             ->join('classes', 'class_student.class_id', '=', 'classes.id')
             ->join('students', 'class_student.student_id', '=', 'students.id')
@@ -790,6 +904,7 @@ class DashboardController extends BaseController
             'data' => $classDistribution->pluck('student_count')->toArray(),
             'colors' => $this->generateChartColors($classDistribution->count()),
         ];
+        }); // End cache closure
     }
 
     /**
@@ -797,6 +912,7 @@ class DashboardController extends BaseController
      */
     private function calculateAssignmentStatistics($schoolId, $user): array
     {
+        return Cache::remember("dashboard_assignments_{$schoolId}_{$user->id}", 1800, function () use ($schoolId, $user) {
         $baseQuery = DB::table('assignments')
             ->where('school_id', $schoolId);
 
@@ -844,6 +960,7 @@ class DashboardController extends BaseController
                 'total_submissions' => array_sum($submissionStats),
             ],
         ];
+        }); // End cache closure
     }
 
     /**
@@ -857,5 +974,20 @@ class DashboardController extends BaseController
         ];
 
         return array_slice($colors, 0, $count);
+    }
+
+    /**
+     * Get cache TTL based on data type
+     */
+    private function getCacheTTL($type): int
+    {
+        return match ($type) {
+            'attendance' => 15 * 60, // 15 minutes in seconds
+            'fees' => 30 * 60,       // 30 minutes in seconds
+            'performance' => 60 * 60, // 60 minutes in seconds
+            'classes' => 60 * 60,     // 60 minutes in seconds
+            'assignments' => 30 * 60, // 30 minutes in seconds
+            default => 30 * 60        // Default 30 minutes in seconds
+        };
     }
 }
