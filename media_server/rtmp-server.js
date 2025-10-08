@@ -380,6 +380,176 @@ app.get('/api/stream/:streamKey', (req, res) => {
   });
 });
 
+// ============================
+// Universal /live/{streamKey} Endpoint
+// ============================
+// This handles requests to /live/nursery_a (without file extension)
+// and automatically serves the right format based on device
+app.get('/live/:streamKey([^/.]+)', (req, res) => {
+  const { streamKey } = req.params;
+  const streamType = req.query.type || req.query.format || 'auto';
+  const userAgent = req.headers['user-agent'] || '';
+  const acceptHeader = req.headers['accept'] || '';
+  
+  logger.info(`[Smart /live] Request for ${streamKey}, UA: ${userAgent.substring(0, 50)}...`);
+  
+  // Check if stream is active
+  const stream = streamManager.getStream(streamKey);
+  if (!stream) {
+    return res.status(404).json({
+      error: 'Stream not found',
+      message: `No active stream with key: ${streamKey}`,
+      hint: 'Make sure the camera is streaming to RTMP server',
+      availableStreams: streamManager.getAllStreams().map(s => s.streamKey)
+    });
+  }
+  
+  // Determine format based on type parameter or auto-detection
+  let format = streamType.toLowerCase();
+  
+  if (format === 'auto') {
+    // Auto-detect based on User-Agent and Accept headers
+    if (acceptHeader.includes('application/vnd.apple.mpegurl') || 
+        acceptHeader.includes('application/x-mpegURL')) {
+      format = 'hls'; // Client explicitly wants HLS
+    } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
+      format = 'hls'; // iOS devices
+    } else if (userAgent.includes('Android')) {
+      format = 'hls'; // Android devices
+    } else if (userAgent.includes('Safari') && !userAgent.includes('Chrome')) {
+      format = 'hls'; // Safari (but not Chrome which also has Safari in UA)
+    } else if (userAgent.includes('VLC') || userAgent.includes('FFmpeg')) {
+      format = 'hls'; // Media players prefer HLS
+    } else {
+      format = 'hls'; // Default to HLS (most compatible)
+    }
+  }
+  
+  // Redirect to appropriate format
+  if (format === 'hls' || format === 'm3u8') {
+    const hlsUrl = `/live/${streamKey}/index.m3u8`;
+    logger.info(`[Smart /live] → HLS: ${hlsUrl}`);
+    res.redirect(302, hlsUrl);
+  } else if (format === 'flv') {
+    const flvUrl = `/live/${streamKey}.flv`;
+    logger.info(`[Smart /live] → FLV: ${flvUrl}`);
+    res.redirect(302, flvUrl);
+  } else if (format === 'rtmp') {
+    // Return RTMP URL as JSON (can't redirect to RTMP)
+    res.json({
+      status: 'success',
+      streamKey,
+      format: 'rtmp',
+      url: `rtmp://${config.server.publicHost}:${config.rtmp.port}/live/${streamKey}`,
+      message: 'RTMP streams must be accessed via RTMP client'
+    });
+  } else {
+    // Return all available formats
+    res.json({
+      status: 'success',
+      streamKey,
+      message: 'Stream is active. Choose a format:',
+      formats: {
+        hls: {
+          url: `${req.protocol}://${req.get('host')}/live/${streamKey}/index.m3u8`,
+          description: 'HLS - Best for mobile devices and modern browsers',
+          usage: `${req.protocol}://${req.get('host')}/live/${streamKey}?type=hls`
+        },
+        flv: {
+          url: `${req.protocol}://${req.get('host')}/live/${streamKey}.flv`,
+          description: 'FLV - For desktop browsers with flv.js',
+          usage: `${req.protocol}://${req.get('host')}/live/${streamKey}?type=flv`
+        },
+        rtmp: {
+          url: `rtmp://${config.server.publicHost}:${config.rtmp.port}/live/${streamKey}`,
+          description: 'RTMP - For streaming software and dedicated players',
+          usage: 'Use with VLC, OBS, or RTMP clients'
+        },
+        auto: {
+          url: `${req.protocol}://${req.get('host')}/live/${streamKey}`,
+          description: 'Auto-detect - Automatically selects best format for your device'
+        }
+      },
+      examples: {
+        browser: `Open in browser: ${req.protocol}://${req.get('host')}/live/${streamKey}`,
+        flutter: `StreamConstants.getStreamUrl('${streamKey}')`,
+        vlc: `vlc ${req.protocol}://${req.get('host')}/live/${streamKey}?type=hls`
+      }
+    });
+  }
+});
+
+// ============================
+// Universal Stream Endpoint (Alternative /stream path)
+// ============================
+// Flexible endpoint that supports query parameters for stream type
+// Examples:
+//   /stream/camera1?type=hls     -> returns HLS stream
+//   /stream/camera1?type=flv     -> returns FLV stream
+//   /stream/camera1              -> auto-detects best format based on User-Agent
+app.get('/stream/:streamKey', (req, res) => {
+  const { streamKey } = req.params;
+  const streamType = req.query.type || req.query.format || 'auto';
+  const userAgent = req.headers['user-agent'] || '';
+  
+  logger.info(`[Universal Stream] Request for ${streamKey}, type: ${streamType}, UA: ${userAgent}`);
+  
+  // Check if stream is active
+  const stream = streamManager.getStream(streamKey);
+  if (!stream) {
+    return res.status(404).json({
+      error: 'Stream not found',
+      message: `No active stream with key: ${streamKey}`,
+      availableStreams: streamManager.getAllStreams().map(s => s.streamKey)
+    });
+  }
+  
+  // Determine format based on type or auto-detection
+  let format = streamType.toLowerCase();
+  
+  if (format === 'auto') {
+    // Auto-detect based on User-Agent
+    if (userAgent.includes('iPhone') || userAgent.includes('iPad') || userAgent.includes('Safari')) {
+      format = 'hls'; // iOS prefers HLS
+    } else if (userAgent.includes('Android')) {
+      format = 'hls'; // Android works best with HLS
+    } else if (userAgent.includes('Chrome') || userAgent.includes('Firefox')) {
+      format = 'flv'; // Desktop browsers can use FLV with flv.js
+    } else {
+      format = 'hls'; // Default to HLS (most compatible)
+    }
+  }
+  
+  // Redirect or proxy based on format
+  if (format === 'hls' || format === 'm3u8') {
+    // Redirect to HLS playlist
+    const hlsUrl = `/live/${streamKey}/index.m3u8`;
+    logger.info(`[Universal Stream] Redirecting to HLS: ${hlsUrl}`);
+    res.redirect(hlsUrl);
+  } else if (format === 'flv') {
+    // Redirect to FLV stream
+    const flvUrl = `/live/${streamKey}.flv`;
+    logger.info(`[Universal Stream] Redirecting to FLV: ${flvUrl}`);
+    res.redirect(flvUrl);
+  } else {
+    // Return JSON with all available formats
+    res.json({
+      status: 'success',
+      streamKey,
+      availableFormats: {
+        hls: `${req.protocol}://${req.get('host')}/live/${streamKey}/index.m3u8`,
+        flv: `${req.protocol}://${req.get('host')}/live/${streamKey}.flv`,
+        rtmp: `rtmp://${config.server.publicHost}:${config.rtmp.port}/live/${streamKey}`
+      },
+      usage: {
+        hls: `${req.protocol}://${req.get('host')}/stream/${streamKey}?type=hls`,
+        flv: `${req.protocol}://${req.get('host')}/stream/${streamKey}?type=flv`,
+        auto: `${req.protocol}://${req.get('host')}/stream/${streamKey}` // Auto-detects based on device
+      }
+    });
+  }
+});
+
 // FLV stream proxy with CORS
 app.get('/live/:stream.flv', (req, res) => {
   const streamName = req.params.stream;
@@ -408,29 +578,78 @@ app.get('/live/:stream.flv', (req, res) => {
   req.pipe(proxyReq);
 });
 
-// HLS stream proxy with CORS
+// HLS stream proxy with CORS and better connection handling
 app.get('/live/:stream/:file', (req, res) => {
   const { stream, file } = req.params;
   const targetUrl = `http://127.0.0.1:${config.server.internalHttpPort}/live/${stream}/${file}`;
   
+  // Set CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Accept');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  
+  // Set content type based on file extension
+  if (file.endsWith('.m3u8')) {
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+  } else if (file.endsWith('.ts')) {
+    res.setHeader('Content-Type', 'video/MP2T');
+  }
   
   const http = require('http');
-  const proxyReq = http.request(targetUrl, (proxyRes) => {
+  const proxyReq = http.request(targetUrl, {
+    method: req.method,
+    headers: {
+      ...req.headers,
+      host: '127.0.0.1',
+    },
+  }, (proxyRes) => {
+    // Copy status code and headers
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    
+    // Handle connection errors during streaming
+    proxyRes.on('error', (err) => {
+      logger.error(`HLS proxy stream error for ${stream}/${file}:`, err.message);
+      if (!res.headersSent) {
+        res.status(500).end();
+      } else {
+        res.end();
+      }
+    });
+    
+    // Pipe response with error handling
     proxyRes.pipe(res);
+    
+    // Handle client disconnect
+    res.on('close', () => {
+      proxyRes.destroy();
+      proxyReq.destroy();
+    });
   });
   
   proxyReq.on('error', (err) => {
-    logger.error('HLS proxy error:', err);
+    logger.error(`HLS proxy request error for ${stream}/${file}:`, err.message);
     if (!res.headersSent) {
-      res.status(500).send('Stream segment not available');
+      res.status(404).json({
+        error: 'Stream segment not available',
+        message: err.message,
+        hint: file.endsWith('.m3u8') 
+          ? 'Make sure the stream is active and HLS transcoding is enabled'
+          : 'This segment may have been deleted or not yet generated'
+      });
+    } else {
+      res.end();
     }
   });
   
-  req.pipe(proxyReq);
+  // Handle client disconnect
+  req.on('close', () => {
+    proxyReq.destroy();
+  });
+  
+  proxyReq.end();
 });
 
 // Start Express server

@@ -37,7 +37,7 @@ module.exports = {
       {
         app: 'live',
         hls: process.env.HLS_ENABLED === 'true',
-        hlsFlags: `[hls_time=${process.env.HLS_SEGMENT_TIME || 2}:hls_list_size=${process.env.HLS_LIST_SIZE || 3}:hls_flags=delete_segments]`,
+        hlsFlags: `[hls_time=${process.env.HLS_SEGMENT_TIME || 2}:hls_list_size=${process.env.HLS_LIST_SIZE || 3}:hls_flags=delete_segments+omit_endlist]`,
         dash: process.env.DASH_ENABLED === 'true',
         dashFlags: '[f=dash:window_size=3:extra_window_size=5]'
       }

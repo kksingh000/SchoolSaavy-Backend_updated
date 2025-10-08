@@ -194,7 +194,9 @@ services:
       - AUTH_SECRET=schoolsaavy_media_secret_2025
       - BACKEND_API_URL=http://app:8080/api
       - MAX_STREAMS_PER_SCHOOL=10
-      - HLS_ENABLED=false
+      - HLS_ENABLED=true  # ✅ ENABLED for mobile streaming
+      - HLS_SEGMENT_TIME=2  # 2 seconds for lower latency (live streaming)
+      - HLS_LIST_SIZE=3     # 3 segments for minimal delay (6 seconds buffer)
       - LOG_LEVEL=debug
       - CORS_ORIGINS=*
     ports:
