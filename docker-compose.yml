@@ -170,7 +170,9 @@ services:
       - BACKEND_API_URL=http://app:8080/api
       - BACKEND_API_TOKEN=${MEDIA_SERVER_API_TOKEN:-}
       - MAX_STREAMS_PER_SCHOOL=10
-      - HLS_ENABLED=false  # Disabled due to FFmpeg version detection issue
+      - HLS_ENABLED=true  # ✅ ENABLED for mobile streaming
+      - HLS_SEGMENT_TIME=2  # 2 seconds for lower latency (live streaming)
+      - HLS_LIST_SIZE=3     # 3 segments for minimal delay (6 seconds buffer)
       - DASH_ENABLED=false # Disabled - using HTTP-FLV instead
       - LOG_LEVEL=info
       - CORS_ORIGINS=*
