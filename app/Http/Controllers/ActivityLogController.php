@@ -21,6 +21,7 @@ class ActivityLogController extends BaseController
             $module = $request->input('module');
             $action = $request->input('action');
             $userId = $request->input('user_id');
+            $severity = $request->input('severity');
             $dateFrom = $request->input('date_from');
             $dateTo = $request->input('date_to');
             $search = $request->input('search');
@@ -36,6 +37,10 @@ class ActivityLogController extends BaseController
             
             if ($action) {
                 $query->where('action', $action);
+            }
+            
+            if ($severity) {
+                $query->where('severity', $severity);
             }
             
             if ($userId) {
@@ -184,6 +189,91 @@ class ActivityLogController extends BaseController
             
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to retrieve entity activity: ' . $e->getMessage(), [], 500);
+        }
+    }
+
+    /**
+     * Export activity logs to CSV
+     */
+    public function export(Request $request)
+    {
+        try {
+            $user = $request->user();
+            $schoolId = $user->getSchool()->id;
+            
+            $module = $request->input('module');
+            $action = $request->input('action');
+            $userId = $request->input('user_id');
+            $severity = $request->input('severity');
+            $dateFrom = $request->input('date_from');
+            $dateTo = $request->input('date_to');
+            $search = $request->input('search');
+            
+            $query = ActivityLog::query()
+                ->where('school_id', $schoolId)
+                ->with('user:id,name,email,user_type');
+            
+            // Apply filters
+            if ($module) {
+                $query->where('module', $module);
+            }
+            
+            if ($action) {
+                $query->where('action', $action);
+            }
+            
+            if ($severity) {
+                $query->where('severity', $severity);
+            }
+            
+            if ($userId) {
+                $query->where('user_id', $userId);
+            }
+            
+            if ($dateFrom) {
+                $query->where('created_at', '>=', $dateFrom);
+            }
+            
+            if ($dateTo) {
+                $query->where('created_at', '<=', $dateTo . ' 23:59:59');
+            }
+            
+            if ($search) {
+                $query->where(function ($q) use ($search) {
+                    $q->where('description', 'like', "%{$search}%")
+                      ->orWhere('user_name', 'like', "%{$search}%")
+                      ->orWhere('module', 'like', "%{$search}%");
+                });
+            }
+            
+            $activities = $query->latest()->limit(10000)->get(); // Limit to prevent memory issues
+            
+            // Generate CSV
+            $csv = "ID,Timestamp,User,User Type,Action,Module,Description,Severity,IP Address,Response Time (ms)\n";
+            
+            foreach ($activities as $activity) {
+                $csv .= implode(',', [
+                    $activity->id,
+                    '"' . $activity->created_at->format('Y-m-d H:i:s') . '"',
+                    '"' . str_replace('"', '""', $activity->user_name ?? 'System') . '"',
+                    '"' . ($activity->user_type ?? 'system') . '"',
+                    '"' . $activity->action . '"',
+                    '"' . $activity->module . '"',
+                    '"' . str_replace('"', '""', $activity->description) . '"',
+                    '"' . ($activity->severity ?? 'info') . '"',
+                    '"' . ($activity->ip_address ?? 'N/A') . '"',
+                    $activity->response_time_ms ?? '',
+                ]) . "\n";
+            }
+            
+            $filename = 'activity-logs-' . date('Y-m-d-His') . '.csv';
+            
+            return response($csv, 200)
+                ->header('Content-Type', 'text/csv')
+                ->header('Content-Disposition', 'attachment; filename="' . $filename . '"');
+            
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to export activity logs: ' . $e->getMessage(), [], 500);
         }
     }
 }

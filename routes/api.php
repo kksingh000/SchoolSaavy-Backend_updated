@@ -132,6 +132,7 @@ Route::middleware(['json.response'])->group(function () {
     // Activity Logs (Admin/Teacher access)
     Route::prefix('activity-logs')->middleware(['auth:sanctum', 'inject.school'])->group(function () {
         Route::get('/', [App\Http\Controllers\ActivityLogController::class, 'index']);
+        Route::get('/export', [App\Http\Controllers\ActivityLogController::class, 'export']);
         Route::get('/statistics', [App\Http\Controllers\ActivityLogController::class, 'statistics']);
         Route::get('/my-activity', [App\Http\Controllers\ActivityLogController::class, 'myActivity']);
         Route::get('/entity', [App\Http\Controllers\ActivityLogController::class, 'entityActivity']);
