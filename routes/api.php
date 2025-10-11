@@ -129,6 +129,14 @@ Route::middleware(['json.response'])->group(function () {
         Route::get('stream/{id}', [App\Http\Controllers\CameraController::class, 'publicStreamAccess']);
     });
 
+    // Activity Logs (Admin/Teacher access)
+    Route::prefix('activity-logs')->middleware(['auth:sanctum', 'inject.school'])->group(function () {
+        Route::get('/', [App\Http\Controllers\ActivityLogController::class, 'index']);
+        Route::get('/statistics', [App\Http\Controllers\ActivityLogController::class, 'statistics']);
+        Route::get('/my-activity', [App\Http\Controllers\ActivityLogController::class, 'myActivity']);
+        Route::get('/entity', [App\Http\Controllers\ActivityLogController::class, 'entityActivity']);
+    });
+
     /*
     |--------------------------------------------------------------------------
     | Include Role-Specific Route Files

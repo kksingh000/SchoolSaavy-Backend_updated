@@ -147,6 +147,40 @@ services:
     networks:
       - schoolsavvy_network
 
+  # Activity Logs Queue Worker (Dedicated)
+  queue-activity:
+    build:
+      context: .
+      dockerfile: Dockerfile.quick
+    container_name: schoolsavvy_queue_activity_local
+    restart: unless-stopped
+    command: >
+      sh -c "
+        echo 'Starting Activity Logs Queue Worker...' &&
+        php artisan queue:work --queue=activity-logs --sleep=3 --tries=3 --max-time=3600 --timeout=60 --backoff=10,30,60 --verbose
+      "
+    environment:
+      - APP_ENV=local
+      - APP_NAME=Laravel
+      - APP_DEBUG=true
+      - LOG_LEVEL=debug
+      - LOG_CHANNEL=stderr
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_CLIENT=predis
+      - REDIS_PREFIX=laravel_database_
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+    volumes:
+      - ./:/var/www/html
+      - ./storage:/var/www/html/storage
+    depends_on:
+      - redis
+    networks:
+      - schoolsavvy_network
+
   # Scheduler (Cron jobs)
   scheduler:
     build:

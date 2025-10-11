@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Assessment;
 use App\Models\AssessmentType;
 use App\Models\AssessmentResult;
+use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
@@ -136,6 +137,9 @@ class AssessmentController extends Controller
 
             $assessment = Assessment::create($validated);
             $assessment->load(['assessmentType', 'subject', 'class', 'teacher.user']);
+
+            // Log activity
+            ActivityLogger::created('assessment', $assessment, "Created assessment: {$assessment->title}");
 
             return response()->json([
                 'success' => true,

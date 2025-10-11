@@ -133,6 +133,29 @@ services:
     networks:
       - schoolsavvy_network
 
+  # Activity Logs Queue Worker (Dedicated)
+  queue-activity:
+    image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest
+    container_name: schoolsavvy_queue_activity
+    restart: unless-stopped
+    command: php artisan queue:work redis --queue=activity-logs --sleep=3 --tries=3 --max-time=3600 --timeout=60 --backoff=10,30,60
+    environment:
+      - APP_ENV=production
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=
+      - REDIS_CLIENT=predis
+      - CACHE_DRIVER=redis
+      - SESSION_DRIVER=redis
+      - QUEUE_CONNECTION=redis
+    volumes:
+      - ./storage:/var/www/html/storage
+      - ./.env:/var/www/html/.env:ro
+    depends_on:
+      - redis
+    networks:
+      - schoolsavvy_network
+
   # Scheduler (Cron jobs)
   scheduler:
     image: ghcr.io/sunnybhadana/schoolsaavy-backend:latest

@@ -13,6 +13,7 @@ return Application::configure(basePath: dirname(__DIR__))
     )
     ->withMiddleware(function (Middleware $middleware) {
         
+        // Register middleware aliases
         $middleware->alias([
             'inject.school' => \App\Http\Middleware\InjectSchoolData::class,
             'json.response' => \App\Http\Middleware\ForceJsonResponse::class,
@@ -21,6 +22,12 @@ return Application::configure(basePath: dirname(__DIR__))
             'super.admin' => \App\Http\Middleware\CheckSuperAdmin::class,
             'school.status' => \App\Http\Middleware\CheckSchoolStatus::class,
             'api.cache' => \App\Http\Middleware\ApiCacheMiddleware::class,
+            'track.activity' => \App\Http\Middleware\TrackActivity::class,
+        ]);
+
+        // Apply TrackActivity middleware to all API routes
+        $middleware->api(append: [
+            \App\Http\Middleware\TrackActivity::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {
