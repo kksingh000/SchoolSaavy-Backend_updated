@@ -40,7 +40,7 @@ class InjectSchoolData
 
                 $currentAcademicYearId = $currentAcademicYear?->id;
             }
-
+            \Log::error('InjectSchoolData Middleware: school_id=' . $schoolId . ', current_academic_year_id=' . $currentAcademicYearId);
             // Merge school_id, academic year, and created_by into request
             $request->merge([
                 'school_id' => $schoolId,

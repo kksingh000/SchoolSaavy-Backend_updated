@@ -71,6 +71,15 @@ class AssessmentController extends Controller
     public function store(Request $request): JsonResponse
     {
         try {
+            // Check if academic year is active (injected by InjectSchoolData middleware)
+            if (!$request->academic_year_id) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No active academic year found. Please create and activate an academic year before creating assessments.',
+                    'error' => 'missing_academic_year'
+                ], 422);
+            }
+
             $validated = $request->validate([
                 'assessment_type_id' => 'required|exists:assessment_types,id',
                 'title' => 'required|string|max:200',
@@ -89,7 +98,8 @@ class AssessmentController extends Controller
                 'syllabus_covered' => 'nullable|string',
                 'topics' => 'nullable|array',
                 'instructions' => 'nullable|array',
-                'academic_year' => 'required|string|max:10'
+                // academic_year is now optional - will use injected value
+                'academic_year' => 'nullable|string|max:10'
             ]);
 
             // Verify assessment type belongs to the school
@@ -104,11 +114,18 @@ class AssessmentController extends Controller
                 ], 422);
             }
 
+            // Use injected values from middleware
             $validated['school_id'] = $request->school_id;
-            $validated['marking_scheme'] = json_encode($validated['marking_scheme'] ?? []);
-            $validated['topics'] = json_encode($validated['topics'] ?? []);
-            $validated['instructions'] = json_encode($validated['instructions'] ?? []);
-
+            $validated['academic_year_id'] = $request->academic_year_id;
+            
+            // Use current academic year label if not provided
+            if (empty($validated['academic_year'])) {
+                $validated['academic_year'] = $request->current_academic_year;
+            }
+            
+            // No need to json_encode - Laravel model casts handle this automatically
+            // marking_scheme, topics, instructions are cast to 'json' in the model
+            
             // Generate code if not provided
             if (empty($validated['code'])) {
                 $typeCode = $assessmentType->name;
@@ -132,6 +149,7 @@ class AssessmentController extends Controller
                 'errors' => $e->errors()
             ], 422);
         } catch (\Exception $e) {
+            \Log::error($e);
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create assessment',
@@ -215,7 +233,8 @@ class AssessmentController extends Controller
                 'syllabus_covered' => 'nullable|string',
                 'topics' => 'nullable|array',
                 'instructions' => 'nullable|array',
-                'academic_year' => 'sometimes|required|string|max:10'
+                // academic_year is now optional - will use existing or injected value
+                'academic_year' => 'nullable|string|max:10'
             ]);
 
             // Verify assessment type belongs to the school if provided
@@ -242,16 +261,8 @@ class AssessmentController extends Controller
                 }
             }
 
-            // Encode JSON fields
-            if (isset($validated['marking_scheme'])) {
-                $validated['marking_scheme'] = json_encode($validated['marking_scheme']);
-            }
-            if (isset($validated['topics'])) {
-                $validated['topics'] = json_encode($validated['topics']);
-            }
-            if (isset($validated['instructions'])) {
-                $validated['instructions'] = json_encode($validated['instructions']);
-            }
+            // No need to json_encode - Laravel model casts handle this automatically
+            // marking_scheme, topics, instructions are cast to 'json' in the model
 
             $assessment->update($validated);
             $assessment->load(['assessmentType', 'subject', 'class', 'teacher.user']);
