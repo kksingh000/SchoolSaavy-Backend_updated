@@ -9,8 +9,6 @@ use App\Models\Attendance;
 use App\Models\AssignmentSubmission;
 use App\Models\AssessmentResult;
 use App\Models\Event;
-use App\Models\FeePayment;
-use App\Models\StudentFee;
 use App\Models\GalleryAlbum;
 use App\Models\GalleryMedia;
 use Carbon\Carbon;
@@ -212,16 +210,27 @@ class ParentService
      */
     private function getFeeStats($studentId): array
     {
-        $totalFees = StudentFee::where('student_id', $studentId)->sum('amount');
-        $paidAmount = FeePayment::whereHas('studentFee', function ($query) use ($studentId) {
-            $query->where('student_id', $studentId);
-        })->sum('amount');
+        // Get total fees from installments
+        $totalFees = DB::table('fee_installments')
+            ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
+            ->where('student_fee_plans.student_id', $studentId)
+            ->sum('fee_installments.amount');
+            
+        // Get paid amount from payments table (new system)
+        $paidAmount = DB::table('payments')
+            ->where('student_id', $studentId)
+            ->where('status', 'Success')
+            ->sum('amount');
 
         $pendingAmount = $totalFees - $paidAmount;
-        $overdueFees = StudentFee::where('student_id', $studentId)
-            ->where('due_date', '<', Carbon::now())
-            ->where('status', 'pending')
-            ->sum('amount');
+        
+        // Get overdue fees
+        $overdueFees = DB::table('fee_installments')
+            ->join('student_fee_plans', 'fee_installments.student_fee_plan_id', '=', 'student_fee_plans.id')
+            ->where('student_fee_plans.student_id', $studentId)
+            ->where('fee_installments.due_date', '<', Carbon::now())
+            ->whereIn('fee_installments.status', ['Pending', 'Overdue'])
+            ->sum(DB::raw('fee_installments.amount - COALESCE(fee_installments.paid_amount, 0)'));
 
         return [
             'total_fees' => round($totalFees, 2),

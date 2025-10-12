@@ -743,22 +743,45 @@ class DashboardController extends BaseController
         $startDate = Carbon::now()->subMonths(5)->startOfMonth();
         $endDate = Carbon::now()->endOfMonth();
         
-        // Single query for collected fees
-        $collectedFees = DB::table('fee_payments')
-            ->join('students', 'fee_payments.student_id', '=', 'students.id')
-            ->where('students.school_id', $schoolId)
-            ->where('fee_payments.status', 'Completed')
-            ->whereBetween('fee_payments.payment_date', [$startDate, $endDate])
+        // Debug: Log the date range
+        Log::info("Fee Analytics Date Range", [
+            'school_id' => $schoolId,
+            'start_date' => $startDate->format('Y-m-d'),
+            'end_date' => $endDate->format('Y-m-d')
+        ]);
+        
+        // Debug: Check total payments count first
+        $totalPaymentsCount = DB::table('payments')
+            ->where('school_id', $schoolId)
+            ->count();
+        
+        $successPaymentsCount = DB::table('payments')
+            ->where('school_id', $schoolId)
+            ->where('status', 'Success')
+            ->count();
+            
+        Log::info("Fee Payments Debug", [
+            'total_payments' => $totalPaymentsCount,
+            'success_payments' => $successPaymentsCount
+        ]);
+        
+        // Single query for collected fees from payments table
+        $collectedFees = DB::table('payments')
+            ->where('school_id', $schoolId)
+            ->where('status', 'Success')
+            ->whereBetween('date', [$startDate, $endDate])
             ->select(
-                DB::raw('YEAR(fee_payments.payment_date) as year'),
-                DB::raw('MONTH(fee_payments.payment_date) as month'),
-                DB::raw('SUM(fee_payments.amount) as total_collected')
+                DB::raw('YEAR(date) as year'),
+                DB::raw('MONTH(date) as month'),
+                DB::raw('SUM(amount) as total_collected')
             )
-            ->groupBy(DB::raw('YEAR(fee_payments.payment_date)'), DB::raw('MONTH(fee_payments.payment_date)'))
+            ->groupBy(DB::raw('YEAR(date)'), DB::raw('MONTH(date)'))
             ->get()
             ->keyBy(function($item) {
                 return $item->year . '-' . str_pad($item->month, 2, '0', STR_PAD_LEFT);
             });
+            
+        Log::info("Collected Fees Data", ['data' => $collectedFees->toArray()]);
 
         // Single query for pending fees
         $pendingFees = DB::table('fee_installments')
