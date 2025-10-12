@@ -210,7 +210,12 @@ class NotificationService extends BaseService
                 break;
 
             case Notification::TARGET_SPECIFIC_USERS:
-                $recipients = $this->getSpecificUsers($notification->target_ids);
+            case 'parent':  // Added for individual parent notifications
+            case 'teacher': // Added for individual teacher notifications
+            case 'student': // Added for individual student notifications
+                if (!empty($notification->target_ids)) {
+                    $recipients = $this->getSpecificUsers($notification->target_ids);
+                }
                 break;
 
             case Notification::TARGET_CLASS_PARENTS:
@@ -233,6 +238,15 @@ class NotificationService extends BaseService
                 $parents = $this->getClassParents($schoolId, $notification->target_classes);
                 $teachers = $this->getClassTeachers($schoolId, $notification->target_classes);
                 $recipients = array_merge($parents, $teachers);
+                break;
+
+            default:
+                // Log unhandled target type for debugging
+                Log::warning('⚠️ Unhandled notification target_type', [
+                    'target_type' => $notification->target_type,
+                    'notification_id' => $notification->id,
+                    'target_ids' => $notification->target_ids
+                ]);
                 break;
         }
 

@@ -30,6 +30,9 @@ return Application::configure(basePath: dirname(__DIR__))
             \App\Http\Middleware\TrackActivity::class,
         ]);
     })
+    ->withEvents(discover: [
+        __DIR__ . '/../app/Listeners',
+    ])
     ->withExceptions(function (Exceptions $exceptions) {
         //
     })->create();
