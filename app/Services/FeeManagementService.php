@@ -553,12 +553,12 @@ class FeeManagementService extends BaseService
     /**
      * Get all fee installments for a school with pagination
      */
-    public function getAllFeeInstallments(array $filters = [])
+    public function getAllFeeInstallments(array $filters = [], $perPage = 15)
     {
         $schoolId = $this->getSchoolId();
-        $cacheKey = "fee_installments_{$schoolId}_" . md5(json_encode($filters));
+        $cacheKey = "fee_installments_{$schoolId}_" . md5(json_encode($filters) . $perPage);
         
-        return Cache::remember($cacheKey, 300, function () use ($schoolId, $filters) {
+        return Cache::remember($cacheKey, 300, function () use ($schoolId, $filters, $perPage) {
             $query = FeeInstallment::with([
                 'studentFeePlan.student',
                 'studentFeePlan.feeStructure',
@@ -592,7 +592,7 @@ class FeeManagementService extends BaseService
             }
             
             // Sort by due date by default
-            return $query->orderBy('due_date', 'asc')->paginate(15);
+            return $query->orderBy('due_date', 'asc')->paginate($perPage);
         });
     }
 
@@ -840,7 +840,10 @@ class FeeManagementService extends BaseService
     public function getDueInstallments($classId = null, $studentId = null, $academicYearId = null, $dueDate = null, $perPage = 15)
     {
         $schoolId = $this->getSchoolId();
-        $cacheKey = "due_installments_{$schoolId}_" . md5(json_encode(func_get_args()));
+        $page = request()->get('page', 1);
+        $funKeys = func_get_args();
+        $funKeys[] = $page; // Include page number in cache key to avoid conflicts
+        $cacheKey = "due_installments_{$schoolId}_" . md5(json_encode($funKeys));
         
         return Cache::remember($cacheKey, 300, function () use ($schoolId, $classId, $studentId, $academicYearId, $dueDate, $perPage) {
             $query = FeeInstallment::with([

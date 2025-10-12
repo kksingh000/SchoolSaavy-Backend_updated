@@ -311,15 +311,14 @@ class FeeManagementController extends BaseController
         try {
             // If student_id is provided or consolidated=false, use the original approach
             if ($studentId || strtolower($consolidated) === 'false') {
-                $filters = [
-                    'class_id' => $classId,
-                    'student_id' => $studentId,
-                    'academic_year_id' => $academicYearId,
-                    'due_date' => $request->query('due_date'),
-                    'status' => $request->query('status'),
-                ];
-                
-                $dueInstallments = $this->feeManagementService->getAllFeeInstallments($filters);
+                // Use getDueInstallments method which properly handles pagination
+                $dueInstallments = $this->feeManagementService->getDueInstallments(
+                    $classId,
+                    $studentId,
+                    $academicYearId,
+                    $request->query('due_date'),
+                    $perPage
+                );
                 
                 return $this->successResponse(
                     $dueInstallments,
