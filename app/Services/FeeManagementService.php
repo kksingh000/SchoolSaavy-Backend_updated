@@ -627,6 +627,19 @@ class FeeManagementService extends BaseService
             $this->clearCache($schoolId);
             
             DB::commit();
+            
+            // Fire PaymentReceived event AFTER transaction commits
+            $studentWithRelations = Student::with('parents.user')->find($data['student_id']);
+            if ($studentWithRelations) {
+                event(new \App\Events\FeeManagement\PaymentReceived($payment, $studentWithRelations));
+                
+                \Illuminate\Support\Facades\Log::info('PaymentReceived event fired', [
+                    'payment_id' => $payment->id,
+                    'student_id' => $studentWithRelations->id,
+                    'amount' => $payment->amount
+                ]);
+            }
+            
             return $payment->load(['allocations.installment', 'student']);
         } catch (\Exception $e) {
             DB::rollBack();

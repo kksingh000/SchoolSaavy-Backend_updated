@@ -19,16 +19,16 @@ class SendPaymentConfirmJob implements ShouldQueue
 
     public Student $student;
     public User $parent;
-    public Payment $payment;
+    public int $paymentId;  // Changed from Payment model to ID
 
     /**
      * Create a new job instance.
      */
-    public function __construct(Student $student, User $parent, Payment $payment)
+    public function __construct(int $paymentId, Student $student, User $parent)
     {
+        $this->paymentId = $paymentId;
         $this->student = $student;
         $this->parent = $parent;
-        $this->payment = $payment;
     }
 
     /**
@@ -37,9 +37,19 @@ class SendPaymentConfirmJob implements ShouldQueue
     public function handle(NotificationService $notificationService): void
     {
         try {
+            // Load payment to get details
+            $payment = Payment::find($this->paymentId);
+            
+            if (!$payment) {
+                Log::warning('Payment not found for notification', [
+                    'payment_id' => $this->paymentId
+                ]);
+                return;
+            }
+
             $studentName = $this->student->first_name . ' ' . $this->student->last_name;
-            $amount = number_format($this->payment->amount_paid, 2);
-            $paymentDate = $this->payment->payment_date->format('d M Y');
+            $amount = number_format($payment->amount, 2);
+            $paymentDate = \Carbon\Carbon::parse($payment->date)->format('d M Y');
 
             $notificationData = [
                 'school_id' => $this->student->school_id,
@@ -48,26 +58,29 @@ class SendPaymentConfirmJob implements ShouldQueue
                 'message' => "Payment of ₹{$amount} for {$studentName} received successfully on {$paymentDate}. Thank you!",
                 'target_type' => 'parent',
                 'target_ids' => [$this->parent->id],
-                'priority' => 'medium',
+                'priority' => 'normal',  // Changed from 'medium' to 'normal'
                 'data' => [
                     'student_id' => $this->student->id,
                     'student_name' => $studentName,
-                    'payment_id' => $this->payment->id,
-                    'amount_paid' => $this->payment->amount_paid,
-                    'payment_date' => $this->payment->payment_date->format('Y-m-d'),
-                    'payment_method' => $this->payment->payment_method,
-                    'receipt_number' => $this->payment->receipt_number,
-                    'action_url' => '/fees/receipt/' . $this->payment->id,
+                    'payment_id' => $payment->id,
+                    'amount' => $payment->amount,
+                    'payment_date' => $payment->date,
+                    'payment_method' => $payment->method ?? 'N/A',
+                    'transaction_id' => $payment->transaction_id ?? 'N/A',
+                    'action_url' => '/fees/payments/' . $payment->id,
                 ],
             ];
 
-            $notificationService->sendNotification($notificationData);
+            $result = $notificationService->sendNotification($notificationData);
 
             Log::info('Payment confirmation notification sent', [
                 'student_id' => $this->student->id,
                 'parent_id' => $this->parent->id,
-                'payment_id' => $this->payment->id,
-                'amount' => $this->payment->amount_paid
+                'payment_id' => $payment->id,
+                'amount' => $payment->amount,
+                'notification_result' => $result,
+                'notification_id' => $result['notification_id'] ?? null,
+                'success' => $result['success'] ?? false
             ]);
 
         } catch (\Exception $e) {
@@ -75,7 +88,7 @@ class SendPaymentConfirmJob implements ShouldQueue
                 'error' => $e->getMessage(),
                 'student_id' => $this->student->id,
                 'parent_id' => $this->parent->id,
-                'payment_id' => $this->payment->id
+                'payment_id' => $this->paymentId
             ]);
 
             throw $e;
