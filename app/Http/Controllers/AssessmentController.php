@@ -6,9 +6,12 @@ use App\Models\Assessment;
 use App\Models\AssessmentType;
 use App\Models\AssessmentResult;
 use App\Services\ActivityLogger;
+use App\Events\AssessmentManagement\AssessmentScheduled;
+use App\Events\AssessmentManagement\AssessmentRescheduled;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 
 class AssessmentController extends Controller
@@ -137,6 +140,22 @@ class AssessmentController extends Controller
 
             $assessment = Assessment::create($validated);
             $assessment->load(['assessmentType', 'subject', 'class', 'teacher.user']);
+
+            // Fire event after assessment is created
+            DB::afterCommit(function () use ($assessment) {
+                event(new AssessmentScheduled(
+                    assessmentId: $assessment->id,
+                    classId: $assessment->class_id,
+                    title: $assessment->title,
+                    assessmentDate: $assessment->assessment_date->format('Y-m-d'),
+                    startTime: $assessment->start_time ? date('H:i', strtotime($assessment->start_time)) : null,
+                    endTime: $assessment->end_time ? date('H:i', strtotime($assessment->end_time)) : null,
+                    subjectName: $assessment->subject->name,
+                    teacherName: $assessment->teacher->user->name,
+                    maxMarks: $assessment->total_marks,
+                    syllabus: $assessment->syllabus_covered
+                ));
+            });
 
             // Log activity
             ActivityLogger::created('assessment', $assessment, "Created assessment: {$assessment->title}");
@@ -268,8 +287,40 @@ class AssessmentController extends Controller
             // No need to json_encode - Laravel model casts handle this automatically
             // marking_scheme, topics, instructions are cast to 'json' in the model
 
+            // Check if date/time changed for reschedule notification
+            $dateChanged = isset($validated['assessment_date']) && 
+                          $assessment->assessment_date->format('Y-m-d') !== $validated['assessment_date'];
+            
+            $timeChanged = (isset($validated['start_time']) && $assessment->start_time !== $validated['start_time']) ||
+                          (isset($validated['end_time']) && $assessment->end_time !== $validated['end_time']);
+
+            // Store old values before update
+            $oldDate = $assessment->assessment_date->format('Y-m-d');
+            $oldStartTime = $assessment->start_time ? date('H:i', strtotime($assessment->start_time)) : null;
+            $oldEndTime = $assessment->end_time ? date('H:i', strtotime($assessment->end_time)) : null;
+
             $assessment->update($validated);
             $assessment->load(['assessmentType', 'subject', 'class', 'teacher.user']);
+
+            // Fire reschedule event if date or time changed
+            if ($dateChanged || $timeChanged) {
+                DB::afterCommit(function () use ($assessment, $oldDate, $oldStartTime, $oldEndTime) {
+                    event(new AssessmentRescheduled(
+                        assessmentId: $assessment->id,
+                        classId: $assessment->class_id,
+                        title: $assessment->title,
+                        oldDate: $oldDate,
+                        oldStartTime: $oldStartTime,
+                        oldEndTime: $oldEndTime,
+                        newDate: $assessment->assessment_date->format('Y-m-d'),
+                        newStartTime: $assessment->start_time ? date('H:i', strtotime($assessment->start_time)) : null,
+                        newEndTime: $assessment->end_time ? date('H:i', strtotime($assessment->end_time)) : null,
+                        subjectName: $assessment->subject->name,
+                        teacherName: $assessment->teacher->user->name,
+                        reason: 'Schedule updated by teacher'
+                    ));
+                });
+            }
 
             return response()->json([
                 'success' => true,

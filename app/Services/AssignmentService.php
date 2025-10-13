@@ -7,6 +7,7 @@ use App\Models\AssignmentSubmission;
 use App\Models\ClassRoom;
 use App\Models\Student;
 use App\Events\AssignmentManagement\AssignmentCreated;
+use App\Events\AssignmentManagement\AssignmentSubmitted;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -323,7 +324,7 @@ class AssignmentService extends BaseService
      */
     public function submitAssignment($assignmentId, $studentId, $data)
     {
-        return DB::transaction(function () use ($assignmentId, $studentId, $data) {
+        $submission = DB::transaction(function () use ($assignmentId, $studentId, $data) {
             $assignment = Assignment::where('school_id', $this->getSchoolId())
                 ->findOrFail($assignmentId);
 
@@ -348,8 +349,35 @@ class AssignmentService extends BaseService
                 $data['attachments'] ?? null
             );
 
-            return $submission->load(['assignment', 'student']);
+            return $submission->load(['assignment', 'student', 'assignment.subject', 'assignment.teacher']);
         });
+
+        // Fire event after transaction commits
+        DB::afterCommit(function () use ($submission) {
+            $assignment = $submission->assignment;
+            $student = $submission->student;
+            
+            // Check if submission is late
+            $isLate = false;
+            if ($assignment->due_date && $assignment->due_time) {
+                $dueDateTime = Carbon::parse($assignment->due_date . ' ' . $assignment->due_time);
+                $isLate = $submission->submitted_at > $dueDateTime;
+            }
+
+            event(new AssignmentSubmitted(
+                submissionId: $submission->id,
+                assignmentId: $assignment->id,
+                studentId: $student->id,
+                teacherId: $assignment->teacher_id,
+                assignmentTitle: $assignment->title,
+                subjectName: $assignment->subject->name ?? 'Unknown Subject',
+                studentName: $student->name,
+                submittedAt: $submission->submitted_at->toDateTimeString(),
+                isLateSubmission: $isLate
+            ));
+        });
+
+        return $submission;
     }
 
     /**

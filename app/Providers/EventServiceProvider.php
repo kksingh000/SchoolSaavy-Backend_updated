@@ -19,6 +19,11 @@ use App\Events\FeeManagement\PaymentDueTomorrow;
 
 // Assignment Management Events
 use App\Events\AssignmentManagement\AssignmentCreated;
+use App\Events\AssignmentManagement\AssignmentSubmitted;
+
+// Assessment Management Events
+use App\Events\AssessmentManagement\AssessmentScheduled;
+use App\Events\AssessmentManagement\AssessmentRescheduled;
 
 // Communication Events
 use App\Events\Communication\EmergencyAlert;
@@ -37,6 +42,11 @@ use App\Listeners\FeeManagement\SendPaymentReminderNotification;
 
 // Assignment Management Listeners
 use App\Listeners\AssignmentManagement\SendAssignmentCreatedNotification;
+use App\Listeners\AssignmentManagement\SendAssignmentSubmittedNotification;
+
+// Assessment Management Listeners
+use App\Listeners\AssessmentManagement\SendAssessmentScheduledNotification;
+use App\Listeners\AssessmentManagement\SendAssessmentRescheduledNotification;
 
 // Communication Listeners
 use App\Listeners\Communication\SendEmergencyNotification;
@@ -104,6 +114,25 @@ class EventServiceProvider extends ServiceProvider
         // Event: New assignment created and published
         AssignmentCreated::class => [
             SendAssignmentCreatedNotification::class,
+        ],
+
+        // Event: Student submits assignment
+        AssignmentSubmitted::class => [
+            SendAssignmentSubmittedNotification::class,
+        ],
+
+        // ==========================================
+        // PHASE 2: ASSESSMENT MANAGEMENT
+        // ==========================================
+        
+        // Event: New assessment scheduled
+        AssessmentScheduled::class => [
+            SendAssessmentScheduledNotification::class,
+        ],
+
+        // Event: Assessment date/time rescheduled
+        AssessmentRescheduled::class => [
+            SendAssessmentRescheduledNotification::class,
         ],
 
         // ==========================================
