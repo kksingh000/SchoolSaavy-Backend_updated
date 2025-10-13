@@ -7,6 +7,7 @@ use Illuminate\Foundation\Support\Providers\EventServiceProvider as ServiceProvi
 // Attendance Events
 use App\Events\Attendance\StudentMarkedAbsent;
 use App\Events\Attendance\StudentMarkedLate;
+use App\Events\Attendance\StudentLowAttendance;
 use App\Events\Attendance\LowAttendanceAlert;
 use App\Events\Attendance\ConsecutiveAbsencesAlert;
 
@@ -56,8 +57,8 @@ class EventServiceProvider extends ServiceProvider
             SendLateArrivalNotification::class,
         ],
 
-        // Event: Low attendance alert (below 75%)
-        LowAttendanceAlert::class => [
+        // Event: Low attendance alert (below threshold)
+        StudentLowAttendance::class => [
             SendLowAttendanceNotification::class,
         ],
 

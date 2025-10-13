@@ -50,3 +50,19 @@ Schedule::command('fees:check-due --days=0')
     ->emailOutputOnFailure(env('ADMIN_EMAIL'))
     ->appendOutputTo(storage_path('logs/scheduled-fee-due.log'));
 
+// ============================================
+// Attendance Scheduled Notifications
+// ============================================
+
+/**
+ * Check for students with low attendance and send alerts
+ * Runs weekly on Monday at 8:00 AM
+ * Checks last 30 days attendance, alerts if below 75% threshold
+ * Can be customized with --threshold and --days options
+ */
+Schedule::command('attendance:check-low --threshold=75 --days=30')
+    ->weeklyOn(1, '08:00')  // Monday at 8 AM
+    ->withoutOverlapping()
+    ->emailOutputOnFailure(env('ADMIN_EMAIL'))
+    ->appendOutputTo(storage_path('logs/scheduled-low-attendance.log'));
+
