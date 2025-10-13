@@ -50,6 +50,29 @@ Schedule::command('fees:check-due --days=0')
     ->emailOutputOnFailure(env('ADMIN_EMAIL'))
     ->appendOutputTo(storage_path('logs/scheduled-fee-due.log'));
 
+/**
+ * Check for overdue fee payments and send urgent notifications
+ * Runs daily at 10:00 AM
+ * Alerts parents about payments that are past due date
+ * Min 1 day overdue, max 90 days lookback
+ */
+Schedule::command('fees:check-overdue --min-days=1 --max-days=90')
+    ->dailyAt('10:00')
+    ->withoutOverlapping()
+    ->emailOutputOnFailure(env('ADMIN_EMAIL'))
+    ->appendOutputTo(storage_path('logs/scheduled-fee-overdue.log'));
+
+/**
+ * Check for fee payments due tomorrow and send reminders
+ * Runs daily at 6:00 PM
+ * Evening reminder for payments due next day
+ */
+Schedule::command('fees:check-due-tomorrow')
+    ->dailyAt('18:00')
+    ->withoutOverlapping()
+    ->emailOutputOnFailure(env('ADMIN_EMAIL'))
+    ->appendOutputTo(storage_path('logs/scheduled-fee-reminder.log'));
+
 // ============================================
 // Attendance Scheduled Notifications
 // ============================================
