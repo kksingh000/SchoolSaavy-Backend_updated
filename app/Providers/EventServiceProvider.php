@@ -17,6 +17,9 @@ use App\Events\FeeManagement\PaymentReceived;
 use App\Events\FeeManagement\PaymentOverdue;
 use App\Events\FeeManagement\PaymentDueTomorrow;
 
+// Assignment Management Events
+use App\Events\AssignmentManagement\AssignmentCreated;
+
 // Communication Events
 use App\Events\Communication\EmergencyAlert;
 
@@ -31,6 +34,9 @@ use App\Listeners\FeeManagement\SendPaymentConfirmation;
 use App\Listeners\FeeManagement\SendFeeDueNotification;
 use App\Listeners\FeeManagement\SendPaymentOverdueNotification;
 use App\Listeners\FeeManagement\SendPaymentReminderNotification;
+
+// Assignment Management Listeners
+use App\Listeners\AssignmentManagement\SendAssignmentCreatedNotification;
 
 // Communication Listeners
 use App\Listeners\Communication\SendEmergencyNotification;
@@ -89,6 +95,15 @@ class EventServiceProvider extends ServiceProvider
         // Event: Payment due tomorrow (reminder)
         PaymentDueTomorrow::class => [
             SendPaymentReminderNotification::class,
+        ],
+
+        // ==========================================
+        // PHASE 2: ASSIGNMENT MANAGEMENT
+        // ==========================================
+        
+        // Event: New assignment created and published
+        AssignmentCreated::class => [
+            SendAssignmentCreatedNotification::class,
         ],
 
         // ==========================================

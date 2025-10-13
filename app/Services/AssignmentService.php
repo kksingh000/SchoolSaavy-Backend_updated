@@ -6,6 +6,7 @@ use App\Models\Assignment;
 use App\Models\AssignmentSubmission;
 use App\Models\ClassRoom;
 use App\Models\Student;
+use App\Events\AssignmentManagement\AssignmentCreated;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -120,7 +121,28 @@ class AssignmentService extends BaseService
                 $assignment->createSubmissionsForClass();
             }
 
-            return $assignment->load(['teacher.user', 'class', 'subject']);
+            // Load relationships before firing event
+            $assignment->load(['teacher.user', 'class', 'subject']);
+
+            // Fire event AFTER transaction commits (will auto-queue)
+            DB::afterCommit(function () use ($assignment) {
+                // Only fire event for published assignments
+                if ($assignment->status === 'published') {
+                    event(new AssignmentCreated(
+                        assignmentId: $assignment->id,
+                        classId: $assignment->class_id,
+                        title: $assignment->title,
+                        dueDate: $assignment->due_date->format('Y-m-d'),
+                        dueTime: $assignment->due_time ? $assignment->due_time->format('H:i') : null,
+                        subjectName: $assignment->subject->name,
+                        teacherName: $assignment->teacher->user->name,
+                        type: $assignment->type,
+                        maxMarks: $assignment->max_marks
+                    ));
+                }
+            });
+
+            return $assignment;
         });
     }
 
@@ -146,7 +168,28 @@ class AssignmentService extends BaseService
                 $assignment->createSubmissionsForClass();
             }
 
-            return $assignment->load(['teacher.user', 'class', 'subject']);
+            // Load relationships before firing event
+            $assignment->load(['teacher.user', 'class', 'subject']);
+
+            // Fire event AFTER transaction commits if status changed to published
+            DB::afterCommit(function () use ($assignment, $oldStatus) {
+                // Fire event if assignment was just published
+                if ($oldStatus !== 'published' && $assignment->status === 'published') {
+                    event(new AssignmentCreated(
+                        assignmentId: $assignment->id,
+                        classId: $assignment->class_id,
+                        title: $assignment->title,
+                        dueDate: $assignment->due_date->format('Y-m-d'),
+                        dueTime: $assignment->due_time ? $assignment->due_time->format('H:i') : null,
+                        subjectName: $assignment->subject->name,
+                        teacherName: $assignment->teacher->user->name,
+                        type: $assignment->type,
+                        maxMarks: $assignment->max_marks
+                    ));
+                }
+            });
+
+            return $assignment;
         });
     }
 
