@@ -20,6 +20,8 @@ use App\Events\FeeManagement\PaymentDueTomorrow;
 // Assignment Management Events
 use App\Events\AssignmentManagement\AssignmentCreated;
 use App\Events\AssignmentManagement\AssignmentSubmitted;
+use App\Events\AssignmentManagement\AssignmentGraded;
+use App\Events\AssignmentManagement\AssignmentResubmissionRequested;
 
 // Assessment Management Events
 use App\Events\AssessmentManagement\AssessmentScheduled;
@@ -43,6 +45,8 @@ use App\Listeners\FeeManagement\SendPaymentReminderNotification;
 // Assignment Management Listeners
 use App\Listeners\AssignmentManagement\SendAssignmentCreatedNotification;
 use App\Listeners\AssignmentManagement\SendAssignmentSubmittedNotification;
+use App\Listeners\AssignmentManagement\SendAssignmentGradedNotification;
+use App\Listeners\AssignmentManagement\SendAssignmentResubmissionRequestedNotification;
 
 // Assessment Management Listeners
 use App\Listeners\AssessmentManagement\SendAssessmentScheduledNotification;
@@ -119,6 +123,16 @@ class EventServiceProvider extends ServiceProvider
         // Event: Student submits assignment
         AssignmentSubmitted::class => [
             SendAssignmentSubmittedNotification::class,
+        ],
+
+        // Event: Teacher grades assignment submission
+        AssignmentGraded::class => [
+            SendAssignmentGradedNotification::class,
+        ],
+
+        // Event: Teacher requests resubmission
+        AssignmentResubmissionRequested::class => [
+            SendAssignmentResubmissionRequestedNotification::class,
         ],
 
         // ==========================================

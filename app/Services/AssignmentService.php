@@ -8,6 +8,8 @@ use App\Models\ClassRoom;
 use App\Models\Student;
 use App\Events\AssignmentManagement\AssignmentCreated;
 use App\Events\AssignmentManagement\AssignmentSubmitted;
+use App\Events\AssignmentManagement\AssignmentGraded;
+use App\Events\AssignmentManagement\AssignmentResubmissionRequested;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
@@ -268,7 +270,16 @@ class AssignmentService extends BaseService
 
         // Get lightweight submission data using Eloquent for computed attributes
         $submissions = AssignmentSubmission::where('assignment_id', $assignmentId)
-            ->with(['student:id,first_name,last_name,admission_number,roll_number'])
+            ->with([
+                'student' => function ($query) use ($assignment) {
+                    $query->select('id', 'first_name', 'last_name', 'admission_number')
+                        ->with(['classes' => function ($q) use ($assignment) {
+                            $q->where('class_id', $assignment->class_id)
+                                ->wherePivot('is_active', true)
+                                ->select('classes.id');
+                        }]);
+                }
+            ])
             ->select([
                 'id',
                 'student_id',
@@ -282,6 +293,9 @@ class AssignmentService extends BaseService
             ->orderBy('submitted_at', 'desc')
             ->get()
             ->map(function ($submission) {
+                // Get roll number from pivot table
+                $rollNumber = $submission->student->classes->first()?->pivot->roll_number ?? null;
+                
                 return [
                     'id' => $submission->id,
                     'student_id' => $submission->student_id,
@@ -298,7 +312,7 @@ class AssignmentService extends BaseService
                         'id' => $submission->student->id,
                         'name' => $submission->student->first_name . ' ' . $submission->student->last_name,
                         'admission_number' => $submission->student->admission_number,
-                        'roll_number' => $submission->student->roll_number,
+                        'roll_number' => $rollNumber,
                     ]
                 ];
             });
@@ -360,7 +374,8 @@ class AssignmentService extends BaseService
             // Check if submission is late
             $isLate = false;
             if ($assignment->due_date && $assignment->due_time) {
-                $dueDateTime = Carbon::parse($assignment->due_date . ' ' . $assignment->due_time);
+                // Combine date and time properly
+                $dueDateTime = Carbon::parse($assignment->due_date->format('Y-m-d') . ' ' . $assignment->due_time->format('H:i:s'));
                 $isLate = $submission->submitted_at > $dueDateTime;
             }
 
@@ -385,7 +400,7 @@ class AssignmentService extends BaseService
      */
     public function gradeSubmission($submissionId, $data)
     {
-        return DB::transaction(function () use ($submissionId, $data) {
+        $submission = DB::transaction(function () use ($submissionId, $data) {
             $submission = AssignmentSubmission::whereHas('assignment', function ($query) {
                 $query->where('school_id', $this->getSchoolId());
             })->with('assignment')->findOrFail($submissionId);
@@ -450,8 +465,41 @@ class AssignmentService extends BaseService
                 );
             }
 
-            return $submission->load(['assignment', 'student', 'gradedBy.user']);
+            return $submission->load(['assignment', 'assignment.subject', 'student', 'gradedBy.user']);
         });
+
+        // Fire event after transaction commits
+        DB::afterCommit(function () use ($submission) {
+            $assignment = $submission->assignment;
+            $student = $submission->student;
+            
+            // Calculate percentage and grade if marks are present
+            $percentage = null;
+            $gradeLetter = null;
+            
+            if ($submission->marks_obtained !== null && $assignment->max_marks) {
+                $percentage = round(($submission->marks_obtained / $assignment->max_marks) * 100, 2);
+                $gradeLetter = $submission->grade_letter; // Uses accessor from model
+            }
+
+            event(new AssignmentGraded(
+                submissionId: $submission->id,
+                assignmentId: $assignment->id,
+                studentId: $student->id,
+                assignmentTitle: $assignment->title,
+                subjectName: $assignment->subject->name ?? 'Unknown Subject',
+                studentName: $student->name,
+                marksObtained: $submission->marks_obtained,
+                maxMarks: $assignment->max_marks,
+                percentage: $percentage,
+                gradeLetter: $gradeLetter,
+                teacherFeedback: $submission->teacher_feedback,
+                gradedAt: $submission->graded_at->toDateTimeString(),
+                hasNumericalGrade: $submission->marks_obtained !== null,
+            ));
+        });
+
+        return $submission;
     }
 
     /**
@@ -459,7 +507,7 @@ class AssignmentService extends BaseService
      */
     public function returnSubmissionForRevision($submissionId, $feedback)
     {
-        return DB::transaction(function () use ($submissionId, $feedback) {
+        $submission = DB::transaction(function () use ($submissionId, $feedback) {
             $submission = AssignmentSubmission::whereHas('assignment', function ($query) {
                 $query->where('school_id', $this->getSchoolId());
             })->findOrFail($submissionId);
@@ -470,8 +518,39 @@ class AssignmentService extends BaseService
 
             $submission->returnForRevision($feedback);
 
-            return $submission->load(['assignment', 'student']);
+            return $submission->load(['assignment', 'assignment.subject', 'student']);
         });
+
+        // Fire event after transaction commits
+        DB::afterCommit(function () use ($submission, $feedback) {
+            $assignment = $submission->assignment;
+            $student = $submission->student;
+            
+            // Get new due date if assignment allows late submission
+            $newDueDate = null;
+            $newDueTime = null;
+            
+            if ($assignment->allow_late_submission && $assignment->due_date) {
+                // Use existing due date or extend it (you can modify this logic)
+                $newDueDate = $assignment->due_date->format('Y-m-d');
+                $newDueTime = $assignment->due_time ? $assignment->due_time->format('H:i') : null;
+            }
+
+            event(new AssignmentResubmissionRequested(
+                submissionId: $submission->id,
+                assignmentId: $assignment->id,
+                studentId: $student->id,
+                assignmentTitle: $assignment->title,
+                subjectName: $assignment->subject->name ?? 'Unknown Subject',
+                studentName: $student->name,
+                teacherFeedback: $feedback,
+                newDueDate: $newDueDate,
+                newDueTime: $newDueTime,
+                returnedAt: now()->toDateTimeString(),
+            ));
+        });
+
+        return $submission;
     }
 
     /**
@@ -792,7 +871,7 @@ class AssignmentService extends BaseService
                 'type' => $assignment->type,
                 'status' => $assignment->status,
                 'due_date' => $dueDate->format('Y-m-d'),
-                'due_time' => $assignment->due_time ? Carbon::parse($assignment->due_time)->format('H:i') : null,
+                'due_time' => $assignment->due_time ? $assignment->due_time->format('H:i') : null,
                 'max_marks' => $assignment->max_marks,
                 'allow_late_submission' => (bool) $assignment->allow_late_submission,
                 'created_at' => Carbon::parse($assignment->created_at)->format('Y-m-d H:i:s'),

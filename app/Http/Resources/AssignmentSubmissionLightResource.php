@@ -27,11 +27,15 @@ class AssignmentSubmissionLightResource extends JsonResource
 
             // Student data (lightweight)
             'student' => $this->when($this->relationLoaded('student'), function () {
+                // Get roll number from current active class
+                $currentClass = $this->student->classes()->wherePivot('is_active', true)->first();
+                $rollNumber = $currentClass ? $currentClass->pivot->roll_number : null;
+                
                 return [
                     'id' => $this->student->id,
                     'name' => $this->student->first_name . ' ' . $this->student->last_name,
                     'admission_number' => $this->student->admission_number,
-                    'roll_number' => $this->student->roll_number,
+                    'roll_number' => $rollNumber,
                 ];
             }),
         ];
