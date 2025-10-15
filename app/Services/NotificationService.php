@@ -601,11 +601,22 @@ class NotificationService extends BaseService
     public function registerDeviceToken(array $data): array
     {
         try {
+            // Check for existing token with same user_id and device_id
             $existingToken = UserDeviceToken::where('user_id', $data['user_id'])
                 ->where('device_id', $data['device_id'])
                 ->first();
 
+            // Check for existing token with the same firebase_token (regardless of device_id)
+            // This handles the case where the same physical device gets a new device_id
+            $existingFirebaseToken = null;
+            if (!$existingToken) {
+                $existingFirebaseToken = UserDeviceToken::where('user_id', $data['user_id'])
+                    ->where('firebase_token', $data['firebase_token'])
+                    ->first();
+            }
+
             if ($existingToken) {
+                // Update existing token for this device
                 $existingToken->update([
                     'firebase_token' => $data['firebase_token'],
                     'device_type' => $data['device_type'] ?? null,
@@ -616,11 +627,33 @@ class NotificationService extends BaseService
                 ]);
 
                 $token = $existingToken;
+            } elseif ($existingFirebaseToken) {
+                // Update the device_id for the existing firebase token
+                $existingFirebaseToken->update([
+                    'device_id' => $data['device_id'],
+                    'device_type' => $data['device_type'] ?? null,
+                    'app_version' => $data['app_version'] ?? null,
+                    'device_name' => $data['device_name'] ?? null,
+                    'is_active' => true,
+                    'last_used_at' => now()
+                ]);
+
+                $token = $existingFirebaseToken;
             } else {
+                // Create a new token
                 $token = UserDeviceToken::create(array_merge($data, [
                     'is_active' => true,
                     'last_used_at' => now()
                 ]));
+            }
+
+            // For logging purposes, check how many tokens this user has
+            $userTokenCount = UserDeviceToken::where('user_id', $data['user_id'])->count();
+            if ($userTokenCount > 5) {
+                Log::info('User has multiple device tokens', [
+                    'user_id' => $data['user_id'],
+                    'token_count' => $userTokenCount
+                ]);
             }
 
             return [
@@ -705,5 +738,60 @@ class NotificationService extends BaseService
         }
 
         return false;
+    }
+    
+    /**
+     * Clean up stale and duplicate tokens
+     * This method can be called from a scheduled command
+     */
+    public function cleanupDeviceTokens(int $daysStale = 60): array
+    {
+        $stats = [
+            'stale_tokens_deactivated' => 0,
+            'duplicate_tokens_removed' => 0,
+            'empty_tokens_removed' => 0
+        ];
+        
+        // Deactivate stale tokens
+        $staleTokens = UserDeviceToken::where('last_used_at', '<', now()->subDays($daysStale))
+            ->where('is_active', true)
+            ->get();
+            
+        foreach ($staleTokens as $token) {
+            $token->deactivate();
+            $stats['stale_tokens_deactivated']++;
+        }
+        
+        // Remove tokens with empty firebase_token
+        $emptyTokens = UserDeviceToken::whereNull('firebase_token')
+            ->orWhere('firebase_token', '')
+            ->get();
+            
+        foreach ($emptyTokens as $token) {
+            $token->delete();
+            $stats['empty_tokens_removed']++;
+        }
+        
+        // Find users with multiple tokens for the same device_id
+        $duplicateTokens = UserDeviceToken::select('user_id', 'device_id', DB::raw('COUNT(*) as count'))
+            ->groupBy('user_id', 'device_id')
+            ->having('count', '>', 1)
+            ->get();
+            
+        foreach ($duplicateTokens as $duplicate) {
+            // Keep only the most recently used token for each user+device combination
+            $tokens = UserDeviceToken::where('user_id', $duplicate->user_id)
+                ->where('device_id', $duplicate->device_id)
+                ->orderBy('last_used_at', 'desc')
+                ->get();
+                
+            // Skip the first one (most recent)
+            for ($i = 1; $i < count($tokens); $i++) {
+                $tokens[$i]->delete();
+                $stats['duplicate_tokens_removed']++;
+            }
+        }
+        
+        return $stats;
     }
 }
