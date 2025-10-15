@@ -37,8 +37,8 @@ use App\Http\Controllers\CameraController;
 // Protected Routes with school data injection and school status check
 Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(function () {
 
-    // Dashboard Routes with caching
-    Route::middleware('api.cache:ttl:180,vary_by_school:true,vary_by_user:true')->group(function () {
+    // Dashboard Routes with caching and academic year check
+    Route::middleware(['api.cache:ttl:180,vary_by_school:true,vary_by_user:true', 'check.academic.year'])->group(function () {
         Route::get('dashboard', [DashboardController::class, 'index']);
     });
 

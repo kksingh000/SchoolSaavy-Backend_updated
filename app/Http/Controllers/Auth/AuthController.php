@@ -40,6 +40,25 @@ class AuthController extends Controller
             // Add school context for non-super-admin users
             if ($result['user']->user_type !== 'super_admin' && isset($result['school'])) {
                 $response['school'] = $result['school'];
+                
+                // Check for academic year if school_admin
+                if ($result['user']->user_type === 'school_admin') {
+                    // Check if school has academic years
+                    $hasAcademicYears = \App\Models\AcademicYear::where('school_id', $result['school']['id'])->exists();
+                    
+                    if (!$hasAcademicYears) {
+                        $response['notification'] = [
+                            'type' => 'warning',
+                            'title' => 'Academic Year Required',
+                            'message' => 'No academic year has been set up for your school. Please create an academic year to enable full functionality of the system.',
+                            'action' => [
+                                'text' => 'Create Academic Year',
+                                'url' => '/admin/academic-years/create'
+                            ],
+                            'dismissible' => false
+                        ];
+                    }
+                }
             }
 
             return response()->json($response);

@@ -93,6 +93,9 @@ Route::middleware(['json.response'])->group(function () {
     // School info endpoint
     Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(function () {
         Route::get('school', [ModuleController::class, 'getSchoolModules']);
+        Route::get('academic-year-check', [App\Http\Controllers\Auth\AcademicYearController::class, 'check']);
+        Route::get('academic-year-status', [App\Http\Controllers\Auth\CheckAcademicYearController::class, 'check']);
+        Route::get('force-clear-academic-year-cache', [App\Http\Controllers\Auth\CheckAcademicYearController::class, 'clearCache']);
 
         Route::get("test", function (Request $request) {
             return response()->json(['message' => 'Test route accessed successfully']);

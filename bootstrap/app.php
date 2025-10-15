@@ -23,6 +23,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'school.status' => \App\Http\Middleware\CheckSchoolStatus::class,
             'api.cache' => \App\Http\Middleware\ApiCacheMiddleware::class,
             'track.activity' => \App\Http\Middleware\TrackActivity::class,
+            'check.academic.year' => \App\Http\Middleware\CheckAcademicYear::class,
         ]);
 
         // Apply TrackActivity middleware to all API routes

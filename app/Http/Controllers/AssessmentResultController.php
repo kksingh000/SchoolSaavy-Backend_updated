@@ -5,6 +5,8 @@ namespace App\Http\Controllers;
 use App\Models\Assessment;
 use App\Models\AssessmentResult;
 use App\Models\Student;
+use App\Models\SchoolSetting;
+use App\Jobs\PublishAssessmentResults;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
@@ -68,7 +70,7 @@ class AssessmentResultController extends Controller
                 'section_wise_marks' => json_encode($validated['section_wise_marks'] ?? []),
                 'is_absent' => $validated['attendance_status'] === 'absent',
                 'absence_reason' => $validated['absence_reason'],
-                'entered_by' => auth()->id()
+                'entered_by' => $request->user()->id
             ];
 
             $result = AssessmentResult::create($resultData);
@@ -164,7 +166,7 @@ class AssessmentResultController extends Controller
                         'section_wise_marks' => json_encode($resultData['section_wise_marks'] ?? []),
                         'is_absent' => $resultData['attendance_status'] === 'absent',
                         'absence_reason' => $resultData['absence_reason'] ?? null,
-                        'entered_by' => auth()->id(),
+                        'entered_by' => $request->user()->id,
                         'created_at' => now(),
                         'updated_at' => now()
                     ];
@@ -174,16 +176,58 @@ class AssessmentResultController extends Controller
                     $successCount++;
                 }
 
+                // Check if auto-publish is enabled and all results have been entered
+                $autoPublish = SchoolSetting::getSetting($request->school_id, 'assessment_auto_publish', false);
+                $autoPublishDelay = SchoolSetting::getSetting($request->school_id, 'assessment_auto_publish_delay', 24);
+                
+                // Get total students in the class or group
+                $totalStudents = $assessment->class->students()->count();
+                $totalResultsEntered = AssessmentResult::where('assessment_id', $assessmentId)->count() + $successCount;
+                
+                if ($autoPublish && $totalStudents > 0 && $totalStudents == $totalResultsEntered) {
+                    // All results have been entered, schedule auto-publish based on delay
+                    if ($autoPublishDelay > 0) {
+                        // Schedule publication after delay
+                        $scheduledTime = now()->addHours($autoPublishDelay);
+                        
+                        // Create scheduled job for publication
+                        PublishAssessmentResults::dispatch($assessment->id, $request->user()->id)
+                            ->delay($scheduledTime);
+                            
+                        $autoPublishMessage = "All results entered. Auto-publish scheduled for " . $scheduledTime->format('Y-m-d H:i:s');
+                    } else {
+                        // Auto-publish immediately
+                        $publishedBy = $request->user()->id;
+                        $publishedAt = now();
+                        
+                        AssessmentResult::where('assessment_id', $assessmentId)
+                            ->whereNull('result_published_at')
+                            ->update([
+                                'result_published_at' => $publishedAt,
+                                'published_by' => $publishedBy
+                            ]);
+                        
+                        // Update assessment status
+                        $assessment->update(['status' => 'results_published']);
+                        
+                        $autoPublishMessage = "All results entered. Auto-published immediately.";
+                    }
+                } else {
+                    $autoPublishMessage = null;
+                }
+                
                 DB::commit();
 
                 return response()->json([
                     'success' => true,
-                    'message' => "Successfully created {$successCount} assessment results",
+                    'message' => "Successfully created {$successCount} assessment results" . 
+                        ($autoPublishMessage ? " - {$autoPublishMessage}" : ""),
                     'data' => [
                         'created_results' => $results,
                         'success_count' => $successCount,
                         'error_count' => count($errors),
-                        'errors' => $errors
+                        'errors' => $errors,
+                        'auto_publish_status' => $autoPublishMessage
                     ]
                 ], 201);
             } catch (\Exception $e) {
@@ -387,7 +431,7 @@ class AssessmentResultController extends Controller
                 ], 422);
             }
 
-            $result->publish(auth()->id());
+            $result->publish($request->user()->id);
 
             return response()->json([
                 'success' => true,

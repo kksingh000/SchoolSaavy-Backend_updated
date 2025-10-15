@@ -8,6 +8,7 @@ use App\Models\Student;
 use App\Models\Teacher;
 use App\Traits\OctaneCache;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Concurrency;
@@ -18,7 +19,7 @@ use Carbon\Carbon;
 class DashboardController extends BaseController
 {
     use OctaneCache;
-    public function index(): JsonResponse
+    public function index(Request $request): JsonResponse
     {
         try {
             $user = Auth::user();
@@ -44,10 +45,29 @@ class DashboardController extends BaseController
                     return $this->errorResponse('Invalid user type: ' . $user->user_type, null, 400);
             }
 
-            return $this->successResponse(
-                $dashboardData,
-                'Dashboard data retrieved successfully'
-            );
+            // Check if academic year exists
+            $response = [
+                'data' => $dashboardData,
+                'message' => 'Dashboard data retrieved successfully'
+            ];
+            
+            // Add notification if no academic years and user is school_admin
+            if ($user->user_type === 'school_admin' && isset($request->school_has_academic_years) && !$request->school_has_academic_years) {
+                $response['notification'] = [
+                    'type' => 'warning',
+                    'title' => 'Academic Year Required',
+                    'message' => 'No academic year has been set up for your school. Please create an academic year to enable full functionality of the system.',
+                    'action' => [
+                        'text' => 'Create Academic Year',
+                        'url' => '/admin/academic-years/create'
+                    ],
+                    'priority' => 'high',
+                    'dismissible' => false,
+                    'persistent' => true
+                ];
+            }
+            
+            return response()->json($response);
         } catch (\Exception $e) {
             Log::error('Error retrieving dashboard data: ' . $e->getMessage() . ' | Line: ' . $e->getLine() . ' | File: ' . $e->getFile());
             return $this->errorResponse('An error occurred while retrieving dashboard data: ' . $e->getMessage(), null, 500);

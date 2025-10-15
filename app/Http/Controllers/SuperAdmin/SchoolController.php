@@ -115,29 +115,53 @@ class SchoolController extends BaseController
     }
 
     /**
-     * Update school details
+     * Update school details and optionally admin details
      */
     public function update(Request $request, $schoolId)
     {
-        $validator = Validator::make($request->all(), [
-            'name' => 'sometimes|required|string|max:255',
-            'code' => 'sometimes|required|string|max:50|unique:schools,code,' . $schoolId,
-            'address' => 'sometimes|required|string',
-            'phone' => 'sometimes|required|string|max:20',
-            'email' => 'sometimes|required|email|unique:schools,email,' . $schoolId,
-            'website' => 'nullable|url',
-            'logo' => 'nullable|string|max:500',
-        ]);
-
-        if ($validator->fails()) {
-            return $this->errorResponse('Validation failed', $validator->errors(), 422);
-        }
-
         try {
-            $data = $request->only(['name', 'code', 'address', 'phone', 'email', 'website', 'logo']);
-            $school = $this->schoolService->updateSchool($schoolId, $data);
+            // Get current school and admin to validate unique email properly
+            $school = $this->schoolService->getSchoolDetails($schoolId);
+            $currentAdminId = $school->schoolAdmin->user->id ?? null;
+            
+            $validator = Validator::make($request->all(), [
+                // School data
+                'name' => 'sometimes|required|string|max:255',
+                'code' => 'sometimes|required|string|max:50|unique:schools,code,' . $schoolId,
+                'address' => 'sometimes|required|string',
+                'phone' => 'sometimes|required|string|max:20',
+                'email' => 'sometimes|required|email|unique:schools,email,' . $schoolId,
+                'website' => 'nullable|url',
+                'logo' => 'nullable|string|max:500',
+                
+                // Admin data (optional)
+                'admin_name' => 'sometimes|required|string|max:255',
+                'admin_email' => 'sometimes|required|email|unique:users,email,' . $currentAdminId,
+                'admin_password' => 'sometimes|nullable|string|min:8',
+                'admin_phone' => 'sometimes|nullable|string|max:20',
+            ]);
+            
+            if ($validator->fails()) {
+                return $this->errorResponse('Validation failed', $validator->errors(), 422);
+            }
+            
+            $schoolData = $request->only(['name', 'code', 'address', 'phone', 'email', 'website', 'logo']);
+            
+            // Check if admin data is being updated
+            $adminData = null;
+            if ($request->has(['admin_name']) || $request->has(['admin_email']) || 
+                $request->has(['admin_password']) || $request->has(['admin_phone'])) {
+                $adminData = [
+                    'name' => $request->admin_name,
+                    'email' => $request->admin_email,
+                    'password' => $request->admin_password,
+                    'phone' => $request->admin_phone,
+                ];
+            }
+            
+            $school = $this->schoolService->updateSchool($schoolId, $schoolData, $adminData);
 
-            return $this->successResponse($school, 'School updated successfully');
+            return $this->successResponse($school, 'School and admin details updated successfully');
         } catch (\Exception $e) {
             return $this->errorResponse('Failed to update school: ' . $e->getMessage(), null, 500);
         }

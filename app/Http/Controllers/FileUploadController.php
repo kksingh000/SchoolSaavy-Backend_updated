@@ -414,7 +414,10 @@ class FileUploadController extends BaseController
         $year = Carbon::now()->year;
         $month = Carbon::now()->format('m');
 
-        return "uploads/{$type}/{$schoolId}/{$year}/{$month}";
+        // Remove any trailing slashes from the type to prevent double slashes in the path
+        $sanitizedType = rtrim($type, '/');
+        
+        return "uploads/{$sanitizedType}/{$schoolId}/{$year}/{$month}";
     }
 
     /**
