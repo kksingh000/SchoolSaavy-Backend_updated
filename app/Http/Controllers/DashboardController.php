@@ -48,6 +48,7 @@ class DashboardController extends BaseController
             // Check if academic year exists
             $response = [
                 'data' => $dashboardData,
+                'status' => 'success',
                 'message' => 'Dashboard data retrieved successfully'
             ];
             
