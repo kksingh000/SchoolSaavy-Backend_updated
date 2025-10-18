@@ -181,4 +181,22 @@ class ParentStudentController extends BaseController
             return $this->errorResponse('Failed to create parent: ' . $e->getMessage());
         }
     }
+
+    /**
+     * Update existing parent
+     */
+    public function updateParent(\App\Http\Requests\ParentStudent\UpdateParentRequest $request, $parentId): JsonResponse
+    {
+        if (!$this->checkModuleAccess('student-management')) {
+            return $this->moduleAccessDenied();
+        }
+        try {
+            $validated = $request->validated();
+            $parent = $this->parentStudentService->updateParent($parentId, $validated);
+
+            return $this->successResponse($parent, 'Parent updated successfully');
+        } catch (\Exception $e) {
+            return $this->errorResponse('Failed to update parent: ' . $e->getMessage());
+        }
+    }
 }

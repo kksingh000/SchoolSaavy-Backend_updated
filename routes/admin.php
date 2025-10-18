@@ -111,6 +111,7 @@ Route::middleware(['auth:sanctum', 'school.status', 'inject.school'])->group(fun
         Route::get('/', [\App\Http\Controllers\ParentStudentController::class, 'getAllParents']);
         Route::post('/', [\App\Http\Controllers\ParentStudentController::class, 'createParent']);
         Route::get('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'getParentDetails']);
+        Route::put('{parentId}', [\App\Http\Controllers\ParentStudentController::class, 'updateParent']);
     });
 
     // Teacher Management Routes

@@ -355,6 +355,79 @@ class ParentStudentService extends BaseService
     }
 
     /**
+     * Update parent information
+     */
+    public function updateParent($parentId, $data)
+    {
+        return DB::transaction(function () use ($parentId, $data) {
+            // Get parent with user
+            $parent = Parents::with('user')->findOrFail($parentId);
+
+            // Update user information if provided
+            $userUpdateData = [];
+            if (isset($data['name'])) {
+                $userUpdateData['name'] = $data['name'];
+            }
+            if (isset($data['email'])) {
+                $userUpdateData['email'] = $data['email'];
+            }
+            if (isset($data['password'])) {
+                $userUpdateData['password'] = Hash::make($data['password']);
+            }
+            if (isset($data['is_active'])) {
+                $userUpdateData['is_active'] = $data['is_active'];
+            }
+
+            if (!empty($userUpdateData)) {
+                $parent->user->update($userUpdateData);
+            }
+
+            // Update parent information
+            $parentUpdateData = [];
+            if (isset($data['phone'])) {
+                $parentUpdateData['phone'] = $data['phone'];
+            }
+            if (isset($data['alternate_phone'])) {
+                $parentUpdateData['alternate_phone'] = $data['alternate_phone'];
+            }
+            if (isset($data['gender'])) {
+                $parentUpdateData['gender'] = $data['gender'];
+            }
+            if (isset($data['occupation'])) {
+                $parentUpdateData['occupation'] = $data['occupation'];
+            }
+            if (isset($data['address'])) {
+                $parentUpdateData['address'] = $data['address'];
+            }
+            if (isset($data['relationship'])) {
+                $parentUpdateData['relationship'] = $data['relationship'];
+            }
+
+            if (!empty($parentUpdateData)) {
+                $parent->update($parentUpdateData);
+            }
+
+            // Refresh parent data
+            $parent->refresh();
+            $parent->load('user');
+
+            return [
+                'id' => $parent->id,
+                'name' => $parent->user->name,
+                'email' => $parent->user->email,
+                'phone' => $parent->phone,
+                'alternate_phone' => $parent->alternate_phone,
+                'gender' => $parent->gender,
+                'occupation' => $parent->occupation,
+                'address' => $parent->address,
+                'relationship' => $parent->relationship,
+                'is_active' => $parent->user->is_active,
+                'updated_at' => $parent->updated_at->format('Y-m-d H:i:s')
+            ];
+        });
+    }
+
+    /**
      * Update primary status for parent relationships
      */
     private function updatePrimaryStatus($studentId, $relationship, $excludeParentId = null)
