@@ -86,7 +86,7 @@ class DashboardController extends BaseController
         $schoolId = $school->id;
 
         // Run basic queries first in smaller concurrent batches for better performance
-        [$schoolCounts, $attendanceStats, $pendingFees, $recentActivities, $upcomingEvents] = Concurrency::run([
+        [$schoolCounts, $attendanceStats, $pendingFees, $upcomingEvents] = Concurrency::run([
             // School counts
             function () use ($schoolId) {
                 try {
@@ -120,15 +120,6 @@ class DashboardController extends BaseController
                 } catch (\Exception $e) {
                     Log::error('Error in getPendingFeesAmount: ' . $e->getMessage());
                     return 0;
-                }
-            },
-            // Recent activities
-            function () use ($schoolId) {
-                try {
-                    return $this->getRecentActivities($schoolId);
-                } catch (\Exception $e) {
-                    Log::error('Error in getRecentActivities: ' . $e->getMessage());
-                    return [];
                 }
             },
             // Upcoming events
@@ -198,7 +189,6 @@ class DashboardController extends BaseController
                 'pending_fees' => $pendingFees,
                 'active_modules' => $schoolCounts['active_modules'],
             ],
-            'recent_activities' => $recentActivities,
             'upcoming_events' => $upcomingEvents,
             // Add all analytics data
             'analytics' => [
@@ -419,7 +409,7 @@ class DashboardController extends BaseController
             return strcmp($dateTimeB, $dateTimeA);
         });
 
-        return array_slice($activities, 0, 10);
+        return array_slice($activities, 0, 5);
     }
 
     private function getUpcomingEvents($schoolId): array
