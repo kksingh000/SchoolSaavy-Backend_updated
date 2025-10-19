@@ -64,11 +64,25 @@ Route::middleware(['json.response'])->group(function () {
         // Refresh route - allows expired tokens
         Route::post('refresh', [AuthController::class, 'refresh']);
 
+        // Password Reset Routes (Public - No Authentication Required)
+        Route::post('password/send-otp', [App\Http\Controllers\Auth\PasswordResetController::class, 'sendResetOtp']);
+        Route::post('password/verify-otp', [App\Http\Controllers\Auth\PasswordResetController::class, 'verifyOtp']);
+        Route::post('password/reset', [App\Http\Controllers\Auth\PasswordResetController::class, 'resetPassword']);
+
         Route::middleware('auth:sanctum')->group(function () {
             Route::post('logout', [AuthController::class, 'logout']);
             Route::get('me', [AuthController::class, 'me']);
             Route::get('check', [AuthController::class, 'checkToken']);
         });
+    });
+
+    // Profile Management Routes
+    Route::prefix('profile')->middleware('auth:sanctum')->group(function () {
+        Route::get('/', [App\Http\Controllers\ProfileController::class, 'show']);
+        Route::put('/', [App\Http\Controllers\ProfileController::class, 'update']);
+        Route::post('/photo', [App\Http\Controllers\ProfileController::class, 'uploadPhoto']);
+        Route::put('/password', [App\Http\Controllers\ProfileController::class, 'changePassword']);
+        Route::get('/statistics', [App\Http\Controllers\ProfileController::class, 'getStatistics']);
     });
 
     // Public Module Information (for pricing page)

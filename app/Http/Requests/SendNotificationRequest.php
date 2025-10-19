@@ -12,7 +12,7 @@ class SendNotificationRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return auth()->check() && in_array(auth()->user()->user_type, ['admin', 'teacher']);
+        return auth()->check() && in_array(auth()->user()->user_type, ['school_admin', 'teacher']);
     }
 
     /**
@@ -24,7 +24,7 @@ class SendNotificationRequest extends FormRequest
             'title' => 'required|string|max:255',
             'message' => 'required|string|max:1000',
             'type' => 'required|string|in:' . implode(',', array_keys(Notification::getTypes())),
-            'priority' => 'sometimes|string|in:' . implode(',', array_keys(Notification::getPriorities())),
+            'priority' => 'nullable|string|in:' . implode(',', array_keys(Notification::getPriorities())),
             'target_type' => 'required|string|in:' . implode(',', array_keys(Notification::getTargetTypes())),
             'target_ids' => 'nullable|array|required_if:target_type,specific_users',
             'target_ids.*' => 'integer|exists:users,id',
@@ -32,7 +32,11 @@ class SendNotificationRequest extends FormRequest
             'target_classes.*' => 'integer|exists:classes,id',
             'scheduled_at' => 'nullable|date|after:now', // Made optional - if provided, will schedule; if not, sends immediately
             'data' => 'nullable|array',
-            'data.*' => 'string|max:500'
+            // Allow flexible data fields - can be strings, numbers, or nested arrays
+            'is_urgent' => 'nullable|boolean',
+            'requires_acknowledgment' => 'nullable|boolean',
+            'image_url' => 'nullable|string|url',
+            'action_url' => 'nullable|string|url'
         ];
     }
 
@@ -59,6 +63,19 @@ class SendNotificationRequest extends FormRequest
             'scheduled_at.after' => 'Schedule date must be in the future',
             'data.*.max' => 'Additional data values cannot exceed 500 characters'
         ];
+    }
+
+    /**
+     * Prepare the data for validation.
+     */
+    protected function prepareForValidation(): void
+    {
+        // Set default priority if not provided
+        if (!$this->has('priority') || empty($this->priority)) {
+            $this->merge([
+                'priority' => 'normal'
+            ]);
+        }
     }
 
     /**
