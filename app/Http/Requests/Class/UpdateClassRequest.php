@@ -18,7 +18,7 @@ class UpdateClassRequest extends FormRequest
             'grade_level' => 'required|integer|min:1|max:12',
             'section' => 'nullable|string|max:10',
             'capacity' => 'required|integer|min:1',
-            'class_teacher_id' => 'nullable|exists:teachers,id',
+            'teacher_id' => 'nullable|exists:teachers,id',
             'description' => 'nullable|string',
             'is_active' => 'sometimes|boolean',
             'promotes_to_class_id' => 'nullable|exists:classes,id',
@@ -34,7 +34,7 @@ class UpdateClassRequest extends FormRequest
             'grade_level.max' => 'Grade level cannot exceed 12.',
             'capacity.required' => 'The class capacity is required.',
             'capacity.min' => 'Capacity must be at least 1.',
-            'class_teacher_id.exists' => 'The selected class teacher does not exist.',
+            'teacher_id.exists' => 'The selected teacher does not exist.',
             'promotes_to_class_id.exists' => 'The selected promotion target class does not exist.',
         ];
     }

@@ -180,7 +180,15 @@ class ClassController extends BaseController
         }
 
         try {
-            $class = $this->classService->createClass($request->validated());
+            $data = $request->validated();
+            
+            // Map teacher_id to class_teacher_id for database
+            if (isset($data['teacher_id'])) {
+                $data['class_teacher_id'] = $data['teacher_id'];
+                unset($data['teacher_id']);
+            }
+            
+            $class = $this->classService->createClass($data);
 
             // Invalidate related caches
             $this->invalidateCache('create', 'classes', $class->toArray());
@@ -202,7 +210,7 @@ class ClassController extends BaseController
         }
 
         try {
-            $class = $this->classService->find($id, ['classTeacher.user', 'students', 'subjects']);
+            $class = $this->classService->find($id, ['classTeacher.user', 'students', 'subjects', 'promotesTo']);
 
             return $this->successResponse(
                 new ClassResource($class),
@@ -220,7 +228,15 @@ class ClassController extends BaseController
         }
 
         try {
-            $class = $this->classService->update($id, $request->validated());
+            $data = $request->validated();
+            
+            // Map teacher_id to class_teacher_id for database
+            if (isset($data['teacher_id'])) {
+                $data['class_teacher_id'] = $data['teacher_id'];
+                unset($data['teacher_id']);
+            }
+            
+            $class = $this->classService->update($id, $data);
 
             // Invalidate related caches
             $this->invalidateCache('update', 'classes', $class->toArray());

@@ -14,7 +14,8 @@ class UpdateTeacherRequest extends FormRequest
 
     public function rules()
     {
-        $teacherId = $this->route('teacher');
+        // Get teacher ID from route parameter 'id'
+        $teacherId = $this->route('id');
 
         return [
             'name' => 'sometimes|string|max:255',
@@ -27,7 +28,9 @@ class UpdateTeacherRequest extends FormRequest
             'employee_id' => [
                 'sometimes',
                 'string',
-                Rule::unique('teachers', 'employee_id')->ignore($teacherId)
+                Rule::unique('teachers', 'employee_id')->where(function ($query) {
+                    return $query->where('school_id', request()->school_id);
+                })->ignore($teacherId)
             ],
             'phone' => 'sometimes|string|max:20',
             'date_of_birth' => 'sometimes|date|before:today',
