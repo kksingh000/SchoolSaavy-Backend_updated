@@ -39,6 +39,8 @@ class AssignmentService extends BaseService
                 return $user->schoolAdmin?->school_id;
             case 'teacher':
                 return $user->teacher?->school_id;
+            case 'student':
+                return $user->student?->school_id;
             case 'parent':
                 return $user->parent?->students?->first()?->school_id;
             default:
@@ -339,8 +341,17 @@ class AssignmentService extends BaseService
     public function submitAssignment($assignmentId, $studentId, $data)
     {
         $submission = DB::transaction(function () use ($assignmentId, $studentId, $data) {
-            $assignment = Assignment::where('school_id', $this->getSchoolId())
-                ->findOrFail($assignmentId);
+            // Get student first to get their school_id
+            $student = Student::findOrFail($studentId);
+            
+            // Find assignment using student's school_id for proper isolation
+            $assignment = Assignment::where('id', $assignmentId)
+                ->where('school_id', $student->school_id)
+                ->first();
+
+            if (!$assignment) {
+                throw new \Exception('Assignment not found or access denied.');
+            }
 
             if (!$assignment->canAcceptSubmissions()) {
                 throw new \Exception('Assignment is not accepting submissions.');

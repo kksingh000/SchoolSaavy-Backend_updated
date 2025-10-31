@@ -5,10 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Carbon\Carbon;
+use App\Traits\GeneratesFileUrls;
 
 class Assignment extends Model
 {
-    use HasFactory;
+    use HasFactory, GeneratesFileUrls;
 
     protected $fillable = [
         'school_id',
@@ -139,6 +140,44 @@ class Assignment extends Model
     public function getDaysUntilDueAttribute()
     {
         return Carbon::today()->diffInDays($this->due_date, false);
+    }
+
+    /**
+     * Get formatted attachments with full URLs
+     */
+    public function getFormattedAttachmentsAttribute()
+    {
+        if (empty($this->attachments)) {
+            return [];
+        }
+
+        $formattedAttachments = [];
+
+        foreach ($this->attachments as $attachment) {
+            // Handle both old and new attachment formats
+            if (is_string($attachment)) {
+                // Old format: just file path
+                $formattedAttachments[] = [
+                    'name' => basename($attachment),
+                    'url' => $this->buildFileUrl($attachment),
+                    'type' => pathinfo($attachment, PATHINFO_EXTENSION),
+                ];
+            } elseif (is_array($attachment)) {
+                // New format: detailed file information
+                $attachmentUrl = $attachment['url'] ?? '';
+                $attachmentPath = $attachment['path'] ?? $attachmentUrl;
+                $attachmentName = $attachment['name'] ?? $attachment['filename'] ?? basename($attachmentPath);
+                $attachmentType = $attachment['type'] ?? pathinfo($attachmentName, PATHINFO_EXTENSION);
+
+                $formattedAttachments[] = [
+                    'name' => $attachmentName,
+                    'url' => $this->buildFileUrl($attachmentUrl ?: $attachmentPath),
+                    'type' => $attachmentType,
+                ];
+            }
+        }
+
+        return $formattedAttachments;
     }
 
     public function getSubmissionStatsAttribute()

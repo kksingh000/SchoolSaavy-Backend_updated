@@ -20,7 +20,7 @@ class AssignmentResource extends JsonResource
             'due_date' => $this->due_date->format('Y-m-d'),
             'due_time' => $this->due_time ? $this->due_time->format('H:i') : null,
             'max_marks' => $this->max_marks,
-            'attachments' => $this->attachments,
+            'attachments' => $this->formatted_attachments,
             'allow_late_submission' => $this->allow_late_submission,
             'grading_criteria' => $this->grading_criteria,
             'is_active' => $this->is_active,

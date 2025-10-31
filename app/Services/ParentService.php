@@ -591,7 +591,7 @@ class ParentService
                 'max_marks' => $assignment->max_marks,
                 'allow_late_submission' => $assignment->allow_late_submission,
                 'grading_criteria' => $assignment->grading_criteria,
-                'attachments' => $assignment->attachments ?? [],
+                'attachments' => $this->formatAssignmentAttachments($assignment->attachments ?? []),
                 'is_overdue' => $assignment->is_overdue,
                 'days_until_due' => $assignment->days_until_due,
                 'can_accept_submissions' => $assignment->canAcceptSubmissions(),
@@ -693,6 +693,44 @@ class ParentService
                     'is_image' => $attachment['is_image'] ?? $this->isImageFile($attachmentType),
                     'uploaded_at' => $attachment['uploaded_at'] ?? $attachment['created_at'] ?? null,
                     'has_thumbnail' => $attachment['thumbnail_queued'] ?? $attachment['has_thumbnail'] ?? false,
+                ];
+            }
+        }
+
+        return $formattedAttachments;
+    }
+
+    /**
+     * Format assignment attachments with full URLs
+     */
+    private function formatAssignmentAttachments(array $attachments): array
+    {
+        if (empty($attachments)) {
+            return [];
+        }
+
+        $formattedAttachments = [];
+
+        foreach ($attachments as $attachment) {
+            // Handle both old and new attachment formats
+            if (is_string($attachment)) {
+                // Old format: just file path
+                $formattedAttachments[] = [
+                    'name' => basename($attachment),
+                    'url' => $this->buildFileUrl($attachment),
+                    'type' => pathinfo($attachment, PATHINFO_EXTENSION),
+                ];
+            } elseif (is_array($attachment)) {
+                // New format: detailed file information
+                $attachmentUrl = $attachment['url'] ?? '';
+                $attachmentPath = $attachment['path'] ?? $this->extractPathFromUrl($attachmentUrl);
+                $attachmentName = $attachment['name'] ?? $attachment['filename'] ?? basename($attachmentPath);
+                $attachmentType = $attachment['type'] ?? pathinfo($attachmentName, PATHINFO_EXTENSION);
+
+                $formattedAttachments[] = [
+                    'name' => $attachmentName,
+                    'url' => $attachmentUrl ? $this->buildFileUrl($attachmentUrl) : $this->buildFileUrl($attachmentPath),
+                    'type' => $attachmentType,
                 ];
             }
         }

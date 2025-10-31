@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Assignment;
 use App\Models\AssignmentSubmission;
 use App\Models\Event;
+use App\Models\Student;
 use App\Services\AssignmentService;
 use App\Http\Resources\AssignmentResource;
 use App\Http\Resources\AssignmentSubmissionResource;
@@ -126,7 +127,7 @@ class AssignmentController extends BaseController
                     'due_date' => $assignment->due_date->format('Y-m-d'),
                     'due_time' => $assignment->due_time ? $assignment->due_time->format('H:i') : null,
                     'max_marks' => $assignment->max_marks,
-                    'attachments' => $assignment->attachments,
+                    'attachments' => $assignment->formatted_attachments,
                     'allow_late_submission' => $assignment->allow_late_submission,
                     'grading_criteria' => $assignment->grading_criteria,
                     'is_active' => $assignment->is_active,
@@ -249,6 +250,33 @@ class AssignmentController extends BaseController
                 'content' => 'nullable|string',
                 'attachments' => 'nullable|array',
             ]);
+
+            // Authorization check: Verify the authenticated user has access to this student
+            /** @var \App\Models\User $user */
+            $user = Auth::user();
+            $studentId = $validated['student_id'];
+            
+            // If user is a parent, verify they have access to this student
+            if ($user->user_type === 'parent') {
+                $hasAccess = DB::table('parent_student')
+                    ->where('parent_id', $user->parent->id)
+                    ->where('student_id', $studentId)
+                    ->exists();
+                    
+                if (!$hasAccess) {
+                    return $this->errorResponse('You do not have permission to submit assignments for this student.', null, 403);
+                }
+            }
+            
+            // If user is a teacher or admin, verify the student belongs to their school
+            if (in_array($user->user_type, ['teacher', 'admin', 'school_admin'])) {
+                $schoolId = $user->getSchoolId();
+                $student = Student::find($studentId);
+                
+                if (!$student || $student->school_id !== $schoolId) {
+                    return $this->errorResponse('You do not have permission to submit assignments for this student.', null, 403);
+                }
+            }
 
             $submission = $this->assignmentService->submitAssignment(
                 $id,

@@ -61,6 +61,11 @@ class User extends Authenticatable
         return $this->hasOne(Teacher::class);
     }
 
+    public function student()
+    {
+        return $this->hasOne(Student::class);
+    }
+
     public function parent()
     {
         return $this->hasOne(Parents::class);
@@ -106,6 +111,7 @@ class User extends Authenticatable
         return match ($this->user_type) {
             'school_admin' => $this->schoolAdmin?->school_id,
             'teacher' => $this->teacher?->school_id,
+            'student' => $this->student?->school_id,
             'parent' => $this->parent?->students?->first()?->school_id,
             'super_admin' => null, // Super admins don't belong to any specific school
             default => null
