@@ -505,7 +505,21 @@ class GalleryService
         $mimeType = $fileMetadata['mime_type'] ?? 'application/octet-stream';
         $fileSize = $fileMetadata['file_size'] ?? 0;
         $filePath = $fileMetadata['file_path'];
-        $type = $fileMetadata['type'] ?? (str_starts_with($mimeType, 'image/') ? 'photo' : 'video');
+        
+        // Extract path from URL if URL was provided instead of path
+        if (filter_var($filePath, FILTER_VALIDATE_URL)) {
+            // Extract the path part from the URL
+            $parsedUrl = parse_url($filePath);
+            $filePath = ltrim($parsedUrl['path'] ?? '', '/');
+            
+            Log::warning('file_path was a URL, extracted path', [
+                'original_url' => $fileMetadata['file_path'],
+                'extracted_path' => $filePath
+            ]);
+        }
+        
+        $type = $fileMetadata['type'] ?? (str_starts_with($mimeType, 'image/') ? 'photo' : (str_starts_with($mimeType, 'video/') ? 'video' : 'photo'));
+        
         try {
             // Create media record
             $media = GalleryMedia::create([
@@ -523,7 +537,8 @@ class GalleryService
             Log::info('Media record created successfully', [
                 'media_id' => $media->id,
                 'album_id' => $album->id,
-                'file_path' => $filePath
+                'file_path' => $filePath,
+                'type' => $type
             ]);
 
             // Transform media with URLs and thumbnails before returning

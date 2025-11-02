@@ -64,7 +64,7 @@ class FileUploadController extends BaseController
 
         $validator = Validator::make($request->all(), [
             'file' => "required|file|max:{$maxFileSizeKB}", // Use config value
-            'type' => 'required|string|in:assignment,profile,communication,event,general,media,bulk_import',
+            'type' => 'required|string|in:assignment,profile,communication,event,general,media,gallery,bulk_import',
             'allowed_extensions' => 'sometimes|string', // Custom allowed extensions
         ]);
 
@@ -108,7 +108,7 @@ class FileUploadController extends BaseController
         $validator = Validator::make($request->all(), [
             'files' => "required|array|max:{$maxFiles}", // Use config value
             'files.*' => "file|max:{$maxFileSizeKB}", // Use config value
-            'type' => 'required|string|in:assignment,profile,communication,event,general,bulk_import',
+            'type' => 'required|string|in:assignment,profile,communication,event,general,media,gallery,bulk_import',
             'allowed_extensions' => 'sometimes|string',
         ]);
 
@@ -349,6 +349,7 @@ class FileUploadController extends BaseController
             'size_human' => $this->formatBytes($size),
             'uploaded_at' => Carbon::now()->toISOString(),
             'is_image' => $this->thumbnailService->isImageFile($extension),
+            'is_video' => $this->thumbnailService->isVideoFile($extension),
             'thumbnail_queued' => $this->queueThumbnailIfImage($storedPath, $filename, $extension, $uploadDisk)
         ];
     }
@@ -372,6 +373,7 @@ class FileUploadController extends BaseController
             'profile' => ['jpg', 'jpeg', 'png', 'gif'],
             'communication' => ['pdf', 'doc', 'docx', 'txt', 'jpg', 'jpeg', 'png', 'gif'],
             'event' => ['jpg', 'jpeg', 'png', 'gif', 'pdf', 'doc', 'docx'],
+            'media', 'gallery' => ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'webp', 'svg', 'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp'],
             'general' => ['pdf', 'doc', 'docx', 'txt', 'rtf', 'jpg', 'jpeg', 'png', 'gif', 'xls', 'xlsx', 'ppt', 'pptx', 'zip', 'rar'],
             'bulk_import' => ['csv', 'xlsx', 'xls'],
             default => ['pdf', 'doc', 'docx', 'txt', 'jpg', 'jpeg', 'png']

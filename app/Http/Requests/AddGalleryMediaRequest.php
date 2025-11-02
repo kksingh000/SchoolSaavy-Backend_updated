@@ -15,7 +15,7 @@ class AddGalleryMediaRequest extends FormRequest
     {
         return [
             'media_files' => 'required|array|min:1|max:10', // Limit to 10 files when adding to existing album
-            'media_files.*.file_path' => 'required|string', // S3 path to the uploaded file
+            'media_files.*.file_path' => 'required|string', // S3 path to the uploaded file (can be URL or relative path)
             'media_files.*.original_name' => 'required|string|max:255', // Original filename for display
             'media_files.*.mime_type' => 'required|string', // MIME type of the file
             'media_files.*.file_size' => 'required|integer|min:1', // File size in bytes
@@ -34,6 +34,16 @@ class AddGalleryMediaRequest extends FormRequest
             // Auto-determine type if not provided
             if (!isset($file['type']) && isset($file['mime_type'])) {
                 $mediaFiles[$index]['type'] = $this->determineMediaType($file['mime_type']);
+            }
+            
+            // If 'url' field is provided instead of 'file_path', use it
+            if (!isset($file['file_path']) && isset($file['url'])) {
+                $mediaFiles[$index]['file_path'] = $file['url'];
+            }
+            
+            // If 'path' field is provided, prefer it over 'file_path' or 'url'
+            if (isset($file['path'])) {
+                $mediaFiles[$index]['file_path'] = $file['path'];
             }
         }
 

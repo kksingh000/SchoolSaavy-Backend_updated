@@ -30,11 +30,33 @@ class ThumbnailService
     ];
 
     /**
+     * Video extensions
+     */
+    private const SUPPORTED_VIDEO_EXTENSIONS = [
+        'mp4',
+        'mov',
+        'avi',
+        'mkv',
+        'webm',
+        'flv',
+        'wmv',
+        '3gp'
+    ];
+
+    /**
      * Check if file is an image that supports thumbnail generation
      */
     public function isImageFile(string $extension): bool
     {
         return in_array(strtolower($extension), self::SUPPORTED_IMAGE_EXTENSIONS);
+    }
+
+    /**
+     * Check if file is a video
+     */
+    public function isVideoFile(string $extension): bool
+    {
+        return in_array(strtolower($extension), self::SUPPORTED_VIDEO_EXTENSIONS);
     }
 
     /**
