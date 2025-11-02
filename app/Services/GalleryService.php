@@ -113,10 +113,10 @@ class GalleryService
             $album = GalleryAlbum::create([
                 'school_id' => $schoolId,
                 'class_id' => $data['class_id'],
-                'event_id' => $data['event_id'],
+                'event_id' => $data['event_id'] ?? null,
                 'created_by' => $userId,
                 'title' => $data['title'],
-                'description' => $data['description'],
+                'description' => $data['description'] ?? null,
                 'event_date' => $data['event_date'],
                 'is_public' => $data['is_public'] ?? true,
                 'status' => 'active',
