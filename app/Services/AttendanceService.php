@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Attendance;
 use App\Models\Student;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -130,6 +131,9 @@ class AttendanceService extends BaseService
 
             DB::commit();
 
+            // Clear cache for all affected students
+            $this->clearParentStatsCache($studentIds);
+
             // Fire all events AFTER transaction commits (async, non-blocking)
             // This happens OUTSIDE the transaction, so it won't block the API response
             foreach ($eventsToFire as $eventData) {
@@ -176,6 +180,9 @@ class AttendanceService extends BaseService
             if ($student) {
                 $this->fireAttendanceEvent($student, $attendance, $data['date'], $data['status']);
             }
+
+            // Clear cache for this student's parents
+            $this->clearParentStatsCache([$data['student_id']]);
 
             return $attendance;
         } catch (\Exception $e) {
@@ -303,5 +310,45 @@ class AttendanceService extends BaseService
                 'not_marked' => $notMarked,
             ]
         ];
+    }
+
+    /**
+     * Clear parent statistics cache for affected students
+     * 
+     * CRITICAL: When attendance is marked/updated, parent statistics cache must be invalidated
+     * This ensures parents see fresh attendance data in their app
+     * 
+     * @param array $studentIds Array of student IDs whose attendance was updated
+     * @return void
+     */
+    protected function clearParentStatsCache(array $studentIds): void
+    {
+        try {
+            // Get all parent IDs for these students in one query
+            $parentIds = DB::table('parent_student')
+                ->whereIn('student_id', $studentIds)
+                ->distinct()
+                ->pluck('parent_id');
+
+            // Clear cache for each parent-student combination
+            foreach ($parentIds as $parentId) {
+                foreach ($studentIds as $studentId) {
+                    $cacheKey = "parent_stats_{$parentId}_{$studentId}";
+                    Cache::forget($cacheKey);
+                }
+            }
+
+            Log::info('Parent stats cache cleared after attendance update', [
+                'student_ids' => $studentIds,
+                'parent_ids' => $parentIds->toArray(),
+                'cache_keys_cleared' => count($parentIds) * count($studentIds)
+            ]);
+        } catch (\Exception $e) {
+            // Log error but don't fail the attendance operation
+            Log::error('Failed to clear parent stats cache', [
+                'error' => $e->getMessage(),
+                'student_ids' => $studentIds
+            ]);
+        }
     }
 }
