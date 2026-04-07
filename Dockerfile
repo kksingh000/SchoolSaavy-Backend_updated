@@ -15,9 +15,9 @@ RUN curl -sS https://getcomposer.org/installer | php -- \
 
 COPY . .
 
-RUN cp .env.example .env && php artisan key:generate --ansi
-
 RUN composer install --no-dev --optimize-autoloader
+
+RUN cp .env.example .env && php artisan key:generate --ansi
 
 EXPOSE 8000
 
