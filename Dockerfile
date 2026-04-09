@@ -33,4 +33,6 @@ CMD cp .env.example .env && \
     echo "APP_DEBUG=false" >> .env && \
     php artisan key:generate --ansi && \
     php artisan migrate --force && \
+    php artisan db:seed --class=SuperAdminSeeder --force && \
+    php artisan db:seed --class=SchoolSeeder --force && \
     php artisan serve --host=0.0.0.0 --port=8000 --tries=0
