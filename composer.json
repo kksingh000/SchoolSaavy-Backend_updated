@@ -15,14 +15,11 @@
         "google/apiclient": "^2.18",
         "intervention/image": "^3.11",
         "laravel/framework": "^12.0",
-        "laravel/octane": "^2.12",
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^2.10.1",
         "league/flysystem-aws-s3-v3": "^3.15",
         "phpmailer/phpmailer": "^6.10",
-        "predis/predis": "^3.4",
-        "spiral/roadrunner-cli": "^2.7",
-        "spiral/roadrunner-laravel": "^6.0"
+        "predis/predis": "^3.4"
     },
     "require-dev": {
         "fakerphp/faker": "^1.23",
