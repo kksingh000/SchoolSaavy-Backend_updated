@@ -25,101 +25,101 @@ use App\Http\Controllers\ContactController;
 //     ]);
 // });
 
-Route::get('/health', function () {
-    try {
-
-        $client = config('database.redis.client');
-
-        $redisStatus = 'not connected';
-        $redisError = null;
-
-        try {
-            \Illuminate\Support\Facades\Redis::connection()->ping();
-            $redisStatus = 'connected';
-        } catch (\Throwable $e) {
-            $redisStatus = 'failed';
-            $redisError = $e->getMessage();
-        }
-
-        return response()->json([
-            'status' => 'ok',
-
-            // 🔥 Redis runtime
-            'redis_status' => $redisStatus,
-            'redis_error' => $redisError,
-
-            // 🔥 Config vs ENV
-            'redis_client_config' => $client,
-            'redis_client_env' => env('REDIS_CLIENT'),
-
-            // 🔥 CRITICAL DEBUG FLAGS
-            'predis_exists' => class_exists(\Predis\Client::class),
-            'phpredis_loaded' => extension_loaded('redis'),
-
-            // 🔥 What Laravel actually sees
-            'redis_config_full' => config('database.redis'),
-
-            // 🔥 ENV visibility
-            'env_all_redis' => [
-                'REDIS_CLIENT' => env('REDIS_CLIENT'),
-                'REDIS_URL' => env('REDIS_URL'),
-                'REDIS_HOST' => env('REDIS_HOST'),
-                'REDIS_PORT' => env('REDIS_PORT'),
-            ],
-
-            // 🔥 sanity
-            'app_env' => app()->environment(),
-
-            'database' => 'connected',
-        ]);
-
-    } catch (\Throwable $e) {
-        return response()->json([
-            'status' => 'fatal',
-            'error' => $e->getMessage(),
-            'trace' => substr($e->getTraceAsString(), 0, 500)
-        ]);
-    }
-});
-
-// Health check endpoint (Memory Optimized)
 // Route::get('/health', function () {
-//     $status = 'ok';
-//     $redisStatus = 'not connected';
-//     $dbStatus = 'not connected';
-//     $startTime = microtime(true);
-
-//     // Lightweight Redis check
 //     try {
-//         \Illuminate\Support\Facades\Redis::connection()->ping();
-//         $redisStatus = 'connected';
-//     } catch (\Exception $e) {
-//         $status = 'error';
-//     }
-//     $redisDuration = microtime(true) - $startTime;
 
-//     // Lightweight DB check
-//     try {
-//         \Illuminate\Support\Facades\DB::connection()->getPdo();
-//         $dbStatus = 'connected';
-//     } catch (\Exception $e) {
-//         $status = 'error';
-//     }
-//     $dbDuration = microtime(true) - $startTime;
+//         $client = config('database.redis.client');
 
-//     return response()->json([
-//         'status' => $status,
-//         'message' => 'API is running',
-//         'redis' => $redisStatus,
-//         'database' => $dbStatus,
-//         'timestamp' => now()->toISOString(),
-//         'version' => '1.0.0',
-//         'server' => 'OpenSwoole',
-//         'redis_duration' => round($redisDuration * 1000, 2) . ' ms',
-//         'db_duration' => round($dbDuration * 1000, 2) . ' ms',
-//         'memory' => round(memory_get_usage(true) / 1024 / 1024, 2) . ' MB'
-//     ]);
+//         $redisStatus = 'not connected';
+//         $redisError = null;
+
+//         try {
+//             \Illuminate\Support\Facades\Redis::connection()->ping();
+//             $redisStatus = 'connected';
+//         } catch (\Throwable $e) {
+//             $redisStatus = 'failed';
+//             $redisError = $e->getMessage();
+//         }
+
+//         return response()->json([
+//             'status' => 'ok',
+
+//             // 🔥 Redis runtime
+//             'redis_status' => $redisStatus,
+//             'redis_error' => $redisError,
+
+//             // 🔥 Config vs ENV
+//             'redis_client_config' => $client,
+//             'redis_client_env' => env('REDIS_CLIENT'),
+
+//             // 🔥 CRITICAL DEBUG FLAGS
+//             'predis_exists' => class_exists(\Predis\Client::class),
+//             'phpredis_loaded' => extension_loaded('redis'),
+
+//             // 🔥 What Laravel actually sees
+//             'redis_config_full' => config('database.redis'),
+
+//             // 🔥 ENV visibility
+//             'env_all_redis' => [
+//                 'REDIS_CLIENT' => env('REDIS_CLIENT'),
+//                 'REDIS_URL' => env('REDIS_URL'),
+//                 'REDIS_HOST' => env('REDIS_HOST'),
+//                 'REDIS_PORT' => env('REDIS_PORT'),
+//             ],
+
+//             // 🔥 sanity
+//             'app_env' => app()->environment(),
+
+//             'database' => 'connected',
+//         ]);
+
+//     } catch (\Throwable $e) {
+//         return response()->json([
+//             'status' => 'fatal',
+//             'error' => $e->getMessage(),
+//             'trace' => substr($e->getTraceAsString(), 0, 500)
+//         ]);
+//     }
 // });
+
+Health check endpoint (Memory Optimized)
+Route::get('/health', function () {
+    $status = 'ok';
+    $redisStatus = 'not connected';
+    $dbStatus = 'not connected';
+    $startTime = microtime(true);
+
+    // Lightweight Redis check
+    try {
+        \Illuminate\Support\Facades\Redis::connection()->ping();
+        $redisStatus = 'connected';
+    } catch (\Exception $e) {
+        $status = 'error';
+    }
+    $redisDuration = microtime(true) - $startTime;
+
+    // Lightweight DB check
+    try {
+        \Illuminate\Support\Facades\DB::connection()->getPdo();
+        $dbStatus = 'connected';
+    } catch (\Exception $e) {
+        $status = 'error';
+    }
+    $dbDuration = microtime(true) - $startTime;
+
+    return response()->json([
+        'status' => $status,
+        'message' => 'API is running',
+        'redis' => $redisStatus,
+        'database' => $dbStatus,
+        'timestamp' => now()->toISOString(),
+        'version' => '1.0.0',
+        'server' => 'OpenSwoole',
+        'redis_duration' => round($redisDuration * 1000, 2) . ' ms',
+        'db_duration' => round($dbDuration * 1000, 2) . ' ms',
+        'memory' => round(memory_get_usage(true) / 1024 / 1024, 2) . ' MB'
+    ]);
+});
 
 // Apply JSON response middleware to all API routes
 Route::middleware(['json.response'])->group(function () {
