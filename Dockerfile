@@ -16,23 +16,18 @@ RUN docker-php-ext-install \
 # Install Composer
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
-# 🔥 COPY FULL PROJECT FIRST (IMPORTANT)
+# Copy full project
 COPY . .
 
-# 🔥 REMOVE any .env (so Render ENV is used)
+# Remove .env (use Render ENV)
 RUN rm -f .env
 
-# 🔥 NOW install dependencies (artisan exists now)
+# Install dependencies (artisan exists now)
 RUN composer install --no-dev --optimize-autoloader --no-interaction
-
-# 🔥 Clear Laravel caches
-RUN php artisan config:clear && \
-    php artisan cache:clear && \
-    php artisan route:clear && \
-    php artisan view:clear
 
 EXPOSE 8000
 
+# 🔥 ONLY run artisan commands at runtime (NOT build)
 CMD php artisan config:clear && \
     php artisan cache:clear && \
     php artisan serve --host=0.0.0.0 --port=8000
