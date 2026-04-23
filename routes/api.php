@@ -17,34 +17,70 @@ use App\Http\Controllers\ContactController;
 */
 
 Route::get('/health', function () {
-    $status = 'ok';
-    $redisStatus = 'not connected';
-    $dbStatus = 'not connected';
-
-    // Redis check
-    try {
-        \Illuminate\Support\Facades\Redis::connection()->ping();
-        $redisStatus = 'connected';
-    } catch (\Throwable $e) {
-        $status = 'error';
-        $redisStatus = $e->getMessage(); // DEBUG
-    }
-
-    // DB check
-    try {
-        \Illuminate\Support\Facades\DB::connection()->getPdo();
-        $dbStatus = 'connected';
-    } catch (\Throwable $e) {
-        $status = 'error';
-        $dbStatus = $e->getMessage(); // DEBUG
-    }
-
     return response()->json([
-        'status' => $status,
-        'redis' => $redisStatus,
-        'database' => $dbStatus,
+        'redis_client_config' => config('database.redis.client'),
+        'redis_client_env' => env('REDIS_CLIENT'),
+        'predis_exists' => class_exists(\Predis\Client::class),
+        'phpredis_loaded' => extension_loaded('redis'),
     ]);
 });
+
+// Route::get('/health', function () {
+//     try {
+
+//         $client = config('database.redis.client');
+
+//         $redisStatus = 'not connected';
+//         $redisError = null;
+
+//         try {
+//             \Illuminate\Support\Facades\Redis::connection()->ping();
+//             $redisStatus = 'connected';
+//         } catch (\Throwable $e) {
+//             $redisStatus = 'failed';
+//             $redisError = $e->getMessage();
+//         }
+
+//         return response()->json([
+//             'status' => 'ok',
+
+//             // 🔥 Redis runtime
+//             'redis_status' => $redisStatus,
+//             'redis_error' => $redisError,
+
+//             // 🔥 Config vs ENV
+//             'redis_client_config' => $client,
+//             'redis_client_env' => env('REDIS_CLIENT'),
+
+//             // 🔥 CRITICAL DEBUG FLAGS
+//             'predis_exists' => class_exists(\Predis\Client::class),
+//             'phpredis_loaded' => extension_loaded('redis'),
+
+//             // 🔥 What Laravel actually sees
+//             'redis_config_full' => config('database.redis'),
+
+//             // 🔥 ENV visibility
+//             'env_all_redis' => [
+//                 'REDIS_CLIENT' => env('REDIS_CLIENT'),
+//                 'REDIS_URL' => env('REDIS_URL'),
+//                 'REDIS_HOST' => env('REDIS_HOST'),
+//                 'REDIS_PORT' => env('REDIS_PORT'),
+//             ],
+
+//             // 🔥 sanity
+//             'app_env' => app()->environment(),
+
+//             'database' => 'connected',
+//         ]);
+
+//     } catch (\Throwable $e) {
+//         return response()->json([
+//             'status' => 'fatal',
+//             'error' => $e->getMessage(),
+//             'trace' => substr($e->getTraceAsString(), 0, 500)
+//         ]);
+//     }
+// });
 
 // Health check endpoint (Memory Optimized)
 // Route::get('/health', function () {
