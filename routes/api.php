@@ -82,7 +82,7 @@ use App\Http\Controllers\ContactController;
 //     }
 // });
 
-Health check endpoint (Memory Optimized)
+//Health check endpoint (Memory Optimized)
 Route::get('/health', function () {
     $status = 'ok';
     $redisStatus = 'not connected';
