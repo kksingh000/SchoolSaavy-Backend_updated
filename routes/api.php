@@ -16,44 +16,74 @@ use App\Http\Controllers\ContactController;
 |--------------------------------------------------------------------------
 */
 
-// Health check endpoint (Memory Optimized)
 Route::get('/health', function () {
     $status = 'ok';
     $redisStatus = 'not connected';
     $dbStatus = 'not connected';
-    $startTime = microtime(true);
 
-    // Lightweight Redis check
+    // Redis check
     try {
         \Illuminate\Support\Facades\Redis::connection()->ping();
         $redisStatus = 'connected';
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         $status = 'error';
+        $redisStatus = $e->getMessage(); // DEBUG
     }
-    $redisDuration = microtime(true) - $startTime;
 
-    // Lightweight DB check
+    // DB check
     try {
         \Illuminate\Support\Facades\DB::connection()->getPdo();
         $dbStatus = 'connected';
-    } catch (\Exception $e) {
+    } catch (\Throwable $e) {
         $status = 'error';
+        $dbStatus = $e->getMessage(); // DEBUG
     }
-    $dbDuration = microtime(true) - $startTime;
 
     return response()->json([
         'status' => $status,
-        'message' => 'API is running',
         'redis' => $redisStatus,
         'database' => $dbStatus,
-        'timestamp' => now()->toISOString(),
-        'version' => '1.0.0',
-        'server' => 'OpenSwoole',
-        'redis_duration' => round($redisDuration * 1000, 2) . ' ms',
-        'db_duration' => round($dbDuration * 1000, 2) . ' ms',
-        'memory' => round(memory_get_usage(true) / 1024 / 1024, 2) . ' MB'
     ]);
 });
+
+// Health check endpoint (Memory Optimized)
+// Route::get('/health', function () {
+//     $status = 'ok';
+//     $redisStatus = 'not connected';
+//     $dbStatus = 'not connected';
+//     $startTime = microtime(true);
+
+//     // Lightweight Redis check
+//     try {
+//         \Illuminate\Support\Facades\Redis::connection()->ping();
+//         $redisStatus = 'connected';
+//     } catch (\Exception $e) {
+//         $status = 'error';
+//     }
+//     $redisDuration = microtime(true) - $startTime;
+
+//     // Lightweight DB check
+//     try {
+//         \Illuminate\Support\Facades\DB::connection()->getPdo();
+//         $dbStatus = 'connected';
+//     } catch (\Exception $e) {
+//         $status = 'error';
+//     }
+//     $dbDuration = microtime(true) - $startTime;
+
+//     return response()->json([
+//         'status' => $status,
+//         'message' => 'API is running',
+//         'redis' => $redisStatus,
+//         'database' => $dbStatus,
+//         'timestamp' => now()->toISOString(),
+//         'version' => '1.0.0',
+//         'server' => 'OpenSwoole',
+//         'redis_duration' => round($redisDuration * 1000, 2) . ' ms',
+//         'db_duration' => round($dbDuration * 1000, 2) . ' ms',
+//         'memory' => round(memory_get_usage(true) / 1024 / 1024, 2) . ' MB'
+//     ]);
+// });
 
 // Apply JSON response middleware to all API routes
 Route::middleware(['json.response'])->group(function () {
