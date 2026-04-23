@@ -29,4 +29,7 @@ EXPOSE 8000
 
 # 🔥 ONLY run artisan commands at runtime (NOT build)
 CMD php artisan config:clear && \
+    php artisan migrate --force && \
+    php artisan db:seed --class=SuperAdminSeeder --force && \
+    php artisan db:seed --class=SchoolSeeder --force && \
     php artisan serve --host=0.0.0.0 --port=8000
