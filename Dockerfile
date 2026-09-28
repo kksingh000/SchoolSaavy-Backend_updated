@@ -25,11 +25,12 @@ RUN rm -f .env
 # Install dependencies (artisan exists now)
 RUN composer install --no-dev --optimize-autoloader --no-interaction
 
+RUN chmod +x docker/scripts/render-start.sh
+
 EXPOSE 8000
 
-# 🔥 ONLY run artisan commands at runtime (NOT build)
-CMD php artisan config:clear && \
-    php artisan migrate --force && \
-    php artisan db:seed --class=SuperAdminSeeder --force && \
-    php artisan db:seed --class=SchoolSeeder --force && \
-    php artisan serve --host=0.0.0.0 --port=8000
+# Runtime boot is handled by the entrypoint script rather than an && chain, so
+# that a database outage no longer exits the container and crash-loops it.
+# Migrations still run on boot but are non-fatal; seeders are opt-in via
+# RUN_SEEDERS=true. See docker/scripts/render-start.sh.
+CMD ["./docker/scripts/render-start.sh"]
