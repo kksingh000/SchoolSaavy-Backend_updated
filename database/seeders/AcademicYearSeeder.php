@@ -85,7 +85,7 @@ class AcademicYearSeeder extends Seeder
                 array_merge($yearData, ['school_id' => $school->id])
             );
         }
-        .
+    
 
         $this->command->info("✅ Created academic years for {$school->name}");
     }
